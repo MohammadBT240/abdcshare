@@ -1,0 +1,299 @@
+erDiagram
+    ROLE {
+        int id PK
+        varchar role_name UK
+    }
+    DEPARTMENT {
+        int id PK
+        varchar name UK
+        bool is_active
+    }
+    CLIENT {
+        uuid id PK
+        varchar name UK
+        varchar contact_email
+        bool is_active
+    }
+    USER {
+        uuid id PK
+        int role_id FK
+        int department_id FK
+        uuid client_id FK
+        varchar full_name
+        varchar email UK
+        varchar password_hash
+        bool is_active
+        bool must_change_password
+    }
+    PASSWORD_RESET_TOKEN {
+        uuid id PK
+        uuid user_id FK
+        varchar token_hash UK
+        timestamptz expires_at
+        timestamptz used_at
+    }
+    COMPANY_PROFILE {
+        int id PK
+        varchar name
+        varchar logo_path
+        uuid updated_by FK
+    }
+    REFRESH_TOKEN {
+        uuid id PK
+        uuid user_id FK
+        varchar token_hash UK
+        uuid family_id
+        varchar user_agent
+        inet ip_address
+        timestamptz expires_at
+        timestamptz revoked_at
+    }
+    ENGAGEMENT_TYPE {
+        int id PK
+        varchar name UK
+        bool is_active
+    }
+    FS_LINE {
+        int id PK
+        varchar code UK
+        varchar name UK
+        text description
+        bool is_active
+    }
+    FS_LINE_ENGAGEMENT_TYPE {
+        int fs_line_id PK, FK
+        int engagement_type_id PK, FK
+    }
+    REQUEST_TYPE {
+        int id PK
+        int fs_line_id FK
+        varchar name
+        int expected_documents
+        bool is_active
+    }
+    REQUEST_STAGE {
+        int id PK
+        varchar name
+        int sort_order
+        bool is_active
+    }
+    REQUEST_STATUS {
+        int id PK
+        varchar name
+        int sort_order
+        bool is_active
+    }
+    ENGAGEMENT {
+        uuid id PK
+        uuid client_id FK
+        int engagement_type_id FK
+        int department_id FK
+        varchar reference_code UK
+        varchar title
+        varchar period_label
+        enum status
+        date start_date
+        date target_completion_date
+        timestamptz completed_at
+        uuid created_by FK
+    }
+    ENGAGEMENT_TEAM_MEMBER {
+        uuid engagement_id PK, FK
+        uuid user_id PK, FK
+        enum member_role
+        uuid assigned_by FK
+        timestamptz assigned_at
+    }
+    ENGAGEMENT_FS_LINE {
+        uuid engagement_id PK, FK
+        int fs_line_id PK, FK
+        int sort_order
+        uuid added_by FK
+    }
+    ENGAGEMENT_STATUS_HISTORY {
+        uuid id PK
+        uuid engagement_id FK
+        enum from_status
+        enum to_status
+        uuid changed_by FK
+        timestamptz changed_at
+        text note
+    }
+    ENGAGEMENT_SIGN_OFF {
+        uuid id PK
+        uuid engagement_id FK
+        int fs_line_id FK
+        uuid signed_by FK
+        timestamptz signed_at
+        uuid revoked_by FK
+        text revoke_reason
+    }
+    REQUEST {
+        uuid id PK
+        uuid engagement_id FK
+        int request_type_id FK
+        int stage_id FK
+        int status_id FK
+        text description
+        date due_date
+        uuid created_by FK
+    }
+    REQUEST_ASSIGNEE {
+        uuid request_id PK, FK
+        uuid user_id PK, FK
+        uuid assigned_by FK
+        timestamptz assigned_at
+    }
+    REQUEST_HISTORY {
+        uuid id PK
+        uuid request_id FK
+        uuid actor_id FK
+        varchar event_type
+        varchar from_value
+        varchar to_value
+    }
+    DOCUMENT {
+        uuid id PK
+        uuid engagement_id FK
+        int fs_line_id FK
+        uuid request_id FK
+        enum category
+        varchar title
+        uuid current_version_id FK
+        uuid uploaded_by FK
+    }
+    DOCUMENT_VERSION {
+        uuid id PK
+        uuid document_id FK
+        int version_no
+        varchar storage_key
+        varchar file_name
+        varchar mime_type
+        bigint size_bytes
+        uuid uploaded_by FK
+        timestamptz uploaded_at
+    }
+    CLIENT_SUBMISSION {
+        uuid id PK
+        uuid request_id FK
+        uuid submitted_by FK
+        text message
+        enum status
+        uuid reviewed_by FK
+        text review_reason
+        timestamptz reviewed_at
+    }
+    SUBMISSION_FILE {
+        uuid id PK
+        uuid submission_id FK
+        varchar storage_key
+        varchar file_name
+        varchar mime_type
+        bigint size_bytes
+    }
+    DISCUSSION_MESSAGE {
+        uuid id PK
+        uuid request_id FK
+        uuid author_id FK
+        uuid parent_message_id FK
+        text body
+        timestamptz edited_at
+    }
+    DISCUSSION_ATTACHMENT {
+        uuid id PK
+        uuid message_id FK
+        varchar storage_key
+        varchar file_name
+        varchar mime_type
+        bigint size_bytes
+    }
+    DISCUSSION_MENTION {
+        uuid message_id PK, FK
+        uuid mentioned_user_id PK, FK
+    }
+    DISCUSSION_READ {
+        uuid request_id PK, FK
+        uuid user_id PK, FK
+        uuid last_read_message_id FK
+        timestamptz updated_at
+    }
+    REVIEW {
+        uuid id PK
+        uuid request_id FK
+        uuid preparer_id FK
+        uuid reviewer_id FK
+        enum status
+        text notes
+        timestamptz submitted_at
+        timestamptz decided_at
+    }
+    NOTIFICATION {
+        uuid id PK
+        uuid user_id FK
+        varchar event_type
+        varchar entity_type
+        uuid entity_id
+        varchar title
+        bool is_read
+        timestamptz read_at
+    }
+    NOTIFICATION_PREFERENCE {
+        uuid user_id PK, FK
+        varchar event_type PK
+        bool email_enabled
+    }
+    ACTIVITY_LOG {
+        uuid id PK
+        uuid actor_id FK
+        varchar action
+        varchar entity_type
+        uuid entity_id
+        inet ip_address
+        jsonb metadata
+        timestamptz created_at
+    }
+
+    ROLE ||--o{ USER : "assigned to"
+    DEPARTMENT ||--o{ USER : "home dept"
+    DEPARTMENT ||--o{ ENGAGEMENT : "owns"
+    CLIENT ||--o{ USER : "client users"
+    CLIENT ||--o{ ENGAGEMENT : "has"
+    USER ||--o{ PASSWORD_RESET_TOKEN : "requests"
+    USER ||--o{ REFRESH_TOKEN : "rotates"
+    USER ||--o{ COMPANY_PROFILE : "updates"
+    ENGAGEMENT_TYPE ||--o{ ENGAGEMENT : "typed as"
+    ENGAGEMENT_TYPE ||--o{ FS_LINE_ENGAGEMENT_TYPE : "allows"
+    FS_LINE ||--o{ FS_LINE_ENGAGEMENT_TYPE : "allowed in"
+    FS_LINE ||--o{ REQUEST_TYPE : "groups"
+    FS_LINE ||--o{ ENGAGEMENT_FS_LINE : "used in"
+    FS_LINE ||--o{ DOCUMENT : "groups"
+    FS_LINE ||--o{ ENGAGEMENT_SIGN_OFF : "signed"
+    USER ||--o{ ENGAGEMENT : "created by"
+    ENGAGEMENT ||--o{ ENGAGEMENT_TEAM_MEMBER : "staffed by"
+    USER ||--o{ ENGAGEMENT_TEAM_MEMBER : "member of"
+    ENGAGEMENT ||--o{ ENGAGEMENT_FS_LINE : "includes"
+    ENGAGEMENT ||--o{ ENGAGEMENT_STATUS_HISTORY : "transitions"
+    ENGAGEMENT ||--o{ ENGAGEMENT_SIGN_OFF : "signed off"
+    ENGAGEMENT ||--o{ REQUEST : "contains"
+    ENGAGEMENT ||--o{ DOCUMENT : "holds"
+    REQUEST_TYPE ||--o{ REQUEST : "instantiated as"
+    REQUEST_STAGE ||--o{ REQUEST : "at stage"
+    REQUEST_STATUS ||--o{ REQUEST : "has status"
+    REQUEST ||--o{ REQUEST_ASSIGNEE : "assigned to"
+    USER ||--o{ REQUEST_ASSIGNEE : "owns"
+    REQUEST ||--o{ REQUEST_HISTORY : "logs"
+    REQUEST ||--o{ DOCUMENT : "attaches"
+    REQUEST ||--o{ CLIENT_SUBMISSION : "answered by"
+    REQUEST ||--o{ DISCUSSION_MESSAGE : "discussed in"
+    REQUEST ||--o{ DISCUSSION_READ : "read state"
+    REQUEST ||--o{ REVIEW : "reviewed by"
+    DOCUMENT ||--o{ DOCUMENT_VERSION : "versions"
+    CLIENT_SUBMISSION ||--o{ SUBMISSION_FILE : "files"
+    DISCUSSION_MESSAGE ||--o{ DISCUSSION_ATTACHMENT : "attachments"
+    DISCUSSION_MESSAGE ||--o{ DISCUSSION_MENTION : "mentions"
+    DISCUSSION_MESSAGE ||--o{ DISCUSSION_MESSAGE : "replies to"
+    USER ||--o{ DISCUSSION_MENTION : "mentioned"
+    USER ||--o{ REVIEW : "prepares or reviews"
+    USER ||--o{ NOTIFICATION : "receives"
+    USER ||--o{ NOTIFICATION_PREFERENCE : "sets"
+    USER ||--o{ ACTIVITY_LOG : "acts"

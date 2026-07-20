@@ -1,0 +1,35 @@
+{
+  "name": "@abdcshare/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "jest --passWithNoTests"
+  },
+  "dependencies": {
+    "@abdcshare/shared": "workspace:*",
+    "@mikro-orm/core": "^6.4.2",
+    "@mikro-orm/nestjs": "^6.1.1",
+    "@mikro-orm/postgresql": "^6.4.2",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.1",
+    "bullmq": "^5.34.10",
+    "ioredis": "^5.4.2",
+    "reflect-metadata": "^0.2.2",
+    "resend": "^4.0.1",
+    "rxjs": "^7.8.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@abdcshare/config": "workspace:*",
+    "@nestjs/cli": "^11.0.0",
+    "@types/node": "^22.10.6",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3"
+  }
+}

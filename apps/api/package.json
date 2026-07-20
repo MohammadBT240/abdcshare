@@ -1,0 +1,46 @@
+{
+  "name": "@abdcshare/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "jest --passWithNoTests",
+    "migration:create": "mikro-orm migration:create",
+    "migration:up": "mikro-orm migration:up",
+    "migration:down": "mikro-orm migration:down"
+  },
+  "dependencies": {
+    "@abdcshare/shared": "workspace:*",
+    "@mikro-orm/core": "^6.4.2",
+    "@mikro-orm/nestjs": "^6.1.1",
+    "@mikro-orm/postgresql": "^6.4.2",
+    "@mikro-orm/migrations": "^6.4.2",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^5.0.1",
+    "@nestjs/swagger": "^11.0.2",
+    "bullmq": "^5.34.10",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "ioredis": "^5.4.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@abdcshare/config": "workspace:*",
+    "@mikro-orm/cli": "^6.4.2",
+    "@nestjs/cli": "^11.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.6",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3"
+  },
+  "mikro-orm": { "configPaths": ["./dist/database/mikro-orm.config.js", "./src/database/mikro-orm.config.ts"] }
+}

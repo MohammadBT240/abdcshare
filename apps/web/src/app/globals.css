@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --aca-primary-hover: 147 66% 17%;
+    --aca-sidebar-from: 151 40% 15%;
+    --aca-sidebar-to: 151 46% 11%;
+    --background: 152 18% 94%;
+    --foreground: 150 11% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 150 11% 13%;
+    --primary: 146 64% 22%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 140 17% 97%;
+    --muted-foreground: 150 7% 39%;
+    --destructive: 353 62% 43%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 146 20% 84%;
+    --input: 146 20% 84%;
+    --ring: 146 64% 22%;
+    --radius: 0.9rem;
+    --shadow-aca: 0 14px 36px rgba(14, 44, 29, 0.08);
+  }
+  .dark {
+    --background: 150 22% 7%;
+    --foreground: 150 20% 94%;
+    --card: 150 18% 11%;
+    --card-foreground: 150 20% 94%;
+    --primary: 146 62% 37%;
+    --aca-primary-hover: 146 62% 44%;
+    --muted: 150 18% 13%;
+    --muted-foreground: 146 16% 75%;
+    --border: 150 18% 23%;
+    --input: 150 18% 23%;
+    --ring: 146 62% 37%;
+    --aca-sidebar-from: 150 22% 6%;
+    --aca-sidebar-to: 150 22% 5%;
+    --shadow-aca: 0 14px 36px rgba(0, 0, 0, 0.42);
+  }
+  body { @apply bg-background text-foreground; }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@abdcshare/config",
+  "version": "0.1.0",
+  "private": true,
+  "files": ["tsconfig.base.json", "eslint.config.mjs", "prettier.config.mjs"],
+  "exports": {
+    "./eslint": "./eslint.config.mjs",
+    "./prettier": "./prettier.config.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "typescript-eslint": "^8.20.0",
+    "eslint": "^9.18.0",
+    "eslint-plugin-boundaries": "^5.0.1",
+    "eslint-plugin-import": "^2.31.0"
+  }
+}
