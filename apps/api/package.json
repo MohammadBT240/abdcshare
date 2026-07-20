@@ -11,36 +11,49 @@
     "test": "jest --passWithNoTests",
     "migration:create": "mikro-orm migration:create",
     "migration:up": "mikro-orm migration:up",
-    "migration:down": "mikro-orm migration:down"
+    "migration:down": "mikro-orm migration:down",
+    "seed": "node dist/database/seed.js",
+    "seed:dev": "ts-node -r tsconfig-paths/register src/database/seed.ts",
+    "db:setup": "ts-node -r tsconfig-paths/register src/database/setup.ts",
+    "db:migrate": "SKIP_SEED=1 ts-node -r tsconfig-paths/register src/database/setup.ts"
   },
   "dependencies": {
     "@abdcshare/shared": "workspace:*",
-    "@mikro-orm/core": "^6.4.2",
+    "@mikro-orm/core": "^6.6.16",
     "@mikro-orm/nestjs": "^6.1.1",
-    "@mikro-orm/postgresql": "^6.4.2",
-    "@mikro-orm/migrations": "^6.4.2",
-    "@nestjs/common": "^11.0.1",
-    "@nestjs/config": "^4.0.0",
-    "@nestjs/core": "^11.0.1",
-    "@nestjs/platform-express": "^11.0.1",
-    "@nestjs/schedule": "^5.0.1",
-    "@nestjs/swagger": "^11.0.2",
-    "bullmq": "^5.34.10",
+    "@mikro-orm/postgresql": "^6.6.16",
+    "@mikro-orm/migrations": "^6.6.16",
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/platform-express": "^11.1.28",
+    "@nestjs/schedule": "^6.1.3",
+    "@nestjs/swagger": "^11.4.6",
+    "bullmq": "^5.80.9",
     "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.1",
-    "ioredis": "^5.4.2",
+    "class-validator": "^0.15.1",
+    "ioredis": "^5.11.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.4.7"
   },
   "devDependencies": {
     "@abdcshare/config": "workspace:*",
-    "@mikro-orm/cli": "^6.4.2",
+    "@mikro-orm/cli": "^6.6.16",
     "@nestjs/cli": "^11.0.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.6",
     "eslint": "^9.18.0",
-    "typescript": "^5.7.3"
+    "typescript": "^5.9.3",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0"
   },
-  "mikro-orm": { "configPaths": ["./dist/database/mikro-orm.config.js", "./src/database/mikro-orm.config.ts"] }
+  "mikro-orm": {
+    "useTsNode": true,
+    "configPaths": [
+      "./src/database/mikro-orm.config.ts"
+    ]
+  }
 }
