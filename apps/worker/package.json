@@ -5,6 +5,7 @@
   "scripts": {
     "build": "nest build",
     "start": "node dist/main.js",
+    "dev": "nest start --watch",
     "start:dev": "nest start --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",

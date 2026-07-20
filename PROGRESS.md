@@ -48,9 +48,9 @@ pnpm --filter @abdcshare/api exec mikro-orm migration:create --initial   # -> sr
 pnpm --filter @abdcshare/api migration:up                # applies it (ts-node)
 pnpm --filter @abdcshare/api seed:dev                    # roles/departments/catalogues + Platform Admin
 
-# prove the async pipeline:
-pnpm dev:api      # terminal 1
-pnpm dev:worker   # terminal 2
+# prove the async pipeline (or start everything with `pnpm dev`):
+pnpm dev          # turbo: shared watch + api :4000 + worker + web :3000
+# (or only api+worker: pnpm dev:api & pnpm dev:worker)
 curl -X POST localhost:4000/api/demo/outbox -H 'content-type: application/json' -d '{"message":"hello"}'
 # -> worker logs "Processing user.created"; the outbox row flips Pending -> Queued -> Sent
 ```
@@ -75,7 +75,7 @@ git push -u origin feature/first-migration   # open PR -> main
 1. Commit + push the above; merge to `main`.
 2. **Extract shared persistence** — `apps/worker/src/database/outbox.entity.ts` duplicates the api
    entity; move both to a shared `@abdcshare/persistence` package (noted in the file).
-3. **(optional) Prove async pipeline** — `pnpm dev:api` + `pnpm dev:worker`, then
+3. **(optional) Prove async pipeline** — `pnpm dev` (or `pnpm dev:api` + `pnpm dev:worker`), then
    `curl -X POST localhost:4000/api/demo/outbox -d '{"message":"hi"}' -H 'content-type: application/json'`
    → worker seals the outbox row to `Sent`.
 4. **Phase 1 — Auth & RBAC (next feature slice):** JWT access + rotating refresh (using `refresh_tokens`),

@@ -13,8 +13,8 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
-    "dev:api": "pnpm --filter @abdcshare/api start:dev",
-    "dev:worker": "pnpm --filter @abdcshare/worker start:dev",
+    "dev:api": "pnpm --filter @abdcshare/api dev",
+    "dev:worker": "pnpm --filter @abdcshare/worker dev",
     "dev:web": "pnpm --filter @abdcshare/web dev"
   },
   "devDependencies": {

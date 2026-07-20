@@ -85,6 +85,11 @@ abdcshare/                      # monorepo root
 **Turborepo** wires `build`, `lint`, `test`, `typecheck`, `dev` across the graph with caching, so
 `packages/shared` builds once and both apps consume it; CI only rebuilds what changed.
 
+**Local `pnpm dev`:** Turbo runs every workspace `dev` script in parallel — `packages/shared`
+(`tsc --watch`), `apps/api` + `apps/worker` (`nest start --watch`), and `apps/web` (`next dev`).
+Postgres/Redis stay outside that command (compose infra or a host Postgres + compose Redis). Full
+containerized apps use `docker compose --profile full` (see DEPLOYMENT.md §2).
+
 ---
 
 ## 4. Backend — `apps/api` (NestJS, DDD)
