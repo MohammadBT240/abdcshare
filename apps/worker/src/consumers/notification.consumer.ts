@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MikroORM } from '@mikro-orm/postgresql';
+import { EntityManager, MikroORM } from '@mikro-orm/postgresql';
 import { Job, Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import { OutboxStatus, QUEUE, type NotificationJob } from '@abdcshare/shared';
+import { EVENT, OutboxStatus, QUEUE, type NotificationJob } from '@abdcshare/shared';
 import { OutboxEntity } from '../database/outbox.entity';
 import { EmailDispatchService } from '../email/email-dispatch.service';
 
@@ -39,13 +39,13 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handle(job: Job<NotificationJob>): Promise<void> {
-    const { outboxId, eventType } = job.data;
+    const { outboxId, eventType, payload } = job.data;
     const em = this.orm.em.fork();
     const row = await em.findOne(OutboxEntity, { id: outboxId });
     if (!row || row.status === OutboxStatus.Sent) return; // idempotent
     try {
       this.logger.log(`Processing ${eventType} (outbox ${outboxId})`);
-      // TODO(phase-1): render + send real email / write notifications from payload.
+      await this.dispatch(eventType, payload, em);
       row.status = OutboxStatus.Sent;
       row.processedAt = new Date();
     } catch (err) {
@@ -55,6 +55,51 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
     } finally {
       row.updatedAt = new Date();
       await em.flush();
+    }
+  }
+
+  /** Turn a domain event into its email side effect(s). */
+  private async dispatch(
+    eventType: string,
+    payload: Record<string, unknown>,
+    em: EntityManager,
+  ): Promise<void> {
+    switch (eventType) {
+      case EVENT.UserCreated: {
+        const email = typeof payload.email === 'string' ? payload.email : null;
+        const tempPassword = typeof payload.tempPassword === 'string' ? payload.tempPassword : '';
+        if (email) {
+          await this.email.send(
+            email,
+            'Your ABDC Share account',
+            `<p>An account was created for you.</p>
+             <p><strong>Username:</strong> ${email}<br/>
+             <strong>Temporary password:</strong> ${tempPassword}</p>
+             <p>Please sign in and change your password.</p>`,
+          );
+        }
+        break;
+      }
+      case EVENT.NotificationEmail: {
+        const emails = Array.isArray(payload.emails)
+          ? (payload.emails as Array<{ notificationId?: string; to: string; subject: string; html: string }>)
+          : [];
+        for (const e of emails) {
+          if (!e?.to) continue;
+          await this.email.send(e.to, e.subject, e.html);
+          if (e.notificationId) {
+            await em
+              .getConnection()
+              .execute('update "notifications" set email_sent = true, email_sent_at = now() where id = ?', [
+                e.notificationId,
+              ]);
+          }
+        }
+        break;
+      }
+      default:
+        // No email side effect for this event type — just sealed as Sent.
+        break;
     }
   }
 

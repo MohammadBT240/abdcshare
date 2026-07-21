@@ -1,8 +1,11 @@
-import { PrimaryKey, Property } from '@mikro-orm/core';
+import { OptionalProps, PrimaryKey, Property } from '@mikro-orm/core';
 import { randomUUID } from 'node:crypto';
 
 /** Base with a uuid PK + created/updated timestamps. */
 export abstract class BaseEntity {
+  /** Defaults are set in property initializers — optional for `em.create`. */
+  [OptionalProps]?: 'id' | 'createdAt' | 'updatedAt';
+
   @PrimaryKey({ type: 'uuid' })
   id: string = randomUUID();
 

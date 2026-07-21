@@ -85,6 +85,11 @@ abdcshare/                      # monorepo root
 **Turborepo** wires `build`, `lint`, `test`, `typecheck`, `dev` across the graph with caching, so
 `packages/shared` builds once and both apps consume it; CI only rebuilds what changed.
 
+**Local `pnpm dev`:** Turbo runs every workspace `dev` script in parallel — `packages/shared`
+(`tsc --watch`), `apps/api` + `apps/worker` (`nest start --watch`), and `apps/web` (`next dev`).
+Postgres/Redis stay outside that command (compose infra or a host Postgres + compose Redis). Full
+containerized apps use `docker compose --profile full` (see DEPLOYMENT.md §2).
+
 ---
 
 ## 4. Backend — `apps/api` (NestJS, DDD)
@@ -102,7 +107,7 @@ apps/api/src/
   modules/
     auth/             # JWT access/refresh, guards, RBAC (@RequirePermission)
     users/  roles/  clients/  departments/
-    engagement-types/  fs-lines/  request-types/  request-stages/  request-statuses/
+    engagement-types/  request-classes/  request-types/  request-stages/  request-statuses/
     engagements/  requests/  documents/  submissions/  discussions/  reviews/
     notifications/    # writes notifications + outbox rows (fan-out happens in worker)
     company-profile/
@@ -298,7 +303,7 @@ Add a **dead-letter queue** + a **Bull Board** dashboard for observability (elev
 ## 12. File storage & uploads
 
 - Uploads stream to **R2** via the S3 SDK from the API (or presigned direct-PUT for large files); DB stores
-  a `storageKey` (`{prefix}/{engagementId}/{fsLineId}/{basename}`) + metadata + version.
+  a `storageKey` (`{prefix}/{engagementId}/{requestClassId}/{basename}`) + metadata + version.
 - Validate size + MIME server-side (`file-type`); reject executables; never trust client MIME.
 - Downloads/previews only through an authenticated API endpoint (presigned GET redirect / local stream) —
   no public bucket URLs. Heavy processing (thumbnails, virus scan, zip export) runs in the **worker**.
@@ -330,9 +335,9 @@ Add a **dead-letter queue** + a **Bull Board** dashboard for observability (elev
 ## 15. Data migration from ACA
 
 - Model the MikroORM schema on DOMAIN_MODEL/ERD, not the legacy tables.
-- One-off scripts map `aca.sql` → new schema: users/roles, clients, request types → default FS line,
+- One-off scripts map `aca.sql` → new schema: users/roles, clients, request types → default request class,
   documents → backfilled "legacy" engagement per client, activity log. Dry-run → verify → cutover.
-- Legacy service lines → **departments**; legacy request types assigned to FS lines during import.
+- Legacy service lines → **departments**; legacy request types assigned to request classes during import.
 
 ---
 

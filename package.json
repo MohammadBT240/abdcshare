@@ -13,9 +13,15 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
-    "dev:api": "pnpm --filter @abdcshare/api start:dev",
-    "dev:worker": "pnpm --filter @abdcshare/worker start:dev",
-    "dev:web": "pnpm --filter @abdcshare/web dev"
+    "dev:api": "pnpm --filter @abdcshare/api dev",
+    "dev:worker": "pnpm --filter @abdcshare/worker dev",
+    "dev:web": "pnpm --filter @abdcshare/web dev",
+    "migration:create": "pnpm --filter @abdcshare/api migration:create",
+    "migration:up": "pnpm --filter @abdcshare/api migration:up",
+    "migration:down": "pnpm --filter @abdcshare/api migration:down",
+    "db:setup": "pnpm --filter @abdcshare/api db:setup",
+    "db:migrate": "pnpm --filter @abdcshare/api db:migrate",
+    "seed:dev": "pnpm --filter @abdcshare/api seed:dev"
   },
   "devDependencies": {
     "turbo": "^2.10.5",

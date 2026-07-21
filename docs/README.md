@@ -1,12 +1,12 @@
 # Quantum (abdcshare) — Documentation
 
 The successor to the ACA / ABDC practice-management portal, reorganised around **Engagements** and
-**FS lines**. Built as a **pnpm + Turborepo monorepo** — NestJS `api` + separate NestJS `worker` +
+**request classes**. Built as a **pnpm + Turborepo monorepo** — NestJS `api` + separate NestJS `worker` +
 Next.js `web` — modeled on the `ondoo` house standard. The monorepo root is `Quantum/abdcshare/`.
 
 ## Read in this order
 
-1. **[DOMAIN_MODEL.md](./DOMAIN_MODEL.md)** — entities, the Engagement → FS line → Request type →
+1. **[DOMAIN_MODEL.md](./DOMAIN_MODEL.md)** — entities, the Engagement → request class → Request type →
    Request hierarchy, roles, and glossary. Start here.
 2. **[USER_STORIES.md](./USER_STORIES.md)** — product requirements: 15 epics, role-based user stories
    with acceptance criteria, MoSCoW priorities, a proposed-enhancement summary, and open questions.

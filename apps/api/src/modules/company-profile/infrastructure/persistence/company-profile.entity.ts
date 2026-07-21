@@ -4,7 +4,7 @@ import { UserEntity } from '../../../users/infrastructure/persistence/user.entit
 @Entity({ tableName: 'company_profile' })
 export class CompanyProfileEntity {
   @PrimaryKey()
-  id: number = 1; // singleton row
+  id!: number; // singleton row (id = 1); singleton enforced in the service, not a column default
 
   @Property()
   name!: string;

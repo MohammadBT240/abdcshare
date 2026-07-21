@@ -1,14 +1,14 @@
 import { Entity, ManyToOne, PrimaryKey, Property, Unique } from '@mikro-orm/core';
-import { FsLineEntity } from '../../../fs-lines/infrastructure/persistence/fs-line.entity';
+import { RequestClassEntity } from '../../../request-classes/infrastructure/persistence/request-class.entity';
 
 @Entity({ tableName: 'request_types' })
-@Unique({ properties: ['fsLine', 'name'] })
+@Unique({ properties: ['requestClass', 'name'] })
 export class RequestTypeEntity {
   @PrimaryKey()
   id!: number;
 
-  @ManyToOne(() => FsLineEntity)
-  fsLine!: FsLineEntity;
+  @ManyToOne(() => RequestClassEntity)
+  requestClass!: RequestClassEntity;
 
   @Property()
   name!: string;

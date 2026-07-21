@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { IsString, MaxLength } from 'class-validator';
 import { EntityManager } from '@mikro-orm/postgresql';
 import { EVENT } from '@abdcshare/shared';
+import { Public } from '../../common/decorators/public.decorator';
 import { OutboxService } from '../outbox/outbox.service';
 
 class PingDto {
@@ -19,6 +20,7 @@ export class DemoController {
   ) {}
 
   /** Writes an outbox row inside a transaction — the "hello async" slice. */
+  @Public()
   @Post('outbox')
   async ping(@Body() dto: PingDto): Promise<{ outboxId: string }> {
     return this.em.transactional(async () => {

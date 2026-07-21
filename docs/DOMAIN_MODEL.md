@@ -18,8 +18,11 @@ Quantum reorganises this around two new ideas:
 1. **Engagements** — a request no longer floats on its own. Every request now lives inside an
    **Engagement**, which is opened for a specific client and represents a discrete piece of
    work (e.g. a statutory audit for FY2025).
-2. **FS lines** — within an engagement, requests are grouped by **FS lines** (financial-statement
-   lines). Request types are defined *under* an FS line, and reporting is grouped the same way.
+2. **Request classes** — within an engagement, requests are grouped by **request classes**: an
+   admin-maintained classification that request types are defined *under*, with reporting grouped the
+   same way. (It replaces the old audit-specific "FS line" name so it fits every engagement type — for
+   an audit a request class is a financial-statement line like Cash & Bank; for tax/advisory it's
+   whatever grouping suits.)
 
 The old "service lines" are re-cast as **Departments** — they describe the firm's internal
 organisational units (which team owns the work), not how work is grouped inside an engagement.
@@ -28,8 +31,8 @@ organisational units (which team owns the work), not how work is grouped inside 
 Legacy:   Client ── Request (type, stage, status) ── Documents
                     Documents grouped by Service Line (6)
 
-Quantum:  Client ── Engagement (type, status, team) ── FS Line ── Request (of a Request Type) ── Documents
-                    FS Lines group the requests, reports, and documents
+Quantum:  Client ── Engagement (type, status, team) ── Request Class ── Request (of a Request Type) ── Documents
+                    Request Classes group the requests, reports, and documents
                     Departments = internal org units (formerly "service lines")
 ```
 
@@ -46,7 +49,7 @@ else hangs off. Attributes:
 
 - **Client** — who the engagement is for (inherent).
 - **Engagement type** — e.g. Statutory Audit, Tax Compliance, Advisory. The type governs which
-  FS lines / workflow templates are available.
+  request classes / workflow templates are available.
 - **Period** — the reporting period the engagement covers (e.g. FY2025). *(optional / to confirm)*
 - **Status lifecycle** — `Planning → Fieldwork → Review → Completed → Archived`, each with
   dates and an owner.
@@ -54,24 +57,25 @@ else hangs off. Attributes:
   each with an engagement role.
 - **Department** — the internal unit that owns the engagement.
 
-### FS Line  *(new — "Financial Statement line")*
-A grouping category *within an engagement* (e.g. Cash & Bank, Receivables, Revenue, Payables,
-PP&E). FS lines are **created and managed like request types were in ACA** (an admin-maintained
-catalogue). Request types are grouped under FS lines, and requests, documents, and reports all
-inherit that grouping. An FS line can be reused across engagements of a compatible type.
+### Request Class  *(new — generalises the audit "FS line")*
+A grouping/classification *within an engagement* (for an audit: Cash & Bank, Receivables, Revenue,
+Payables, PP&E; for other engagement types, whatever grouping fits). Request classes are an
+**admin-maintained catalogue**. Request types are grouped under request classes, and requests,
+documents, and reports all inherit that grouping. A request class can be reused across engagements of a
+compatible type.
 
 ### Request Type
 A named template of work item (e.g. "Bank confirmation", "Lead schedule"), now **grouped under
-an FS line**. Carries an expected number of documents (`documents_no` in ACA). Maintained by
+a request class**. Carries an expected number of documents (`documents_no` in ACA). Maintained by
 admins in a catalogue.
 
 ### Request
 A single unit of work **inside an engagement**, created from a Request Type and therefore
-belonging to an FS line. Attributes carried over and extended from ACA's `request_client`:
+belonging to a request class. Attributes carried over and extended from ACA's `request_client`:
 
-- Belongs to one Engagement (and thus one Client) and one FS line.
+- Belongs to one Engagement (and thus one Client) and one request class.
 - **Request type**, **description**, **stage**, **status**, **due date**.
-- **Assigned owner(s)** — auditor/staff responsible.
+- **Assigned owner(s)** — the staff responsible.
 - **Attached documents** (working papers) and **client responses/submissions**.
 - **Discussion thread** with read-tracking (carried over from ACA's discussion feature).
 
@@ -81,32 +85,39 @@ Submitted / Reviewed; status: Open / Pending Client / Accepted / Returned). Admi
 
 ### Document — Working Paper & Final Report
 Files attached to the work. **Working papers** are draft/supporting files; **final reports** are
-completed deliverables. In Quantum both are grouped by **FS line within an engagement** rather
+completed deliverables. In Quantum both are grouped by **request class within an engagement** rather
 than by the old service-line library. Stored privately (Cloudflare R2 or local fallback),
 downloaded only through authenticated endpoints.
 
 ### Department  *(formerly "service line")*
 An internal organisational unit (Assurance, Tax, Advisory, Business Development, Shared
 Services, Other). Used to say *which team* owns an engagement and for staffing/reporting — **not**
-for grouping requests inside an engagement (that is the FS line's job).
+for grouping requests inside an engagement (that is the request class's job).
 
 ### User & Role
-People who log in. Roles are unchanged from ACA (see §3).
+People who log in. Roles are **Platform Admin, Super Admin, Staff, Client** (see §3; `Auditor` is no
+longer a role).
 
 ### Notification & Activity Log
 In-app notifications (with per-user email preferences) and an immutable audit trail of actions.
 
 ---
 
-## 3. Roles (unchanged from ACA)
+## 3. Roles (v5 — Auditor dropped as a role)
+
+Four roles. **`Auditor` is no longer a role** — every Staff is a working practitioner, and "Auditor"
+survives only as a per-engagement **team tag** (member_role: Partner/Manager/Auditor) and a document
+**participant role** (Auditor/Advisor/Staff).
 
 | Role | Nature | Summary |
 |------|--------|---------|
-| **Platform Admin** | Governance | User management, catalogues (FS lines, request types, stages), departments, company profile. Only role that performs governance writes. At least one must always exist. |
-| **Super Admin** | Operations | Engagements, requests, document library, reports, deletes, analytics. Read-only visibility into governance areas. |
-| **Auditor** | Operations | Works engagements/requests assigned to them; uploads working papers and final reports; responds in discussions. |
-| **Staff** | Library | Access to working papers and final reports; no engagement/request administration. |
-| **Client** | Self-service | Sees their own engagements/requests, submits responses and documents, participates in discussions. |
+| **Platform Admin** | Governance | User management, catalogues (request classes, request types, stages), departments, company profile, bulk import, audit log. Only role that performs governance writes. At least one must always exist. Not in the engagement workflow. |
+| **Super Admin** | Operations lead | **Only role that creates/manages engagements** (create, update, transition) and assigns staff to them. Full request lifecycle, uploads **working papers and final reports** (final-report = SA-only), deletes/exports documents, reviews submissions, decides reviews + sign-off. Read-only visibility into governance areas. May carry a **partner designation** (Partner / Principal Partner). |
+| **Staff** | Working practitioner | Works inside the engagements they're **attached to** (team membership). Raises/updates/assigns requests, uploads working papers, reviews client submissions, participates in discussions, submits work for review. **Row-scoped** to their engagements. |
+| **Client** | Self-service | Sees **only their own** client's engagements/requests, submits responses, participates in discussions, receives notifications. |
+
+**Row-level scope:** Client → their client's rows; Staff → engagements they're on the team of (+ those
+requests/documents); Platform/Super Admin → unrestricted. Enforced in the services (`common/security/access-scope.ts`).
 
 ---
 
@@ -118,9 +129,9 @@ Engagement *───1 EngagementType
 Engagement *───1 Department
 Engagement 1───* TeamAssignment *───1 User
 Engagement 1───* Request
-FSLine 1───* RequestType
+RequestClass 1───* RequestType
 RequestType 1───* Request
-Request *───1 FSLine        (via its request type / explicit link)
+Request *───1 RequestClass        (via its request type / explicit link)
 Request 1───* Document (WorkingPaper | FinalReport)
 Request 1───* ClientSubmission
 Request 1───* DiscussionMessage *───* DiscussionRead
@@ -136,11 +147,11 @@ User *───1 Role
 | Term | Meaning |
 |------|---------|
 | **Engagement** | Top-level container of work for one client; has a type, status lifecycle, and team. |
-| **FS line** | Financial-statement line; grouping of request types / requests / reports within an engagement. |
-| **Request type** | Reusable template of a work item, defined under an FS line. |
+| **Request class** | Admin-maintained grouping/classification of request types / requests / reports within an engagement (an audit's financial-statement lines are one example). Formerly "FS line". |
+| **Request type** | Reusable template of a work item, defined under a request class. |
 | **Request** | A single work item inside an engagement, created from a request type. |
 | **Working paper** | Draft / supporting document attached to a request. |
-| **Final report** | Completed deliverable document, grouped by FS line. |
+| **Final report** | Completed deliverable document, grouped by request class. |
 | **Department** | Internal org unit (formerly "service line"); owns engagements and staff. |
 | **Stage / Status** | Workflow position and state of a request. |
 | **Client submission** | A document or response uploaded by a client against a request. |

@@ -3,7 +3,6 @@
 export const ROLE_NAMES = [
   'Platform Admin',
   'Super Admin',
-  'Auditor',
   'Staff',
   'Client',
 ] as const;
@@ -36,6 +35,40 @@ export enum DocumentCategory {
   WorkingPaper = 'WorkingPaper',
   FinalReport = 'FinalReport',
 }
+
+export enum DocumentStatus {
+  Draft = 'Draft',
+  Ready = 'Ready',
+  UnderReview = 'UnderReview',
+  SignedOff = 'SignedOff',
+}
+
+/** Role a person plays on a document (legacy per-line auditors/advisors/staffs). */
+export enum DocumentParticipantRole {
+  Auditor = 'Auditor',
+  Advisor = 'Advisor',
+  Staff = 'Staff',
+}
+
+/** Client-review lifecycle of a final-report draft (see report review cycles). */
+export enum ReportReviewState {
+  NotSent = 'NotSent',
+  AwaitingClient = 'AwaitingClient',
+  ChangesRequested = 'ChangesRequested',
+  Locked = 'Locked', // 3 cycles used without approval — needs SA override
+  Approved = 'Approved', // client approved → finalised/issued
+  Overridden = 'Overridden', // SA override after lock → finalised/issued
+}
+
+/** A client's decision on one review cycle. */
+export enum ReportReviewDecision {
+  Pending = 'Pending',
+  Approved = 'Approved',
+  ChangesRequested = 'ChangesRequested',
+}
+
+/** Max client-review cycles a final report may go through before it locks. */
+export const MAX_REPORT_REVIEW_ROUNDS = 3;
 
 export enum SubmissionStatus {
   Pending = 'Pending',

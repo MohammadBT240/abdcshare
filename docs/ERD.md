@@ -1,498 +1,326 @@
-# Quantum — Entity Relationship Diagram (ERD)
+# abdcshare — Entity Relationship Diagram (ERD) · v3 (full parity)
 
-> The relational schema for Quantum, derived from **DOMAIN_MODEL.md** and **USER_STORIES.md**.
-> Target database: **PostgreSQL**, mapped with **MikroORM** (entities → snake_case tables). The schema is
-> normalised to **3NF** — see [§5 Normalization](#5-normalization-1nf--2nf--3nf).
+> The relational schema for abdcshare, **rebuilt to full field-level parity** with the legacy ACA system
+> (see `LEGACY_AUDIT.md` — 66 tables / 351 columns), re-represented in the better model (engagements +
+> request classes, unified documents, RBAC). Target DB: **PostgreSQL** via **MikroORM**.
 >
-> **Auth note (monorepo direction):** authentication is JWT-based (issued by the NestJS `api`), so there
-> are **no Auth.js session/account tables**. Instead a **`refresh_tokens`** table backs rotating-refresh
-> with reuse detection (see §3.1).
+> **Principle:** parity of *capability and data*, not a port of legacy structure. We keep every functional
+> field; we drop legacy technical debt (string `record_id`/`update_record_id`, `created_by` as varchar,
+> duplicated `updated_at` as varchar) in favour of real FKs, uuid PKs, and `timestamptz`.
+
+---
+
+## 0. Decisions applied (confirmed)
+
+1. **Reference data:** keep the **core** `global_*` lookups; **HR-ish** ones flagged _⚠ confirm/drop_.
+2. **RBAC:** role-based (via `@abdcshare/shared` permission map). Legacy `users_access` (per-user grants)
+   is **dropped** — not carried.
+3. **Documents:** the ~30 per-service-line working-paper / final-report / files / auditor-staff-advisor
+   tables are **unified** into `documents` + `document_files` + `document_participants`.
+4. **Final report upload:** **Super Admin only** (permission `final-report:upload`), distinct from
+   `working-paper:upload` (Staff / Super Admin).
 
 ---
 
 ## 1. Conventions
 
-- **PK** = primary key, **FK** = foreign key, **UQ** = unique constraint.
-- Surrogate keys are `*_id` (`uuid`/`cuid` in Prisma; shown as `id` generically). Human-facing codes
-  (e.g. engagement `reference_code`) are separate **UQ** business keys.
-- Every table has `created_at`; mutable tables also have `updated_at` (omitted from listings for brevity
-  unless meaningful).
-- **Lookup tables** (with their own attributes such as ordering) are real tables with FKs.
-  **Fixed domains** with no attributes of their own (e.g. engagement status, category) are **DB enums** —
-  this is a domain constraint, not a normalization violation (justified in §5).
-- Junction (associative) tables carry **composite PKs** and model many-to-many relationships.
-
-Enums used: `engagement_status` (Planning, Fieldwork, Review, Completed, Archived),
-`engagement_member_role` (Partner, Manager, Auditor), `document_category` (WorkingPaper, FinalReport),
-`submission_status` (Pending, Accepted, Returned), `review_status` (ForReview, Approved, SentBack).
+- PK = primary key, FK = foreign key, UQ = unique. Surrogate PKs are `uuid` (domain rows) or `int`
+  (small lookups). Human codes (e.g. `reference_code`) are separate UQ business keys.
+- All tables carry `created_at timestamptz`; mutable tables add `updated_at timestamptz`. `created_by`
+  is a real FK → `users.id` (was a varchar in legacy).
+- **Enums** (fixed, attribute-less domains) are DB enums; **lookups** (have their own attributes / are
+  user-managed) are tables.
 
 ---
 
-## 2. ER diagram
+## 2. Reference data (`lookups`)  — legacy `global_*`
 
-```mermaid
-erDiagram
-    ROLE ||--o{ USER : "assigned to"
-    DEPARTMENT ||--o{ USER : "home dept"
-    DEPARTMENT ||--o{ ENGAGEMENT : "owns"
-    CLIENT ||--o{ USER : "client users"
-    CLIENT ||--o{ ENGAGEMENT : "has"
-    ENGAGEMENT_TYPE ||--o{ ENGAGEMENT : "typed as"
-    ENGAGEMENT_TYPE ||--o{ FS_LINE_ENGAGEMENT_TYPE : "allows"
-    FS_LINE ||--o{ FS_LINE_ENGAGEMENT_TYPE : "allowed in"
-    FS_LINE ||--o{ REQUEST_TYPE : "groups"
-    FS_LINE ||--o{ ENGAGEMENT_FS_LINE : "used in"
-    FS_LINE ||--o{ DOCUMENT : "groups"
+**Kept (core, user-manageable):** each is `{ id int PK, name varchar UQ, is_active bool }` unless noted.
 
-    USER ||--o{ ENGAGEMENT : "created by"
-    USER ||--o{ PASSWORD_RESET_TOKEN : "requests"
-    USER ||--o{ REFRESH_TOKEN : "rotates"
+| Table | From legacy | Notes |
+|-------|-------------|-------|
+| `titles` | global_title | Mr, Mrs, Dr… |
+| `genders` | global_gender | |
+| `marital_statuses` | global_marital_status | |
+| `client_types` | global_client_type | Individual / Corporate… (drives client fields) |
+| `industries` | global_industry | |
+| `categories` | global_category | |
+| `banks` | global_banks | |
+| `states` | global_state | |
+| `lgas` | global_lga | `state_id` FK |
+| `wards` | global_ward | `lga_id` FK |
+| `request_statuses` | global_request_status | + `sort_order` |
+| `general_statuses` | global_status | generic active/inactive style status |
 
-    ENGAGEMENT ||--o{ ENGAGEMENT_TEAM_MEMBER : "staffed by"
-    USER ||--o{ ENGAGEMENT_TEAM_MEMBER : "member of"
-    ENGAGEMENT ||--o{ ENGAGEMENT_FS_LINE : "includes"
-    ENGAGEMENT ||--o{ ENGAGEMENT_STATUS_HISTORY : "transitions"
-    ENGAGEMENT ||--o{ REQUEST : "contains"
-    ENGAGEMENT ||--o{ DOCUMENT : "holds"
-    ENGAGEMENT ||--o{ ENGAGEMENT_SIGN_OFF : "signed off"
-
-    REQUEST_TYPE ||--o{ REQUEST : "instantiated as"
-    REQUEST_STAGE ||--o{ REQUEST : "at stage"
-    REQUEST_STATUS ||--o{ REQUEST : "has status"
-    REQUEST ||--o{ REQUEST_ASSIGNEE : "assigned to"
-    USER ||--o{ REQUEST_ASSIGNEE : "owns"
-    REQUEST ||--o{ REQUEST_HISTORY : "logs"
-    REQUEST ||--o{ DOCUMENT : "attaches"
-    REQUEST ||--o{ CLIENT_SUBMISSION : "answered by"
-    REQUEST ||--o{ DISCUSSION_MESSAGE : "discussed in"
-    REQUEST ||--o{ REVIEW : "reviewed by"
-    REQUEST ||--o{ DISCUSSION_READ : "read state"
-
-    DOCUMENT ||--o{ DOCUMENT_VERSION : "versions"
-    CLIENT_SUBMISSION ||--o{ SUBMISSION_FILE : "files"
-    DISCUSSION_MESSAGE ||--o{ DISCUSSION_ATTACHMENT : "attachments"
-    DISCUSSION_MESSAGE ||--o{ DISCUSSION_MENTION : "mentions"
-    DISCUSSION_MESSAGE ||--o{ DISCUSSION_MESSAGE : "replies to"
-    USER ||--o{ DISCUSSION_MENTION : "mentioned"
-
-    USER ||--o{ NOTIFICATION : "receives"
-    USER ||--o{ NOTIFICATION_PREFERENCE : "sets"
-    USER ||--o{ ACTIVITY_LOG : "acts"
-    USER ||--o{ REVIEW : "prepares/reviews"
-```
-
-> A standalone copy for full-screen rendering lives in **`ERD.mermaid`**.
+**Flagged _⚠ confirm/drop_ (look like HR/onboarding leftovers, not audit-portal core):**
+`positions`, `field_studied`, `global_courses`, `global_pension`. Kept out of the base schema pending
+your confirm; trivial to add back as `{id,name,is_active}` lookups if needed.
 
 ---
 
-## 3. Table specifications
+## 3. Identity & access
 
-### 3.1 Identity & reference
-
-**roles**
-| Column | Type | Key | Notes |
-|--------|------|-----|-------|
-| id | int | PK | |
-| role_name | varchar | UQ | Platform Admin, Super Admin, Auditor, Staff, Client |
-
-**departments** (formerly "service lines")
-| id | int | PK |
-| name | varchar | UQ |
-| is_active | bool | | default true |
-
-**clients** (organisation)
+**users**  *(legacy `users_details`, 24 cols — full profile preserved; staff + client-contact people)*
+| Column | Type | Key / note |
+|--------|------|------------|
 | id | uuid | PK |
-| name | varchar | UQ |
-| contact_email | varchar | |
-| phone | varchar | |
+| role_id | int | FK → roles.id |
+| partner_designation | enum(PrincipalPartner, Partner) | null — Super-Admin-only sub-flag; **at most one `PrincipalPartner`** (partial unique index), see §6a |
+| department_id | int | FK → departments.id, null |
+| client_id | uuid | FK → clients.id, null (set for client-contact users) |
+| title_id | int | FK → titles.id, null |
+| first_name / middle_name / surname | varchar | (legacy split names; `full_name` is derived) |
+| gender_id | int | FK → genders.id, null |
+| marital_status_id | int | FK → marital_statuses.id, null |
+| email | varchar | UQ |
+| phone_number | varchar | null |
+| official_address / residential_address | varchar | null |
+| avatar_path | varchar | null |
+| password_hash | varchar | (bcryptjs) |
+| must_change_password | bool | |
 | is_active | bool | |
+| created_by | uuid | FK → users.id, null |
 
-**users**
-| Column | Type | Key | Notes |
-|--------|------|-----|-------|
-| id | uuid | PK | |
-| role_id | int | FK → roles.id | |
-| department_id | int | FK → departments.id, null | staff home dept |
-| client_id | uuid | FK → clients.id, null | set only for Client-role users |
-| full_name | varchar | | |
-| email | varchar | UQ | |
-| password_hash | varchar | | bcrypt/argon2 |
-| avatar_path | varchar | null | |
-| is_active | bool | | |
-| must_change_password | bool | | first-login gate |
+**roles** `{ id int PK, role_name varchar UQ }` (legacy `users_roles`).
+**refresh_tokens** — JWT rotation (id, user_id FK, token_hash UQ, family_id, user_agent, ip_address, expires_at, revoked_at).
+**password_reset_tokens** — (id, user_id FK, token_hash UQ, expires_at, used_at).
+> **Dropped:** `users_access` (per-user grants) → replaced by role→permission RBAC.
+>
+> **Roles (v5):** `Platform Admin`, `Super Admin`, `Staff`, `Client`. **`Auditor` is no longer a role** —
+> every Staff is a working practitioner; "Auditor" survives as the per-engagement **team member_role**
+> tag (Partner/Manager/Auditor). **Engagements are created by Super Admin only**; staff work inside the
+> engagements they're attached to. **Row-level scope:** Client → own client's rows; Staff → engagements
+> they're on the team of (+ their requests); Platform/Super Admin → unrestricted (see `common/security/
+> access-scope.ts`).
 
-**password_reset_tokens**
+---
+
+## 4. Clients  *(legacy client data lived in `users_details` with company fields)*
+
+**clients** — the organisation being audited
+| id uuid PK · name varchar UQ · client_type_id FK → client_types, null ·
+| company_name varchar · company_registered_address varchar · incorporation_date date, null ·
+| incorporation_no varchar, null · official_address / residential_address varchar, null ·
+| email / phone_number varchar, null ·
+| primary_contact_id uuid FK → users.id, null, UQ · is_active bool · created_by FK |
+
+> **Trimmed (v4):** industry / category / bank / state / lga / ward are **no longer captured on the
+> client**. Those lookup tables remain available as reference data but the client no longer FKs them.
+
+Client **contact people** are `users` with `role = Client` and `client_id` set (§3). Every client has a
+**primary contact** (`clients.primary_contact_id`) — the person whose credentials log in for that client.
+Creating a client **provisions this contact atomically**: a `Client`-role user is created with a temp
+password, `must_change_password = true`, and a `user.created` outbox event that emails the credentials.
+
+---
+
+## 5. Departments  *(formerly "service lines")*
+`departments { id int PK, name varchar UQ, is_active bool }` — Assurance, Tax, Advisory, Business
+Development, Shared Services, Other.
+
+---
+
+## 6. Engagements
+
+**engagements** — top-level container for a client's work
+| id uuid PK · client_id FK · engagement_type_id FK · department_id FK · reference_code varchar UQ ·
+| title · period_label varchar null · status enum(Planning,Fieldwork,Review,Completed,Archived) ·
+| start_date / target_completion_date date null · completed_at timestamptz null · created_by FK |
+
+- **engagement_types** `{ id int PK, name UQ, is_active }`.
+- **request_classes** `{ id int PK, code UQ null, name UQ, description text null, is_active }`.
+- **request_class_engagement_types** — composite PK (request_class_id, engagement_type_id): allowed request classes per type.
+- **engagement_team_members** — PK (engagement_id, user_id): member_role enum(Partner,Manager,Auditor), assigned_by FK, assigned_at.
+- **engagement_request_classes** — PK (engagement_id, request_class_id): sort_order, added_by FK.
+- **engagement_status_history** — id, engagement_id FK, from_status, to_status, changed_by FK, changed_at, note.
+- **engagement_sign_offs** — id, engagement_id FK, request_class_id FK null, signed_by FK, signed_at, note, revoked_by FK null, revoked_at, revoke_reason.
+
+---
+
+## 6a. Partner designations & weekly partner reports  *(NEW — beyond legacy)*
+
+Super Admins can carry a **partner designation** (`users.partner_designation`, §3): **`Partner`** or
+**`PrincipalPartner`**. Rules:
+- Only applicable to `role = Super Admin` (enforced in the service).
+- **Exactly one `PrincipalPartner`** at a time — enforced by a partial unique index
+  (`UNIQUE (partner_designation) WHERE partner_designation = 'PrincipalPartner'`) **and** a service guard.
+- `Partner` may be held by many Super Admins; a Super Admin may also have **no** designation.
+
+**Weekly reporting flow:** each **Partner** submits a weekly report; the **Principal Partner** reviews.
+
+**partner_weekly_reports**
+| Column | Type | Note |
+|--------|------|------|
 | id | uuid | PK |
-| user_id | uuid | FK → users.id |
-| token_hash | varchar | UQ |
-| expires_at | timestamptz | |
-| used_at | timestamptz | null |
-
-**company_profile** (single-row firm profile)
-| id | int | PK | fixed = 1 |
-| name, logo_path, email, phone, address | | |
-| updated_by | uuid | FK → users.id |
-
-**refresh_tokens** — backs JWT rotating-refresh with reuse detection (replaces Auth.js sessions)
-| Column | Type | Key | Notes |
-|--------|------|-----|-------|
-| id | uuid | PK | |
-| user_id | uuid | FK → users.id | |
-| token_hash | varchar | UQ | hash of the refresh token (never store raw) |
-| family_id | uuid | | rotation family; on reuse, revoke the whole family |
-| user_agent | varchar | null | device/session context |
-| ip_address | inet | null | |
-| expires_at | timestamptz | | |
-| revoked_at | timestamptz | null | set on rotation/reuse/logout |
-| created_at | timestamptz | | |
-
-### 3.2 Catalogues (admin-maintained)
-
-**engagement_types**
-| id | int | PK | name UQ | is_active |
-
-**fs_lines** — financial-statement line catalogue
-| id | int | PK |
-| code | varchar | UQ, null |
-| name | varchar | UQ |
-| description | text | null |
-| is_active | bool | |
-
-**fs_line_engagement_types** — which FS lines are allowed per engagement type (Q-C-3)
-| fs_line_id | int | PK, FK → fs_lines.id |
-| engagement_type_id | int | PK, FK → engagement_types.id |
-*(Composite PK; empty set for a type ⇒ all FS lines allowed, enforced in service.)*
-
-**request_types** — grouped **under an FS line** (Q-C-2)
-| id | int | PK |
-| fs_line_id | int | FK → fs_lines.id | the grouping |
-| name | varchar | | UQ per fs_line_id |
-| expected_documents | int | | legacy `documents_no` |
-| is_active | bool | |
-
-**request_stages**
-| id | int | PK | name, sort_order, is_active |
-
-**request_statuses**
-| id | int | PK | name, sort_order, is_active |
-
-### 3.3 Engagements
-
-**engagements**
-| Column | Type | Key | Notes |
-|--------|------|-----|-------|
-| id | uuid | PK | |
-| client_id | uuid | FK → clients.id | |
-| engagement_type_id | int | FK → engagement_types.id | |
-| department_id | int | FK → departments.id | owning unit |
-| reference_code | varchar | UQ | human-readable ID |
-| title | varchar | | |
-| period_label | varchar | null | e.g. FY2025 |
-| status | enum engagement_status | | current status |
-| start_date | date | null | |
-| target_completion_date | date | null | |
-| completed_at | timestamptz | null | |
-| created_by | uuid | FK → users.id | |
-
-**engagement_team_members** — junction (Q-E-3)
-| engagement_id | uuid | PK, FK → engagements.id |
-| user_id | uuid | PK, FK → users.id |
-| member_role | enum engagement_member_role | | Partner/Manager/Auditor |
-| assigned_by | uuid | FK → users.id |
-| assigned_at | timestamptz | |
-
-**engagement_fs_lines** — which FS lines are active in this engagement (Q-E-5)
-| engagement_id | uuid | PK, FK → engagements.id |
-| fs_line_id | int | PK, FK → fs_lines.id |
-| sort_order | int | |
-| added_by | uuid | FK → users.id |
-
-**engagement_status_history** — transition log (Q-E-2)
-| id | uuid | PK |
-| engagement_id | uuid | FK → engagements.id |
-| from_status | enum engagement_status | null |
-| to_status | enum engagement_status | |
-| changed_by | uuid | FK → users.id |
-| changed_at | timestamptz | |
-| note | text | null |
-
-**engagement_sign_offs** — partner sign-off at engagement or FS-line level (Q-J-3)
-| id | uuid | PK |
-| engagement_id | uuid | FK → engagements.id |
-| fs_line_id | int | FK → fs_lines.id, null | null = whole engagement |
-| signed_by | uuid | FK → users.id |
-| signed_at | timestamptz | |
-| note | text | null |
-| revoked_by | uuid | FK → users.id, null |
-| revoked_at | timestamptz | null |
-| revoke_reason | text | null |
-
-### 3.4 Requests
-
-**requests**
-| Column | Type | Key | Notes |
-|--------|------|-----|-------|
-| id | uuid | PK | |
-| engagement_id | uuid | FK → engagements.id | |
-| request_type_id | int | FK → request_types.id | FS line derived via this |
-| stage_id | int | FK → request_stages.id | |
-| status_id | int | FK → request_statuses.id | |
-| description | text | | |
-| due_date | date | null | |
-| created_by | uuid | FK → users.id | |
-> FS line is **not** stored here — it is reached through `request_type_id → fs_lines.id` (3NF, §5.3).
-
-**request_assignees** — junction (Q-F-3, supports multiple owners)
-| request_id | uuid | PK, FK → requests.id |
-| user_id | uuid | PK, FK → users.id |
-| assigned_by | uuid | FK → users.id |
-| assigned_at | timestamptz | |
-
-**request_history** — per-request event log (Q-F-8)
-| id | uuid | PK |
-| request_id | uuid | FK → requests.id |
-| actor_id | uuid | FK → users.id |
-| event_type | varchar | | stage_change / status_change / assign / document / … |
-| from_value | varchar | null |
-| to_value | varchar | null |
-| note | text | null |
-
-### 3.5 Documents
-
-**documents** — unified working papers **and** final reports (replaces legacy's 12 tables)
-| Column | Type | Key | Notes |
-|--------|------|-----|-------|
-| id | uuid | PK | |
-| engagement_id | uuid | FK → engagements.id | |
-| fs_line_id | int | FK → fs_lines.id | canonical grouping key |
-| request_id | uuid | FK → requests.id, null | null for FS-line-level final reports |
-| category | enum document_category | | WorkingPaper / FinalReport |
-| title | varchar | | |
-| current_version_id | uuid | FK → document_versions.id, null | latest pointer (set post-insert) |
-| uploaded_by | uuid | FK → users.id | |
-
-**document_versions** — versioning (Q-G-4)
-| id | uuid | PK |
-| document_id | uuid | FK → documents.id |
-| version_no | int | | UQ per document_id |
-| storage_key | varchar | | R2 object key |
-| file_name | varchar | |
-| mime_type | varchar | |
-| size_bytes | bigint | |
-| uploaded_by | uuid | FK → users.id |
-| uploaded_at | timestamptz | |
-
-### 3.6 Client submissions
-
-**client_submissions** — a client's response to a request (Q-H-2, Q-H-3)
-| id | uuid | PK |
-| request_id | uuid | FK → requests.id |
-| submitted_by | uuid | FK → users.id |
-| message | text | null |
-| status | enum submission_status | | Pending/Accepted/Returned |
-| reviewed_by | uuid | FK → users.id, null |
-| review_reason | text | null | required on Returned |
+| partner_id | uuid | FK → users.id (must be a Partner) |
+| week_start_date | date | Monday of the reporting week |
+| title | varchar | null |
+| body | text | the report content (rich text) |
+| status | enum(Draft, Submitted, Reviewed) | |
+| submitted_at | timestamptz | null |
+| reviewed_by | uuid | FK → users.id (the Principal Partner), null |
 | reviewed_at | timestamptz | null |
+| review_notes | text | null |
+| created_at / updated_at | timestamptz | |
+| | | **UQ (partner_id, week_start_date)** — one report per partner per week |
 
-**submission_files**
-| id | uuid | PK |
-| submission_id | uuid | FK → client_submissions.id |
-| storage_key, file_name, mime_type, size_bytes | | |
+**partner_weekly_report_files** *(optional attachments)* — id, report_id FK, storage_key, file_name,
+mime_type, size_bytes, uploaded_at.
 
-### 3.7 Discussions (Q-I)
+**Automation:** the worker runs a **weekly scheduled reminder** (BullMQ repeatable job) nudging Partners
+who haven't submitted, and notifies the Principal Partner when a report is submitted (outbox → worker).
 
-**discussion_messages**
-| id | uuid | PK |
-| request_id | uuid | FK → requests.id |
-| author_id | uuid | FK → users.id |
-| parent_message_id | uuid | FK → discussion_messages.id, null | threaded replies |
-| body | text | |
-| edited_at | timestamptz | null |
-
-**discussion_attachments**
-| id | uuid | PK | message_id FK → discussion_messages.id | storage_key, file_name, mime_type, size_bytes |
-
-**discussion_mentions** — junction (Q-I-4)
-| message_id | uuid | PK, FK → discussion_messages.id |
-| mentioned_user_id | uuid | PK, FK → users.id |
-
-**discussion_reads** — per-user read pointer per request (Q-I-2; legacy `request_discussion_reads`)
-| request_id | uuid | PK, FK → requests.id |
-| user_id | uuid | PK, FK → users.id |
-| last_read_message_id | uuid | FK → discussion_messages.id, null |
-| updated_at | timestamptz | |
-
-### 3.8 Reviews (Q-J)
-
-**reviews** — preparer → reviewer workflow on a request
-| id | uuid | PK |
-| request_id | uuid | FK → requests.id |
-| preparer_id | uuid | FK → users.id |
-| reviewer_id | uuid | FK → users.id, null |
-| status | enum review_status | | ForReview/Approved/SentBack |
-| notes | text | null | required on SentBack |
-| submitted_at | timestamptz | |
-| decided_at | timestamptz | null |
-
-### 3.9 Notifications & audit
-
-**notifications** (Q-L-1)
-| id | uuid | PK |
-| user_id | uuid | FK → users.id |
-| event_type | varchar | |
-| entity_type | varchar | | soft ref (engagement/request/document/…) |
-| entity_id | uuid | | soft ref (see §6) |
-| title | varchar | |
-| body | text | |
-| link | varchar | null |
-| is_read | bool | |
-| read_at | timestamptz | null |
-
-**notification_preferences** — junction (Q-L-2)
-| user_id | uuid | PK, FK → users.id |
-| event_type | varchar | PK |
-| email_enabled | bool | |
-
-**activity_log** — append-only audit trail (Q-N)
-| id | uuid | PK |
-| actor_id | uuid | FK → users.id, null | null = system |
-| action | varchar | |
-| entity_type | varchar | | soft ref |
-| entity_id | uuid | | soft ref |
-| ip_address | inet | null |
-| metadata | jsonb | null | before/after snapshot |
-| created_at | timestamptz | |
+**Permissions:** `partner-report:submit` (Partner), `partner-report:review` + `partner-report:view-all`
+(Principal Partner). A Partner sees only their own reports; the Principal Partner sees all.
 
 ---
 
-## 4. Relationship cardinality summary
+## 7. Requests & client submissions
 
-| Relationship | Cardinality |
-|--------------|-------------|
-| Client → Engagement | 1 : N |
-| EngagementType → Engagement | 1 : N |
-| Department → Engagement | 1 : N |
-| Engagement ↔ User (team) | **M : N** via `engagement_team_members` |
-| Engagement ↔ FSLine (active lines) | **M : N** via `engagement_fs_lines` |
-| EngagementType ↔ FSLine (allowed) | **M : N** via `fs_line_engagement_types` |
-| Engagement → Request | 1 : N |
-| FSLine → RequestType | 1 : N |
-| RequestType → Request | 1 : N |
-| Request ↔ User (assignees) | **M : N** via `request_assignees` |
-| Request → Document | 1 : N (nullable) |
-| Engagement → Document | 1 : N |
-| FSLine → Document | 1 : N |
-| Document → DocumentVersion | 1 : N |
-| Request → ClientSubmission → SubmissionFile | 1 : N : N |
-| Request → DiscussionMessage | 1 : N (self-ref for threads) |
-| DiscussionMessage ↔ User (mentions) | **M : N** via `discussion_mentions` |
-| Request ↔ User (read state) | **M : N** via `discussion_reads` |
-| Request → Review | 1 : N |
-| User → Notification | 1 : N |
-| User ↔ event_type (prefs) | **M : N** via `notification_preferences` |
+**requests** *(legacy `request_client`)*
+| id uuid PK · engagement_id FK · request_type_id FK (→ request_class derived) · stage_id FK → request_stages ·
+| status_id FK → request_statuses · description text · due_date date null · created_by FK |
+
+- **request_types** *(legacy `request_type`)* `{ id int PK, request_class_id FK, name, expected_documents int (legacy documents_no), is_active }` — **grouped under request class** (UQ on request_class_id+name).
+- **request_stages** `{ id int PK, name, sort_order, is_active }`.
+- **request_assignees** *(legacy `assigned_auditors`)* — PK (request_id, user_id), assigned_by FK, assigned_at.
+- **request_history** *(legacy `requesthistory`)* — id, request_id FK, actor_id FK, event_type, module varchar, from_value/to_value null, note null, created_at.
+- **client_submissions** *(legacy `client_response`)* — id, request_id FK, submitted_by FK, message text, status enum(Pending,Accepted,Returned), reviewed_by FK null, review_reason null, reviewed_at null.
+- **submission_files** *(legacy `client_response_sub`)* — id, submission_id FK, storage_key, file_name, mime_type, size_bytes, status enum(Pending,Accepted,Returned), uploaded_at.
 
 ---
 
-## 5. Normalization: 1NF → 2NF → 3NF
+## 8. Documents (UNIFIED — replaces ~30 legacy tables)
 
-The schema is designed in **Third Normal Form**. Each step below states the rule and shows the
-concrete design decisions that satisfy it.
+Legacy had, per service line: `*_working_paper`(+`_files`) and `*_final_reports`(+`_files`,`_auditors`/
+`_advisors`/`_staffs`). Unified:
 
-### 5.1 First Normal Form (1NF)
+**documents** — the logical paper/report
+| id uuid PK · engagement_id FK · request_class_id FK · request_id FK null · department_id FK ·
+| category enum(WorkingPaper, FinalReport) · title (legacy paper_title/report_title) ·
+| description text (legacy *_description) · status enum(Draft, Ready, UnderReview, SignedOff) ·
+| current_version int · **client_review_state enum(NotSent, AwaitingClient, ChangesRequested, Locked,
+| Approved, Overridden)** · **client_review_round int** (final-report client review; NotSent/0 for working
+| papers) · created_by FK |
 
-**Rule:** every column holds a single atomic value; no repeating groups or multi-valued columns;
-each table has a primary key; each row is unique.
+**document_files** *(legacy `*_working_paper_files` / `*_final_report_files`)* — files, many per document, **versioned**
+| id uuid PK · document_id FK · version int · storage_key · file_name · mime_type · size_bytes ·
+| uploaded_by FK · uploaded_at |
 
-Decisions:
+**document_participants** *(legacy `*_auditors` / `*_advisors` / `*_staffs`)* — people attached
+| PK (document_id, user_id) · participant_role enum(Auditor, Advisor, Staff) · added_by FK · added_at |
 
-1. **No multi-valued columns.** A request can have several assigned auditors. Rather than an
-   `assignees` list column, each assignment is one row in **`request_assignees`**. Likewise a client
-   submission's multiple files become rows in **`submission_files`**, and an engagement's FS lines
-   become rows in **`engagement_fs_lines`**.
-2. **No repeating groups.** The legacy app had **twelve** parallel tables
-   (`audit_working_papers`, `tax_working_papers`, … `other_final_reports`) — a repeating structure
-   keyed by service line. This is collapsed into a single **`documents`** table with a
-   `category` enum and an `fs_line_id`; the "repeat" becomes data (rows), not schema.
-3. **Atomic attributes.** Names, dates, sizes, and statuses are single scalar values. File binaries
-   are not stored inline — `document_versions` stores a `storage_key` to R2 with atomic metadata columns.
-4. **Every table has a PK** (surrogate `id`, or a composite key on junctions), guaranteeing row uniqueness.
+**report_review_cycles** *(🆕 final-report client review loop)* — one row per round
+| id uuid PK · document_id FK (cascade) · round_no int (1–3) · file_version int (version the client saw) ·
+| sent_by FK · sent_at · decision enum(Pending, Approved, ChangesRequested) · decided_by FK null ·
+| decided_at null · feedback text null |
 
-### 5.2 Second Normal Form (2NF)
+**Upload rule:** `WorkingPaper` → `working-paper:upload` (Staff / Super Admin); `FinalReport` →
+`final-report:upload` (**Super Admin only**). Upload = presigned direct-to-R2 → confirm → outbox →
+worker post-processing (see ARCHITECTURE §8, §12). Bulk upload & zip **export** via the worker.
 
-**Rule:** be in 1NF **and** have no partial dependency — every non-key attribute must depend on the
-**whole** primary key. This only bites tables with **composite** keys (the junctions).
-
-Decisions:
-
-1. **`engagement_team_members`** (PK = `engagement_id` + `user_id`): the non-key attributes
-   `member_role`, `assigned_by`, `assigned_at` describe *this specific membership* and depend on the
-   whole key. The user's `full_name`/`email` depend on `user_id` **alone**, so they are **not** stored
-   here — they live in `users`. The engagement's `title` depends on `engagement_id` alone — kept in
-   `engagements`. No partial dependency remains.
-2. **`engagement_fs_lines`** (PK = `engagement_id` + `fs_line_id`): `sort_order`/`added_by` depend on
-   the pair. The FS line's `name`/`code` depend on `fs_line_id` alone → kept in `fs_lines`, never
-   duplicated here.
-3. **`notification_preferences`** (PK = `user_id` + `event_type`): `email_enabled` depends on both
-   (a user's setting *for that event*). Nothing depends on only one part.
-4. **`discussion_reads`**, **`request_assignees`**, **`fs_line_engagement_types`**,
-   **`discussion_mentions`** follow the same rule — every non-key column depends on the full composite
-   key, and single-part-dependent data is pushed to the parent table.
-
-### 5.3 Third Normal Form (3NF)
-
-**Rule:** be in 2NF **and** have no transitive dependency — non-key attributes must depend on the key,
-the whole key, and **nothing but the key** (no non-key column determined by another non-key column).
-
-Decisions:
-
-1. **FS line not stored on `requests`.** A request's FS line is functionally determined by its
-   `request_type_id` (`request_type → fs_line`). Storing `fs_line_id` on `requests` would be a
-   transitive dependency (key → request_type → fs_line). It is therefore **derived by join**, not
-   stored. (Grouping requests by FS line is a read-time join, per Q-F-5.)
-2. **Client not stored on `requests`.** The client is reachable via `engagement_id → engagements.client_id`.
-   Duplicating `client_id` on `requests` would be transitive through the engagement, so it is omitted.
-3. **No denormalised names.** `users` stores `role_id`, not `role_name` (which depends on `role_id`,
-   living in `roles`). `requests` store `stage_id`/`status_id`, not their labels. `documents` store
-   `uploaded_by`, not the uploader's name. Every label lives once, in its lookup/parent table.
-4. **Status labels vs. current status.** `request_stages`/`request_statuses` are **lookup tables**
-   because they carry their own attribute (`sort_order`) and change over time — referencing them by id
-   avoids repeating the label. Fixed, attribute-less domains (`engagement.status`, `document.category`,
-   `submission.status`, `review.status`, `member_role`) are **enums** — a constraint on the column, not a
-   separate fact that could cause a transitive dependency.
-5. **`documents.fs_line_id` is a genuine attribute, not transitive.** Because `request_id` is
-   **nullable** (final reports attach at FS-line level with no request), `fs_line_id` is the canonical,
-   independent grouping key of a document — it is not determined by another non-key column in the row.
-   When a working paper *is* tied to a request, keeping the two consistent is a service-layer rule,
-   not a stored derivation.
-
-**Result:** no repeating groups (1NF), no partial dependencies (2NF), and no transitive dependencies
-(3NF). The schema also satisfies **BCNF** in practice, since every determinant of a functional
-dependency is a candidate key.
+**Final-report client review (🆕):** after compiling a final report, the SA **sends the draft to the
+client** (`report-review:manage`). The client (`report-review:respond`, row-scoped to its own engagement)
+**views/downloads** it and **approves** or **requests changes** with feedback. Each send is a cycle
+(`report_review_cycles`); **max 3 cycles**. **Client approval finalises/issues** the report
+(`documents.status → SignedOff`). If the client requests changes on the 3rd cycle it **locks**
+(`client_review_state = Locked`) and only an SA **override** (`report-review:manage`) can finalise it.
+Both sides are notified on each transition.
 
 ---
 
-## 6. Deliberate design notes
-
-- **Soft references** on `notifications` and `activity_log` (`entity_type` + `entity_id`) are an
-  intentional exception: an audit/notification row may point at any entity type, so a hard FK is not
-  possible without polymorphism. Referential correctness there is enforced in the application layer.
-  This does not affect the 3NF status of the business tables.
-- **`documents.current_version_id`** is a convenience pointer to the newest `document_versions` row.
-  It is nullable and set after the first version insert to avoid a circular insert dependency; the
-  version history remains the source of truth.
-- **Denormalisation for performance** (e.g. caching a client name or an unread count) is deliberately
-  **not** in the base schema. If profiling later demands it, it will be added as clearly-marked,
-  trigger/maintained derived columns — never as ad-hoc duplication.
+## 9. Reviews  *(legacy `reviews`)*
+**reviews** — id, request_id FK null, document_id FK null, preparer_id FK, reviewer_id FK null,
+status enum(ForReview, Approved, SentBack), notes text (legacy description), sent_from FK null,
+submitted_at, decided_at null.
 
 ---
 
-## 7. Open items to confirm
+## 10. Discussions (enhanced; legacy discussion + read-tracking)
+- **discussion_messages** — id, request_id FK, author_id FK, parent_message_id FK null, body, edited_at null.
+- **discussion_reads** — PK (request_id, user_id), last_read_message_id FK null, updated_at.
+- **discussion_attachments** — id, message_id FK, storage_key, file_name, mime_type, size_bytes.
+- **discussion_mentions** — PK (message_id, mentioned_user_id).
 
-1. **Engagement period** — keep `period_label` as free text, or model a `periods` table with start/end
-   dates for reporting? (Ties to product open-question #1.)
-2. **Review levels** — the `reviews` table supports single preparer→reviewer; multi-tier
-   (manager → partner) would add a `review_level` or a chained-review model. (Product open-question #2.)
-3. **Request ↔ FS line** — confirm requests always inherit FS line from request type (current 3NF
-   assumption), i.e. no ad-hoc requests without a type.
-4. **Client contacts** — is one login per client organisation enough, or do we need multiple client
-   users mapped to one client (already supported via `users.client_id`)?
+---
+
+## 11. Notifications  *(legacy `notifications`, `notification_preferences` — full fields)*
+**notifications** — id, user_id FK, type varchar, title, body text (legacy message), entity_type
+(legacy related_type), entity_id (legacy related_id), link null, is_read bool, read_at null,
+email_sent bool, email_sent_at null, created_at.
+**notification_preferences** — PK (user_id, notification_type): email_enabled bool, **in_app_enabled bool**.
+
+---
+
+## 12. Company profile (CORRECTED — a document library, not a singleton)
+Legacy `company_profiles` stores **multiple** company-profile documents (title, description, file).
+**company_profile_documents** — id, title, description text, storage_key, file_name, file_url null,
+size_bytes, mime_type, status enum(Active, Archived), created_by FK, created_at, updated_at.
+
+---
+
+## 13. Audit trail  *(legacy `activity_log`)*
+**activity_log** — id uuid PK, actor_id FK null (system), action, entity_type, entity_id uuid null,
+ip_address inet null, metadata jsonb null (before/after), created_at. Append-only.
+
+---
+
+## 14. Async delivery  *(legacy `email_queue` → our outbox, enriched)*
+**outbox** — id, event_type, payload jsonb, status enum(Pending,Queued,Sent,Failed), **attempts int**,
+**max_attempts int**, **last_error text null** (from email_queue), processed_at null, created_at, updated_at.
+Redis/BullMQ is the transport; the worker seals status (ARCHITECTURE §8).
+
+---
+
+## 15. Bulk import jobs (better representation of the legacy bulk-user flow)
+Legacy: template download → upload → preview → validate → import (as loose PHP endpoints). Modelled as a
+tracked job so preview/validation/results are first-class and auditable:
+**bulk_import_jobs** — id uuid PK, kind enum(Users), status enum(Pending,Validated,Imported,Failed),
+source_file_key, total_rows int, valid_rows int, error_rows int, result jsonb (per-row outcome),
+created_by FK, created_at, completed_at null. (Row validation runs in the worker; preview returns the
+validation `result` before the user commits the import.)
+
+---
+
+## 16. Legacy → new mapping (parity matrix)
+
+| Legacy (aca) | New | Decision |
+|--------------|-----|----------|
+| users_details | `users` + `clients` (split people vs. org) | adapt |
+| users_roles | `roles` | keep |
+| users_access | — | **drop** (RBAC) |
+| global_* (core) | `titles`/`genders`/`states`/`lgas`/`wards`/`banks`/`client_types`/`industries`/… | keep |
+| global_courses / global_pension / positions / field_studied | — | ⚠ confirm/drop |
+| request_client / request_client_sub | `requests` / (client submissions) | adapt |
+| request_type / request_stage / global_request_status | `request_types` (under request class) / `request_stages` / `request_statuses` | adapt |
+| assigned_auditors | `request_assignees` | keep |
+| requesthistory | `request_history` | keep |
+| client_response / client_response_sub | `client_submissions` / `submission_files` | keep |
+| *_working_paper(_files) ×6 | `documents`(WorkingPaper) + `document_files` | **unify** |
+| *_final_reports(_files) ×6 | `documents`(FinalReport) + `document_files` | **unify** |
+| *_final_report_auditors/advisors/staffs | `document_participants` | **unify** |
+| reviews | `reviews` | keep |
+| company_profiles | `company_profile_documents` | keep (corrected as library) |
+| notifications / notification_preferences | `notifications` / `notification_preferences` | keep |
+| email_queue | `outbox` | adapt (Redis/BullMQ) |
+| activity_log | `activity_log` | keep |
+| settings | app config / `env` + a small `settings` KV if needed | ⚠ confirm |
+| (bulk user import endpoints) | `bulk_import_jobs` | adapt |
+
+---
+
+## 17. Normalization
+Still **3NF/BCNF**: no repeating groups (unified documents, junctions for many-to-many), no partial
+dependencies (composite-key junctions carry only whole-key attributes), no transitive dependencies (FS
+line derived from request type; labels live once in lookups; names/emails live once in `users`).
+
+---
+
+## 18. Open items to confirm
+1. HR-ish lookups (`positions`, `field_studied`, `courses`, `pension`) — carry or drop?
+2. `settings` table — is there app config that needs a DB KV store, or is env enough?
+3. ~~Client vs. user split — client-contact login users live in `users` with `client_id`.~~ **Resolved:**
+   contact people are `Client`-role `users`; each client has a `primary_contact_id` provisioned atomically
+   at client creation (credentials emailed). Additional contacts addable later (story C-2).
+4. Do final reports need the 3 distinct participant roles (Auditor/Advisor/Staff) exposed in UI, or is a
+   single "participant" list enough?

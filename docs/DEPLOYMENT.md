@@ -32,12 +32,35 @@ Each environment runs the **same Docker Compose stack** on a VM; only configurat
 
 | Env | Where | DB / Redis | Config source | Deploy trigger |
 |-----|-------|------------|---------------|----------------|
-| **local** | your Mac | your local Postgres + Docker Redis | per-app `.env` (gitignored) | manual (`pnpm dev`) |
+| **local** | your Mac | Postgres + Redis (see below) | per-app `.env` (gitignored) | manual (`pnpm dev`) |
 | **staging** | staging VM | containers in the stack | `compose.env.staging` (on the VM, from Ansible Vault) | auto on merge to `main` |
 | **production** | prod VM | containers (or managed PG) | `compose.env` (on the VM, from Ansible Vault) | on git **tag** + manual approval |
 
 The **code is identical** across environments. What changes is the **environment file** (`compose.env*`)
 and the image **tag** deployed. This mirrors ondoo's `compose.env.example` / `compose.env.staging.example`.
+
+### Local development modes
+
+**Default (fast):** run apps on the host; only infra in Docker.
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d postgres redis
+pnpm dev   # turbo: @abdcshare/shared (tsc --watch) + api :4000 + worker + web :3000
+```
+
+- Per-app `.env` uses `localhost` for `DATABASE_URL` / `REDIS_URL`.
+- You may use a host-installed Postgres instead of the compose `postgres` service (point
+  `DATABASE_URL` accordingly); Redis from compose is still recommended for BullMQ.
+- Hot reload via Nest/Next watch — no image rebuild for app code changes.
+- Filters: `pnpm dev:api` / `pnpm dev:worker` / `pnpm dev:web` for a single app.
+
+**Optional (full stack in Docker):** same compose with the `full` profile (api, worker, web as
+containers). Use in-stack hostnames (`postgres`, `redis`) in compose env — not `localhost`. Prefer
+this for deploy parity, not day-to-day coding (rebuild/restart images for app changes).
+
+```bash
+docker compose -f deploy/docker-compose.yml --profile full up -d
+```
 
 ---
 
