@@ -43,8 +43,8 @@
 | Company-Profile | Q-O-1, Q-O-2 |
 | Client requests + stages/statuses | Epic F |
 | Request discussion + read-tracking | Q-I-1, Q-I-2 |
-| Working papers (6 service lines) | Q-G-1 (now by FS line) |
-| Final reports (6 service lines) | Q-G-2 (now by FS line) |
+| Working papers (6 service lines) | Q-G-1 (now by request class) |
+| Final reports (6 service lines) | Q-G-2 (now by request class) |
 | Secure downloads / PDF viewer (R2/local) | Q-G-3 |
 | Zip exports | Q-G-5, Q-M-3 |
 | Client-Overview / client response docs | Epic H |
@@ -67,7 +67,7 @@
 
 - **Parity:** All 23 legacy write actions and all major pages map to a story. One gap found during
   review (profile/avatar update) and added as **Q-A-7**.
-- **Restructure:** Working papers, final reports, requests, and reports are re-grouped by **FS line
+- **Restructure:** Working papers, final reports, requests, and reports are re-grouped by **request class
   within an engagement**; the six former service lines become **departments**.
 - **RBAC:** No contradictions with the legacy role model; the 5 roles and governance/operations split
   are preserved.

@@ -5,6 +5,19 @@
 >
 > **v2 — monorepo direction.** Quantum is a **pnpm + Turborepo monorepo**: NestJS **`api`** + separate
 > NestJS **`worker`** + Next.js **`web`** + shared packages, modeled on `ondoo`.
+>
+> **v3 — full-parity re-scope.** After the `LEGACY_AUDIT.md` forensic pass (66 tables / 351 columns),
+> the foundational docs were rebuilt to full parity. Impact on execution (architecture unchanged):
+> - **Deeper phases** — every module carries full legacy fields + bulk import/export + full documents;
+>   the timeline extends (re-estimate after backlog pointing).
+> - **New early slices** — a **reference-data** module (`global_*` lookups) and a **clients** module land
+>   in Phase 1–2 (users/clients depend on the lookups); users get the full profile + bulk import.
+> - **Heavier document phase** — unified `documents`/`document_files`/`document_participants`, presigned
+>   upload, versioning, export, bulk, and **final-report = Super Admin** (`final-report:upload`).
+> - **New feature phase** — **partner designations + weekly partner reporting** (Epic O), incl. the
+>   worker's weekly reminder.
+> - **Retrofit** — the thin `users` module built earlier is brought up to this depth first.
+> - **Parity gate** added to the Definition of Done (§8) so thinness can't recur.
 
 ---
 
@@ -37,7 +50,7 @@ until stories are pointed (§7).
    Postgres + Redis on CI with auth, one real endpoint, and the async pipeline proven end-to-end.
 3. **Contract-driven.** The API's OpenAPI + `packages/shared` are the source of truth; the web consumes
    the generated client. No hand-mirrored types.
-4. **Parity before enhancement.** Re-create ACA (restructured around engagements/FS lines) before 🆕 items.
+4. **Parity before enhancement.** Re-create ACA (restructured around engagements/request classes) before 🆕 items.
 5. **Guardrails are built in, not retrofitted:** pagination, RBAC, outbox, and the DDD layering are part
    of the Phase 0/1 scaffolding, so no feature is ever built without them.
 6. **Definition of Done is non-negotiable** (§8).
@@ -77,26 +90,26 @@ until stories are pointed (§7).
 ---
 
 ### Phase 2 — Catalogues, departments, company profile  *(Sprint 3)*
-- **Epic C** (FS lines, request types under FS lines, stages, statuses, per-type scoping), **Epic D**
+- **Epic C** (request classes, request types under request classes, stages, statuses, per-type scoping), **Epic D**
   (departments), **Epic O** (company profile). Paginated admin grids.
 
 **Exit:** all reference data manageable; Super Admin read-only on governance; audited.
 
 ---
 
-### Phase 3 — Engagements, FS lines & requests (the core)  *(Sprints 4–5)*
+### Phase 3 — Engagements, request classes & requests (the core)  *(Sprints 4–5)*
 - **Epic E** (E-1…E-9): engagement CRUD, status lifecycle + history, team assignment, workspace (FS
-  lines with grouped requests + progress), add FS lines. (Templates/clone → Phase 6.)
-- **Epic F** (F-1…F-8): requests from request types (auto FS line), stage/status, assign, due dates,
+  lines with grouped requests + progress), add request classes. (Templates/clone → Phase 6.)
+- **Epic F** (F-1…F-8): requests from request types (auto request class), stage/status, assign, due dates,
   paginated grids, bulk update, history.
 
-**Exit:** open engagement → staff → add FS lines → create requests grouped by FS line → drive stages;
+**Exit:** open engagement → staff → add request classes → create requests grouped by request class → drive stages;
 paginated, permission-checked, audited, e2e happy-path green.
 
 ---
 
 ### Phase 4 — Documents, client portal & collaboration  *(Sprints 6–7)*  → **v1 RC**
-- **Epic G** (uploads by FS line, secure download/preview, zip export via worker, delete),
+- **Epic G** (uploads by request class, secure download/preview, zip export via worker, delete),
   **Epic H** (client submissions, accept/return), **Epic I** (I-1…I-3 discussions + read-tracking),
   **Epic L** (L-1…L-3 notifications + Resend email via worker), **Epic N** (audit viewer).
 
@@ -135,7 +148,7 @@ notifications fire via the worker on the right events. **v1 feature-complete →
 ```
 Phase 0 (monorepo + infra + auth + async skeleton)
   └─> Phase 1 (auth/users/RBAC)
-        └─> Phase 2 (catalogues/departments/profile)   ← engagements need FS lines + request types
+        └─> Phase 2 (catalogues/departments/profile)   ← engagements need request classes + request types
               └─> Phase 3 (engagements + requests)      ← the core
                     └─> Phase 4 (documents, portal, discussions, notifications, audit) → v1 RC
                           └─> Phase 5 (hardening) → v1
@@ -155,7 +168,7 @@ track (outbox consumers, email, reminders) can run alongside once Phase 0's pipe
 |--------|-------|
 | 1–1.5 | Phase 0 — monorepo, api/worker/web scaffold, auth, outbox pipeline, CI, compose |
 | 2 | Phase 1 — auth flows, users/roles, RBAC map |
-| 3 | Phase 2 — FS lines/request types/stages, departments, company profile |
+| 3 | Phase 2 — request classes/request types/stages, departments, company profile |
 | 4–5 | Phase 3 — engagements (E) + requests (F) |
 | 6–7 | Phase 4 — documents (G), client portal (H), discussions (I), notifications (L), audit (N) → v1 RC |
 | 8 | Phase 5 — hardening → v1 |
@@ -184,8 +197,8 @@ track (outbox consumers, email, reminders) can run alongside once Phase 0's pipe
 | Two-service + monorepo overhead early | Slower start | Phase 0 walking skeleton proves api+worker+web+CI before features. |
 | FE/BE contract drift | Bugs | OpenAPI-generated client + `packages/shared`; CI drift check. |
 | Async correctness (lost/duplicate jobs) | Data integrity | Transactional outbox + `jobId` idempotency + DLQ; pipeline tested in Phase 0. |
-| Engagement/FS-line model misunderstood late | Rework | Phase 3 demo early vs user stories; confirm open questions before Sprint 4. |
-| Legacy data mapping (types → FS lines) | Migration slip | Dry-run migration early (Phase 2) with real `aca.sql`. |
+| Engagement/request-class model misunderstood late | Rework | Phase 3 demo early vs user stories; confirm open questions before Sprint 4. |
+| Legacy data mapping (types → request classes) | Migration slip | Dry-run migration early (Phase 2) with real `aca.sql`. |
 | RBAC menu/access drift (ACA pitfall) | Security | Single permission source drives API guard + web menu; RBAC tests. |
 | Redis/infra as new moving parts | Ops | Compose stack + managed Redis in prod; health checks; Bull Board. |
 | Scope creep of 🆕 into v1 | Timeline | Enhancements ring-fenced in Phase 6. |
@@ -202,6 +215,10 @@ track (outbox consumers, email, reminders) can run alongside once Phase 0's pipe
 
 ## 8. Definition of Done (every story)
 
+0. **Parity gate (do this first).** Before building a module, read its legacy feature in `LEGACY_AUDIT.md`
+   and its stories in `USER_STORIES.md`; enumerate every field, endpoint, filter, export, and bulk action;
+   decide keep/adapt/drop for each **with a reason**. The module isn't "done" until every kept capability
+   ships (or is explicitly ticketed). No thin first-cuts passed off as complete.
 1. Input validated (DTO/Zod) at the boundary; **authorised** server-side via the RBAC map (not UI-only).
 2. Any list is **paginated** (ARCHITECTURE §7) with indexes backing filters/sorts.
 3. Mutations write an **audit-log** entry; side effects (email/notifications) go through the **outbox →

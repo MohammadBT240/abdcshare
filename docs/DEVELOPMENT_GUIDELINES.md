@@ -28,6 +28,32 @@
 
 ---
 
+## 0.1 Debugging discipline — diagnose before you fix
+
+**Rule: critically examine the error and its root cause *before* proposing any solution.** Do not
+pattern-match an error to a quick fix. A wrong first guess wastes a full build/run cycle and often
+stacks a second bug on the first.
+
+Before writing a fix:
+
+1. **Read the whole error.** The important line is often not the first — read the *cause* chain, the file
+   and line it points at, and the expected-vs-actual types in full.
+2. **Form a hypothesis about the root cause** and state it in one sentence. If you can't, you don't
+   understand it yet — investigate more (read the failing file, the types, the docs) before touching code.
+3. **Confirm the layer.** Is it a type error, a runtime error, a config/tooling issue, a data/DB issue, or
+   an environment issue? Fixes differ completely — don't apply a code fix to an environment problem.
+4. **Prefer the fix that removes the root cause**, not the one that silences the symptom. Casting to
+   `any`, `// @ts-ignore`, `catch {}`, or disabling a lint rule are almost never the real fix.
+5. **Check whether the approach itself is wrong.** Some errors mean "this pattern can't work" (e.g. a
+   generic wrapper over a library's path-typed generics), not "add another cast." When two fixes in a row
+   fail, stop and re-diagnose the *design*, don't try a third patch.
+6. **State the diagnosis in the PR/commit** when non-obvious, so the next person understands *why*.
+
+This applies to build errors, failing tests, flaky infra, and production incidents alike. Time spent
+understanding the failure is never wasted; time spent guessing usually is.
+
+---
+
 ## 1. Monorepo structure & boundaries
 
 ```
