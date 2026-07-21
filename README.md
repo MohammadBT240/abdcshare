@@ -30,7 +30,7 @@ cp apps/web/.env.example apps/web/.env
 
 docker compose -f deploy/docker-compose.yml up -d postgres redis
 pnpm --filter @abdcshare/shared build
-pnpm --filter @abdcshare/api db:setup    # migrate + seed (or migration:up + seed:dev)
+pnpm db:setup    # migrate + seed (or migration:up + seed:dev)
 
 pnpm dev   # turbo: shared (tsc --watch) + api :4000 + worker + web :3000
 ```
@@ -41,6 +41,17 @@ One-off filters (same as the matching turbo tasks):
 pnpm dev:api
 pnpm dev:worker
 pnpm dev:web
+```
+
+Database (api MikroORM):
+
+```bash
+pnpm migration:create
+pnpm migration:up
+pnpm migration:down
+pnpm db:setup      # ensure DB + migrate + seed
+pnpm db:migrate    # ensure DB + migrate (no seed)
+pnpm seed:dev
 ```
 
 ## Full Docker stack (optional)
