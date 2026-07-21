@@ -8,6 +8,7 @@ import { validateEnv } from './config/env.schema';
 import mikroOrmConfig from './database/mikro-orm.config';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
+import { StorageModule } from './common/storage/storage.module';
 import { OutboxModule } from './modules/outbox/outbox.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -19,6 +20,14 @@ import { RequestStagesModule } from './modules/request-stages/request-stages.mod
 import { RequestStatusesModule } from './modules/request-statuses/request-statuses.module';
 import { EngagementTypesModule } from './modules/engagement-types/engagement-types.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
+import { EngagementsModule } from './modules/engagements/engagements.module';
+import { RequestsModule } from './modules/requests/requests.module';
+import { SubmissionsModule } from './modules/submissions/submissions.module';
+import { DocumentsModule } from './modules/documents/documents.module';
+import { ReportReviewsModule } from './modules/report-reviews/report-reviews.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { DiscussionsModule } from './modules/discussions/discussions.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import { CompanyProfileModule } from './modules/company-profile/company-profile.module';
 import { DemoModule } from './modules/demo/demo.module';
 import { HealthModule } from './health/health.module';
@@ -29,6 +38,7 @@ import { HealthModule } from './health/health.module';
     ScheduleModule.forRoot(),
     JwtModule.register({ global: true }),
     MikroOrmModule.forRoot(mikroOrmConfig),
+    StorageModule,
     OutboxModule,
     AuthModule,
     UsersModule,
@@ -40,6 +50,14 @@ import { HealthModule } from './health/health.module';
     RequestStatusesModule,
     EngagementTypesModule,
     DepartmentsModule,
+    EngagementsModule,
+    RequestsModule,
+    SubmissionsModule,
+    DocumentsModule,
+    ReportReviewsModule,
+    NotificationsModule,
+    DiscussionsModule,
+    ReviewsModule,
     CompanyProfileModule,
     DemoModule,
     HealthModule,
