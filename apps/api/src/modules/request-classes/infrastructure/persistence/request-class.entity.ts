@@ -1,7 +1,7 @@
 import { Entity, PrimaryKey, Property } from '@mikro-orm/core';
 
-@Entity({ tableName: 'fs_lines' })
-export class FsLineEntity {
+@Entity({ tableName: 'request_classes' })
+export class RequestClassEntity {
   @PrimaryKey()
   id!: number;
 

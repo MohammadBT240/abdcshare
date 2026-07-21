@@ -10,6 +10,18 @@ export const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(8).default('change-me-refresh'),
   JWT_ACCESS_TTL: z.coerce.number().int().default(900),
   JWT_REFRESH_TTL: z.coerce.number().int().default(1209600),
+
+  // Object storage. `local` is a dependency-free dev fallback; `r2` uses the S3
+  // SDK (requires @aws-sdk/client-s3 + s3-request-presigner + R2_* below).
+  STORAGE_DRIVER: z.enum(['local', 'r2']).default('local'),
+  STORAGE_PUBLIC_BASE_URL: z.string().url().default('http://localhost:4000'),
+  STORAGE_UPLOAD_TTL: z.coerce.number().int().default(900),
+  LOCAL_STORAGE_DIR: z.string().default('./storage'),
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET: z.string().optional(),
+  R2_ENDPOINT: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
