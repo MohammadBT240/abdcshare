@@ -27,7 +27,7 @@ describe('RequestsService', () => {
         persistAndFlush: jest.fn(),
         find: jest.fn(async () => []),
       };
-      const service = new RequestsService(em as never);
+      const service = new RequestsService(em as never, { emit: jest.fn() } as never);
       await expect(
         service.create({ engagementId: 'eng-1', requestTypeId: 7, description: 'Provide it' }, admin),
       ).rejects.toBeInstanceOf(BadRequestException);
@@ -54,7 +54,7 @@ describe('RequestsService', () => {
         }),
         flush: jest.fn(async () => undefined),
       };
-      const service = new RequestsService(em as never);
+      const service = new RequestsService(em as never, { emit: jest.fn() } as never);
       jest.spyOn(service, 'getOne').mockResolvedValue({ id: 'r1' } as never);
 
       await service.setStage('r1', { stageId: 2, note: 'moving on' }, admin);

@@ -10,8 +10,10 @@ import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
 import {
   DocumentCategory,
   DocumentStatus,
+  EngagementPhase,
   EVENT,
   hasPermission,
+  phaseForStatus,
   ReportReviewState,
   type Paginated,
 } from '@abdcshare/shared';
@@ -75,11 +77,12 @@ export class DocumentsService {
     return {
       id: d.id,
       engagementId: d.engagement.id,
-      requestClassId: d.requestClass.id,
-      requestClassName: d.requestClass.name ?? null,
+      requestClassId: d.requestClass ? d.requestClass.id : null,
+      requestClassName: d.requestClass ? d.requestClass.name : null,
       requestId: d.request ? d.request.id : null,
       departmentId: d.department.id,
       category: d.category,
+      phase: d.phase ?? null,
       title: d.title,
       description: d.description ?? null,
       status: d.status,
@@ -134,12 +137,23 @@ export class DocumentsService {
 
     const engagement = await this.accessibleEngagement(dto.engagementId, user);
 
-    const inScope = await this.em.findOne(EngagementRequestClassEntity, {
-      engagement: dto.engagementId,
-      requestClass: dto.requestClassId,
-    });
-    if (!inScope) {
-      throw new BadRequestException('request class is not in scope for this engagement — add it first');
+    // Working papers & final reports group under a request class (in scope);
+    // Supporting documents are engagement-level (no request class).
+    let requestClass = null;
+    if (dto.category === DocumentCategory.Supporting) {
+      // engagement-level reference material — request class ignored.
+    } else {
+      if (dto.requestClassId == null) {
+        throw new BadRequestException('A request class is required for working papers and final reports');
+      }
+      const inScope = await this.em.findOne(EngagementRequestClassEntity, {
+        engagement: dto.engagementId,
+        requestClass: dto.requestClassId,
+      });
+      if (!inScope) {
+        throw new BadRequestException('request class is not in scope for this engagement — add it first');
+      }
+      requestClass = this.em.getReference(RequestClassEntity, dto.requestClassId);
     }
 
     let request: RequestEntity | null = null;
@@ -150,8 +164,9 @@ export class DocumentsService {
 
     const doc = this.em.create(DocumentEntity, {
       engagement,
-      requestClass: this.em.getReference(RequestClassEntity, dto.requestClassId),
+      requestClass,
       request,
+      phase: dto.phase ?? phaseForStatus(engagement.status),
       department: engagement.department, // inherit the engagement's owning department
       category: dto.category,
       title: dto.title,
@@ -173,6 +188,7 @@ export class DocumentsService {
     if (query.requestId) where.request = query.requestId;
     if (query.category) where.category = query.category;
     if (query.status) where.status = query.status;
+    if (query.phase) where.phase = query.phase;
     if (query.q) where.title = { $ilike: `%${query.q}%` };
 
     const engWhere: Record<string, unknown> = { ...engagementScopeWhere(resolveScope(user)) };
@@ -212,6 +228,15 @@ export class DocumentsService {
     return this.getOne(id, user);
   }
 
+  /** Delete a document (Super Admin) — cascades files + participants. */
+  async remove(id: string, user: AuthenticatedUser): Promise<{ ok: true }> {
+    const doc = await this.findScoped(id, user);
+    // NOTE: object-storage cleanup of the files is left to the storage layer /
+    // a future worker sweep; the DB rows cascade via the FK delete rules.
+    await this.em.removeAndFlush(doc);
+    return { ok: true };
+  }
+
   /** Step 1 of upload: get a presigned URL to PUT the bytes to (no DB write). */
   async presignUpload(
     id: string,
@@ -225,6 +250,53 @@ export class DocumentsService {
       contentType: dto.contentType,
     });
     return { ...presigned };
+  }
+
+  /** Bulk presign: one presigned upload per file (no DB write). */
+  async presignUploadBatch(
+    id: string,
+    files: PresignUploadDto[],
+    user: AuthenticatedUser,
+  ): Promise<PresignedUploadResponseDto[]> {
+    const doc = await this.findScoped(id, user);
+    return Promise.all(
+      files.map((f) =>
+        this.storage.presignUpload({
+          keyPrefix: `documents/${doc.engagement.id}`,
+          fileName: f.fileName,
+          contentType: f.contentType,
+        }),
+      ),
+    );
+  }
+
+  /** Bulk confirm: each file becomes the next version, in order. */
+  async confirmUploadBatch(
+    id: string,
+    files: ConfirmUploadDto[],
+    user: AuthenticatedUser,
+  ): Promise<DocumentDetailResponseDto> {
+    const doc = await this.findScoped(id, user);
+    let version = doc.currentVersion;
+    const fileIds: string[] = [];
+    for (const dto of files) {
+      version += 1;
+      const file = this.em.create(DocumentFileEntity, {
+        document: doc,
+        version,
+        storageKey: dto.storageKey,
+        fileName: dto.fileName,
+        mimeType: dto.mimeType ?? null,
+        sizeBytes: dto.sizeBytes ?? null,
+        uploadedBy: this.em.getReference(UserEntity, user.userId),
+      });
+      fileIds.push(file.id);
+    }
+    doc.currentVersion = version;
+    if (doc.status === DocumentStatus.Draft) doc.status = DocumentStatus.Ready;
+    this.outbox.enqueue(EVENT.DocumentFileUploaded, { documentId: doc.id, fileIds, count: files.length });
+    await this.em.persistAndFlush(doc);
+    return this.getOne(id, user);
   }
 
   /** Step 2: confirm the upload → new versioned file row + status/version bump + event. */

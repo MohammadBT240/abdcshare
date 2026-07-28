@@ -1,5 +1,5 @@
 import { Collection, Entity, Enum, ManyToOne, OneToMany, Property } from '@mikro-orm/core';
-import { DocumentCategory, DocumentStatus, ReportReviewState } from '@abdcshare/shared';
+import { DocumentCategory, DocumentStatus, EngagementPhase, ReportReviewState } from '@abdcshare/shared';
 import { BaseEntity } from '../../../../database/base.entity';
 import { EngagementEntity } from '../../../engagements/infrastructure/persistence/engagement.entity';
 import { RequestClassEntity } from '../../../request-classes/infrastructure/persistence/request-class.entity';
@@ -15,11 +15,16 @@ export class DocumentEntity extends BaseEntity {
   @ManyToOne(() => EngagementEntity, { deleteRule: 'cascade' })
   engagement!: EngagementEntity;
 
-  @ManyToOne(() => RequestClassEntity)
-  requestClass!: RequestClassEntity;
+  /** Null for `Supporting` (engagement-level) documents. */
+  @ManyToOne(() => RequestClassEntity, { nullable: true })
+  requestClass?: RequestClassEntity | null;
 
   @ManyToOne(() => RequestEntity, { nullable: true })
   request?: RequestEntity | null;
+
+  /** Engagement stage this document belongs to (Planning/Execution/Reporting). */
+  @Enum({ items: () => EngagementPhase, nullable: true })
+  phase?: EngagementPhase | null;
 
   @ManyToOne(() => DepartmentEntity)
   department!: DepartmentEntity;

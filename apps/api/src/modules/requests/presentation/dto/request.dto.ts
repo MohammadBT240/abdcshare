@@ -3,12 +3,13 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsDate,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
 } from 'class-validator';
-import type { PageMeta } from '@abdcshare/shared';
+import { EngagementPhase, type PageMeta } from '@abdcshare/shared';
 import { PaginationQueryDto } from '../../../../common/dto/pagination-query.dto';
 
 export class CreateRequestDto {
@@ -21,6 +22,8 @@ export class CreateRequestDto {
   @IsOptional() @IsInt() stageId?: number;
   @ApiPropertyOptional({ description: 'Defaults to the first status if omitted.' })
   @IsOptional() @IsInt() statusId?: number;
+  @ApiPropertyOptional({ enum: EngagementPhase, description: 'Defaults to the engagement stage.' })
+  @IsOptional() @IsEnum(EngagementPhase) phase?: EngagementPhase;
   @ApiPropertyOptional({ type: [String] })
   @IsOptional() @IsArray() @IsUUID('4', { each: true }) assigneeIds?: string[];
 }
@@ -50,6 +53,7 @@ export class RequestListQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() stageId?: number;
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() statusId?: number;
   @ApiPropertyOptional() @IsOptional() @IsUUID() assigneeId?: string;
+  @ApiPropertyOptional({ enum: EngagementPhase }) @IsOptional() @IsEnum(EngagementPhase) phase?: EngagementPhase;
 }
 
 export class RequestAssigneeDto {
@@ -68,6 +72,7 @@ export class RequestResponseDto {
   @ApiPropertyOptional() stageName?: string | null;
   @ApiPropertyOptional() statusId?: number | null;
   @ApiPropertyOptional() statusName?: string | null;
+  @ApiPropertyOptional({ enum: EngagementPhase }) phase?: EngagementPhase | null;
   @ApiProperty() description!: string;
   @ApiPropertyOptional() dueDate?: Date | null;
   @ApiProperty() createdAt!: Date;

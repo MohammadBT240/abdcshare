@@ -1,4 +1,5 @@
-import { Collection, Entity, ManyToOne, OneToMany, Property } from '@mikro-orm/core';
+import { Collection, Entity, Enum, ManyToOne, OneToMany, Property } from '@mikro-orm/core';
+import { EngagementPhase } from '@abdcshare/shared';
 import { BaseEntity } from '../../../../database/base.entity';
 import { EngagementEntity } from '../../../engagements/infrastructure/persistence/engagement.entity';
 import { RequestTypeEntity } from '../../../request-types/infrastructure/persistence/request-type.entity';
@@ -24,6 +25,10 @@ export class RequestEntity extends BaseEntity {
 
   @ManyToOne(() => RequestStatusEntity, { nullable: true })
   status?: RequestStatusEntity | null;
+
+  /** Engagement stage this request belongs to (Planning/Execution/Reporting). */
+  @Enum({ items: () => EngagementPhase, nullable: true })
+  phase?: EngagementPhase | null;
 
   @Property({ type: 'text' })
   description!: string;

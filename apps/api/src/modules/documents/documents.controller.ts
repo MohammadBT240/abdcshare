@@ -16,8 +16,10 @@ import type { AuthenticatedUser } from '../../common/interfaces/authenticated-us
 import { DocumentsService } from './documents.service';
 import {
   AddDocumentParticipantDto,
+  ConfirmBatchDto,
   ConfirmUploadDto,
   CreateDocumentDto,
+  PresignBatchDto,
   DocumentDetailResponseDto,
   DocumentListQueryDto,
   DocumentListResponseDto,
@@ -72,6 +74,15 @@ export class DocumentsController {
     return this.documents.update(id, dto, user);
   }
 
+  @Delete(':id')
+  @RequirePermission('document:delete')
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ ok: true }> {
+    return this.documents.remove(id, user);
+  }
+
   @Post(':id/files/presign')
   @RequirePermission('working-paper:upload')
   presign(
@@ -90,6 +101,26 @@ export class DocumentsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DocumentDetailResponseDto> {
     return this.documents.confirmUpload(id, dto, user);
+  }
+
+  @Post(':id/files/presign-batch')
+  @RequirePermission('working-paper:upload')
+  presignBatch(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PresignBatchDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PresignedUploadResponseDto[]> {
+    return this.documents.presignUploadBatch(id, dto.files, user);
+  }
+
+  @Post(':id/files/batch')
+  @RequirePermission('working-paper:upload')
+  confirmBatch(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmBatchDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<DocumentDetailResponseDto> {
+    return this.documents.confirmUploadBatch(id, dto.files, user);
   }
 
   @Get(':id/files/:fileId/download')
