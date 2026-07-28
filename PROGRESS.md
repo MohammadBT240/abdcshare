@@ -438,15 +438,114 @@ Client-facing draft-review loop for **final reports**, on top of document versio
   api + worker typecheck green; `migration:create` → "No changes required". 13 spec files. Docs updated
   (ERD §8 + USER_STORIES K-8..K-11). **Run:** `pnpm --filter @abdcshare/api migration:up`.
 
+## Gap-closing bucket 1 (complete)  ✅ **NO migration** (reuses existing tables/columns)
+- **Password reset flow** — `POST /api/auth/forgot-password` (`@Public`, neutral response, mints a
+  single-use `password_reset_tokens` row + `user.password_reset_requested` outbox) and
+  `POST /api/auth/reset-password` (verifies token, sets password, revokes all sessions,
+  `user.password_changed`). Worker sends the reset link (`WEB_APP_URL/reset-password?token=…`) + a
+  change-confirmation email. env: `PASSWORD_RESET_TTL` (api), `WEB_APP_URL` (worker).
+- **Own-profile self-service** — `GET/PATCH /api/users/me` (title/names/gender/marital/phone/addresses;
+  no permission needed — any authed user), **avatar** via `POST /api/users/me/avatar/presign` + `.../avatar`
+  (confirm → `avatar_path`; `avatarUrl` presigned in the response). Uses the StoragePort.
+- **Document delete** — `DELETE /api/documents/:id` (`document:delete`, SA; scoped; cascades files +
+  participants; object-storage sweep left to storage layer).
+- **Request-assigned notification** — `requests.assign` now notifies the assignee (in-app + email).
+- Test `auth/password-reset.spec.ts` (neutral unknown-email; invalid-token rejects). api + worker
+  typecheck green; **no migration** (`Migration…145033.ts.bak` = discarded company_profile drift). 14 specs.
+
+## Bucket 2 + 3 + 4 (this pass)
+**Bucket 2 (decided):**
+- **Company profile = singleton** (kept as-is; docs corrected in USER_STORIES G + ERD §12).
+- **Submission file attachments** — `submission_files` entity + `POST /api/submissions/:id/files/presign`
+  + `.../files` (client, only while Pending), included in the submission response. ⚠️ migration
+  `Migration…101650`.
+
+**Bucket 3:**
+- **Audit / activity log** — `AuditService.record()` + a **global `AuditInterceptor`** (zero-touch: logs
+  every authenticated mutation with actor/route/entity/ip; skips `/auth/`; uuid ids only). `GET /api/audit`
+  (`audit:view`, paginated, filter entityType/entityId/actorId). **No migration** (`activity_log` already
+  in schema; entity got `OptionalProps`).
+- **Engagement sign-offs** — `engagement_sign_offs` (per request class or engagement-wide; revocable).
+  `GET/POST /api/engagements/:id/sign-offs`, `.../:signOffId/revoke` (`review:signoff`). **Completion gate:**
+  can't transition to `Completed` unless an engagement-wide sign-off exists OR every in-scope request class
+  is signed off. ⚠️ migration `Migration…110621`. Test: `engagement-completion.spec.ts`.
+- **Global search + dashboards** (`modules/insights`, no tables) — `GET /api/search?q=` (scoped ILIKE across
+  engagements/requests/documents/clients; clients see no docs, only admins see the client directory);
+  `GET /api/dashboard` (scope-aware counts: engagements by status, requests in-scope/overdue/assigned-to-me,
+  final reports awaiting client review, unread notifications).
+
+**Bucket 4:**
+- **Done:** **scheduled deadline reminders** — `DeadlineReminderService` (`@Cron` daily @07:00 +
+  `@CreateRequestContext`) nudges assignees of requests **due within 24h**. **Bulk document upload** —
+  `POST /api/documents/:id/files/presign-batch` + `.../files/batch` (≤50, each a new version).
+- **Blocked by deps/env (documented, not built):**
+  - **API e2e (Supertest)** — needs `supertest` + a live DB (sandbox has neither); 19 unit specs in place.
+  - **OpenAPI → `api-client`** — deferred with the web frontend.
+  - **Extract shared persistence** — worker still duplicates `outbox.entity`; larger refactor.
+
+api + worker typecheck green; `migration:create` clean after each. **15 spec files.** Run the 3 new
+migrations: `pnpm --filter @abdcshare/api migration:up`.
+
+## Engagement stages + phase tagging + Supporting docs (v7)  ⚠️ **migration `Migration20260724115625`**
+- **Stages renamed** — engagement lifecycle is now **Planning → Execution → Reporting → Completed →
+  Archived** (`EngagementStatus`: Fieldwork→Execution, Review→Reporting; `ENGAGEMENT_TRANSITIONS` updated).
+  Migration includes a **data fix** (UPDATE existing `Fieldwork`/`Review` rows on engagements +
+  engagement_status_history, run *between* dropping and re-adding the check constraints; reverse in `down`).
+- **Phase tag** — new `EngagementPhase` (Planning/Execution/Reporting) + `phaseForStatus(status)` helper in
+  shared. **`requests.phase`** and **`documents.phase`** (nullable) default to the engagement's current
+  stage at create; both listable by `?phase=`. Lets "planning preliminaries" (client requests + team
+  uploads with `phase=Planning`) group together.
+- **Supporting documents** — `DocumentCategory += Supporting`; **`documents.request_class_id` is now
+  nullable**. Supporting = engagement-level reference material, **no request class** (skips the in-scope
+  check), any team member (`working-paper:upload`). WorkingPaper/FinalReport still require a request class.
+- Tests: `documents.service.spec` (Supporting → no request class, phase defaults from stage); engagement
+  specs updated to new enum values. api + worker + shared typecheck green; `migration:create` clean.
+  Docs updated (ERD §6/§7/§8 + USER_STORIES H-2/H-6/H-7). **15 spec files.** Run `migration:up` on the Mac.
+
+## Partner / Chairman reports + Guest role (v8)  ⚠️ **migration `Migration20260725202010`**
+Structured periodic reports to the Chairman (Principal Partner), modelled on `chairman-reporting-portal.html`
+(**excluded** sections 05 Risk/Compliance/QA and 07 Strategic Initiatives, per request).
+- **Guest role (NEW):** `ROLE_NAMES += 'Guest'`; perms `partner-report:submit` + `partner-report:view` +
+  `notification:receive`. Added perms `partner-report:view` + `partner-report:invite`
+  (invite → PrincipalPartner designation).
+- **`mustChangePassword` now ENFORCED** — new global `MustChangePasswordGuard` (after JwtAuth, before
+  Permissions) blocks every route except `/auth/change-password|logout|me` until the user sets a real
+  password. (Also fixes first-login for clients/staff.)
+- **Invite = provision a Guest login** — Principal Partner `POST /api/partner-reports/invites {email,fullName,title?}`
+  → creates a `Guest` `UserEntity` (temp password, mustChangePassword) + `partner_report_invites` row +
+  emits `user.created` (worker emails **credentials + login link**). Guest logs in → forced password change →
+  can submit. Returns `InviteResultDto {outcome:'invited'|'reminded'}`. **Email already exists → no new
+  account; the user is simply reminded to submit** (`partner-report.reminder` notification), `outcome:'reminded'`.
+- **Periodic reminder (O-6):** `PartnerReportReminderService` — `@Cron` weekly (Mondays 08:00) +
+  `@CreateRequestContext` — nudges guests whose invite is still `Invited` (not yet submitted).
+- **Report model:** `partner_reports` (officer name/title/dept/period, exec summary, financials
+  [currency + fee/billings/collections/WIP numeric + variance text], people & capacity, outlook, status
+  Draft/Submitted/Reviewed, review fields) + `partner_report_engagement_updates` (04, status
+  OnTrack/Watch/AtRisk/NewWin) + `partner_report_decisions` (08, priority Urgent/ThisPeriod/ForInformation).
+- **Endpoints** (`/api/partner-reports`): create/update draft + `POST /:id/submit` (`partner-report:submit`,
+  authors = Partner or Guest); `GET` list + `GET /:id` (`partner-report:view` — authors see own, Chairman
+  sees all); `POST /:id/review` (`partner-report:review`); `GET /dashboard` (`partner-report:view-all`);
+  invites (`partner-report:invite`). Submit notifies the Chairman; review notifies the author.
+- Tests: `partner-reports.service.spec` (guest provisioning + existing-email-reminds), `must-change-password.guard.spec`.
+  api + worker + shared typecheck green; `migration:create` clean. **17 spec files.** Run `migration:up`
+  (also seeds the `Guest` role via `ROLE_NAMES`).
+
+## Infra hardening (complete) — rate limit + R2 + React Email
+- **Auth rate limiting** — `@nestjs/throttler` global default (120/min) + strict limits on
+  `login`/`forgot-password`/`reset-password` (5/min) and `refresh` (30/min).
+- **R2 storage adapter** — `R2StorageAdapter` wired when `STORAGE_DRIVER=r2`; Zod fail-fast if R2 creds
+  missing; shared `buildStorageKey` util; unit tests for key builder + adapter.
+- **React Email templates** — worker renders `AccountCreated`, `PasswordReset`, `PasswordChanged`, and
+  `GenericNotification` via `@react-email/render`; API notification outbox payload now `{ subject, body, link? }`.
+- **Env alignment** — `.env.example` files document per-app copy (`apps/api` storage, `apps/worker` email).
+
 ## Pending / next
-1. **R2 adapter** — implement `R2StorageAdapter` (real presigned S3 URLs) once `@aws-sdk/*` is installed;
-   flip `STORAGE_DRIVER=r2`. Then **submission_files** (deferred) reuse the same StoragePort.
-2. **Partner weekly reports** (deferred by request) + **request-assigned** notification hook (not yet wired).
-3. **Extract shared persistence** — worker duplicates `outbox.entity.ts`; notifications email_sent update
+1. **Web frontend** + `api-client` generation (deferred by request).
+2. **Extract shared persistence** — worker duplicates `outbox.entity.ts`; notifications email_sent update
    uses raw SQL to avoid duplicating the entity. A shared persistence package would clean this up.
-4. **Web frontend** + `api-client` generation (deferred by request).
-5. **Data note (Mac):** migrate any `role = 'Auditor'` users to `Staff` (likely none).
-6. **Jest on the Mac:** sandbox can't run it (jest 30 vs ts-jest 29 + pnpm preset resolution).
+3. **API e2e (Supertest)** — needs `supertest` + a live DB; unit specs in place (~19 files).
+4. **Data note (Mac):** migrate any `role = 'Auditor'` users to `Staff` (likely none).
+5. **Jest on the Mac:** sandbox can't run it (jest 30 vs ts-jest 29 + pnpm preset resolution).
 
 ## Open decisions still outstanding
 - Hosting/runtime, realtime vs polling, legacy data migration scope.

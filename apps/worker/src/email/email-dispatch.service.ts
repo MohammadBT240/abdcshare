@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { render } from '@react-email/render';
 import { Resend } from 'resend';
+import type { ReactElement } from 'react';
 
 /** The ONLY place the Resend SDK is used (guideline §13). */
 @Injectable()
@@ -21,5 +23,10 @@ export class EmailDispatchService {
       return;
     }
     await this.resend.emails.send({ from: this.from, to, subject, html });
+  }
+
+  async sendReact(to: string, subject: string, element: ReactElement): Promise<void> {
+    const html = await render(element);
+    await this.send(to, subject, html);
   }
 }

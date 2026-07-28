@@ -24,7 +24,7 @@ describe('SubmissionsService.review', () => {
       getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
       flush: jest.fn(async () => undefined),
     };
-    const service = new SubmissionsService(em as never, notifications as never);
+    const service = new SubmissionsService(em as never, notifications as never, { presignUpload: jest.fn(), presignDownload: jest.fn() } as never);
     jest.spyOn(service, 'getOne').mockResolvedValue({ id: 's1' } as never);
 
     await service.review('s1', { decision: SubmissionStatus.Accepted, reason: 'looks good' }, reviewer);
@@ -42,7 +42,7 @@ describe('SubmissionsService.review', () => {
       getReference: jest.fn(),
       flush: jest.fn(),
     };
-    const service = new SubmissionsService(em as never, notifications as never);
+    const service = new SubmissionsService(em as never, notifications as never, { presignUpload: jest.fn(), presignDownload: jest.fn() } as never);
     await expect(
       service.review('s1', { decision: SubmissionStatus.Returned }, reviewer),
     ).rejects.toBeInstanceOf(BadRequestException);

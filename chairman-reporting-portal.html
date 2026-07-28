@@ -1,0 +1,1219 @@
+<style>
+  :root {
+    --navy-deep: #0b1c33;
+    --navy: #132a4a;
+    --navy-soft: #1e3a63;
+    --gold: #b8922e;
+    --gold-bright: #d4af37;
+    --paper: #f6f4ee;
+    --card: #ffffff;
+    --ink: #1a2233;
+    --ink-soft: #5b6478;
+    --line: #e2dfd3;
+    --alert: #9a3b2e;
+    --alert-bg: #f7e9e6;
+    --ok: #3d6b4c;
+    --ok-bg: #e8f0e9;
+    --warn: #8a6416;
+    --warn-bg: #fbf0da;
+    --serif: "Fraunces", "Georgia", serif;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono: "IBM Plex Mono", monospace;
+  }
+  @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap");
+
+  * {
+    box-sizing: border-box;
+  }
+  .crp-root {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 0;
+    background-image:
+      linear-gradient(var(--paper), var(--paper)),
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 39px,
+        rgba(11, 28, 51, 0.025) 40px
+      );
+  }
+
+  /* ---------- Masthead ---------- */
+  .crp-masthead {
+    background: linear-gradient(
+      135deg,
+      var(--navy-deep) 0%,
+      var(--navy) 55%,
+      var(--navy-soft) 100%
+    );
+    color: #fff;
+    padding: 28px 36px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .crp-masthead::after {
+    content: "";
+    position: absolute;
+    right: -60px;
+    top: -60px;
+    width: 220px;
+    height: 220px;
+    border: 1px solid rgba(212, 175, 55, 0.25);
+    border-radius: 50%;
+  }
+  .crp-masthead::before {
+    content: "";
+    position: absolute;
+    right: 20px;
+    top: 40px;
+    width: 120px;
+    height: 120px;
+    border: 1px solid rgba(212, 175, 55, 0.18);
+    border-radius: 50%;
+  }
+  .crp-topline {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    position: relative;
+    z-index: 1;
+  }
+  .crp-eyebrow {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--gold-bright);
+    margin: 0 0 10px;
+  }
+  .crp-org-input {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    color: #fff;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.35);
+    padding: 2px 0 6px;
+    width: 100%;
+    max-width: 560px;
+  }
+  .crp-org-input:focus {
+    outline: none;
+    border-bottom-color: var(--gold-bright);
+  }
+  .crp-subtitle {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.72);
+    margin-top: 8px;
+    max-width: 520px;
+    line-height: 1.5;
+  }
+  .crp-seal {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    padding-top: 4px;
+  }
+  .crp-seal b {
+    color: var(--gold-bright);
+    display: block;
+    font-size: 11px;
+    margin-bottom: 3px;
+    letter-spacing: 0.1em;
+  }
+
+  /* ---------- Tabs ---------- */
+  .crp-tabs {
+    display: flex;
+    gap: 2px;
+    margin-top: 22px;
+    position: relative;
+    z-index: 1;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  }
+  .crp-tab {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: rgba(255, 255, 255, 0.55);
+    background: transparent;
+    border: none;
+    padding: 10px 18px;
+    cursor: pointer;
+    position: relative;
+    top: 1px;
+  }
+  .crp-tab.active {
+    color: #fff;
+    border-bottom: 2px solid var(--gold-bright);
+  }
+  .crp-tab .crp-count {
+    display: inline-block;
+    margin-left: 6px;
+    background: rgba(212, 175, 55, 0.18);
+    color: var(--gold-bright);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+  }
+
+  /* ---------- Body ---------- */
+  .crp-body {
+    padding: 28px 36px 60px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .crp-view {
+    display: none;
+  }
+  .crp-view.active {
+    display: block;
+  }
+
+  .crp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 640px) {
+    .crp-grid {
+      grid-template-columns: 1fr;
+    }
+    .crp-body {
+      padding: 20px 16px 48px;
+    }
+    .crp-masthead {
+      padding: 22px 18px 20px;
+    }
+    .crp-topline {
+      flex-direction: column;
+    }
+    .crp-seal {
+      text-align: left;
+    }
+  }
+
+  .crp-section {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 22px 24px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .crp-section::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--gold);
+  }
+  .crp-section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .crp-section-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--gold);
+    letter-spacing: 0.1em;
+    margin-right: 8px;
+  }
+  .crp-section h3 {
+    font-family: var(--serif);
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--navy-deep);
+    display: inline;
+  }
+  .crp-section p.hint {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: -8px 0 14px;
+  }
+
+  label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 5px;
+  }
+  .crp-field {
+    margin-bottom: 14px;
+  }
+  input[type="text"],
+  input[type="date"],
+  input[type="number"],
+  select,
+  textarea {
+    width: 100%;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    background: #fcfbf8;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 9px 11px;
+  }
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--gold);
+    background: #fff;
+  }
+  textarea {
+    resize: vertical;
+    min-height: 80px;
+    line-height: 1.5;
+  }
+
+  .crp-currency {
+    display: flex;
+    gap: 8px;
+  }
+  .crp-currency select {
+    max-width: 78px;
+    flex: none;
+  }
+
+  .crp-list-row {
+    display: grid;
+    grid-template-columns: 1fr 110px 32px;
+    gap: 8px;
+    margin-bottom: 8px;
+    align-items: start;
+  }
+  .crp-list-row.crp-list-row-client {
+    grid-template-columns: 150px 1fr 110px 32px;
+  }
+  .crp-list-row textarea {
+    min-height: 44px;
+  }
+  .crp-list-row input.crp-row-client {
+    font-size: 13px;
+    padding: 9px 10px;
+    height: 44px;
+  }
+  .crp-remove {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--alert);
+    border-radius: 3px;
+    cursor: pointer;
+    height: 36px;
+    font-size: 15px;
+    line-height: 1;
+  }
+  .crp-add {
+    background: none;
+    border: 1px dashed var(--gold);
+    color: var(--gold);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-top: 2px;
+  }
+  .crp-add:hover {
+    background: rgba(184, 146, 46, 0.08);
+  }
+
+  .crp-priority-badge {
+    font-size: 11px;
+  }
+
+  .crp-checkrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+  .crp-checkrow input {
+    width: auto;
+  }
+
+  .crp-submit-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 0 4px;
+  }
+  .crp-note {
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    max-width: 420px;
+    line-height: 1.5;
+  }
+  .crp-btn-primary {
+    background: var(--navy-deep);
+    color: #fff;
+    border: none;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 13.5px;
+    padding: 12px 26px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.01em;
+  }
+  .crp-btn-primary:hover {
+    background: var(--navy);
+  }
+  .crp-btn-ghost {
+    background: none;
+    border: 1px solid var(--navy-deep);
+    color: var(--navy-deep);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 10px 20px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  /* ---------- Dashboard ---------- */
+  .crp-dash-toolbar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .crp-dash-toolbar select,
+  .crp-dash-toolbar input {
+    width: auto;
+    min-width: 160px;
+  }
+
+  .crp-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--ink-soft);
+    border: 1px dashed var(--line);
+    border-radius: 2px;
+    background: var(--card);
+  }
+  .crp-empty .crp-empty-mark {
+    font-family: var(--serif);
+    font-size: 34px;
+    color: var(--gold);
+    margin-bottom: 10px;
+  }
+
+  .crp-report-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .crp-report-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    cursor: pointer;
+    gap: 16px;
+  }
+  .crp-report-who {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .crp-report-who b {
+    font-family: var(--serif);
+    font-size: 15.5px;
+    color: var(--navy-deep);
+    font-weight: 600;
+  }
+  .crp-report-meta {
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    font-family: var(--mono);
+  }
+  .crp-report-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .crp-flag-pill {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 10px;
+  }
+  .crp-flag-pill.decisions {
+    background: var(--warn-bg);
+    color: var(--warn);
+  }
+  .crp-flag-pill.risk {
+    background: var(--alert-bg);
+    color: var(--alert);
+  }
+  .crp-chevron {
+    color: var(--gold);
+    font-size: 12px;
+    transition: transform 0.15s;
+  }
+  .crp-report-detail {
+    display: none;
+    padding: 0 20px 20px;
+    border-top: 1px solid var(--line);
+  }
+  .crp-report-detail.open {
+    display: block;
+  }
+  .crp-detail-block {
+    margin-top: 16px;
+  }
+  .crp-detail-block h4 {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 6px;
+  }
+  .crp-detail-block p,
+  .crp-detail-block li {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+  }
+  .crp-detail-block ul {
+    margin: 4px 0;
+    padding-left: 18px;
+  }
+  .crp-kpi-row {
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+  }
+  .crp-kpi {
+    min-width: 110px;
+  }
+  .crp-kpi .v {
+    font-family: var(--serif);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--navy-deep);
+  }
+  .crp-kpi .l {
+    font-size: 10.5px;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .crp-print-btn {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-size: 11.5px;
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-top: 14px;
+  }
+  .crp-print-btn:hover {
+    border-color: var(--navy-deep);
+    color: var(--navy-deep);
+  }
+  .crp-decision-item {
+    border-left: 2px solid var(--warn);
+    padding: 6px 0 6px 10px;
+    margin-bottom: 6px;
+    font-size: 13.5px;
+  }
+  .crp-toast {
+    position: fixed;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--navy-deep);
+    color: #fff;
+    padding: 11px 20px;
+    border-radius: 4px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all 0.25s;
+    pointer-events: none;
+    z-index: 50;
+    border-left: 3px solid var(--gold-bright);
+  }
+  .crp-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  @media print {
+    .crp-masthead,
+    .crp-tabs,
+    .crp-dash-toolbar,
+    .crp-print-btn,
+    .crp-report-top .crp-chevron {
+      display: none !important;
+    }
+    .crp-report-detail {
+      display: block !important;
+    }
+    .crp-report-card {
+      break-inside: avoid;
+      border: none;
+    }
+  }
+</style>
+
+<div class="crp-root">
+  <div class="crp-masthead">
+    <div class="crp-topline">
+      <div style="flex: 1">
+        <p class="crp-eyebrow">
+          Executive Reporting &nbsp;·&nbsp; Confidential
+        </p>
+        <input
+          class="crp-org-input"
+          id="crpOrgName"
+          value="Abdulkadeer &amp; Co. / Quantum Edge Technologies Ltd"
+        />
+        <p class="crp-subtitle">
+          A standing channel for Partners and Directors to brief the Chairman on
+          performance, risk, and matters requiring decision — each reporting
+          period, in one consistent format.
+        </p>
+      </div>
+      <div class="crp-seal">
+        <b>Office of the Chairman</b>
+        Reporting Cycle: Periodic<br />
+        Classification: Internal
+      </div>
+    </div>
+    <div class="crp-tabs">
+      <button class="crp-tab active" data-view="submit">Submit Report</button>
+      <button class="crp-tab" data-view="dashboard">
+        Chairman's Dashboard <span class="crp-count" id="crpCount">0</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="crp-body">
+    <!-- ============ SUBMIT VIEW ============ -->
+    <div class="crp-view active" id="view-submit">
+      <div class="crp-section">
+        <div class="crp-section-head">
+          <h3><span class="crp-section-num">01</span>Reporting Officer</h3>
+        </div>
+        <div class="crp-grid">
+          <div class="crp-field">
+            <label>Full name</label
+            ><input type="text" id="f-name" placeholder="e.g. Busayo Ibiyeye" />
+          </div>
+          <div class="crp-field">
+            <label>Title</label>
+            <select id="f-role">
+              <option>Partner</option>
+              <option>Director</option>
+              <option>Head of Department</option>
+              <option>Managing Consultant</option>
+            </select>
+          </div>
+          <div class="crp-field">
+            <label>Department / Practice area</label
+            ><input
+              type="text"
+              id="f-dept"
+              placeholder="e.g. Audit &amp; Assurance"
+            />
+          </div>
+          <div class="crp-field">
+            <label>Reporting period</label>
+            <div style="display: flex; gap: 8px">
+              <select id="f-periodtype" style="max-width: 120px">
+                <option>Weekly</option>
+                <option>Monthly</option>
+                <option>Quarterly</option>
+                <option>Ad-hoc</option>
+              </select>
+              <input type="text" id="f-period" placeholder="e.g. Q3 2026" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="crp-section">
+        <div class="crp-section-head">
+          <h3><span class="crp-section-num">02</span>Executive Summary</h3>
+        </div>
+        <p class="hint">
+          Three to five sentences a Chairman can read in under a minute — the
+          headline, not the detail.
+        </p>
+        <textarea
+          id="f-summary"
+          placeholder="This period, the practice..."
+        ></textarea>
+      </div>
+
+      <div class="crp-section">
+        <div class="crp-section-head">
+          <h3><span class="crp-section-num">03</span>Financial Performance</h3>
+        </div>
+        <div class="crp-grid">
+          <div class="crp-field">
+            <label>Currency</label>
+            <select id="f-currency">
+              <option>₦ NGN</option>
+              <option>$ USD</option>
+            </select>
+          </div>
+          <div class="crp-field">
+            <label>Fee revenue (period)</label
+            ><input type="number" id="f-revenue" placeholder="0" />
+          </div>
+          <div class="crp-field">
+            <label>Billings raised</label
+            ><input type="number" id="f-billings" placeholder="0" />
+          </div>
+          <div class="crp-field">
+            <label>Collections received</label
+            ><input type="number" id="f-collections" placeholder="0" />
+          </div>
+          <div class="crp-field">
+            <label>Outstanding WIP / receivables</label
+            ><input type="number" id="f-wip" placeholder="0" />
+          </div>
+          <div class="crp-field">
+            <label>Variance vs budget</label
+            ><input
+              type="text"
+              id="f-variance"
+              placeholder="e.g. +6% ahead of budget"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="crp-section">
+        <div class="crp-section-head">
+          <h3>
+            <span class="crp-section-num">04</span>Client &amp; Engagement
+            Updates
+          </h3>
+        </div>
+        <p class="hint">
+          New mandates, major deliverables, engagement risks, or client
+          relationships needing attention.
+        </p>
+        <div
+          class="crp-list-row crp-list-row-client"
+          style="margin-bottom: 4px"
+        >
+          <label style="margin: 0">Client / Engagement</label>
+          <label style="margin: 0">Update</label>
+          <label style="margin: 0">Status</label>
+          <span></span>
+        </div>
+        <div id="f-clients"></div>
+        <button class="crp-add" onclick="crpAddRow('clients')">
+          + Add engagement update
+        </button>
+      </div>
+
+      <div class="crp-section">
+        <div class="crp-section-head">
+          <h3>
+            <span class="crp-section-num">05</span>Risk, Compliance &amp;
+            Quality Assurance
+          </h3>
+        </div>
+        <div class="crp-checkrow">
+          <input type="checkbox" id="rc-1" /><label
+            style="
+              margin: 0;
+              text-transform: none;
+              font-weight: 400;
+              font-size: 13px;
+            "
+            for="rc-1"
+            >No open independence or conflict-of-interest matters</label
+          >
+        </div>
+        <div class="crp-checkrow">
+          <input type="checkbox" id="rc-2" /><label
+            style="
+              margin: 0;
+              text-transform: none;
+              font-weight: 400;
+              font-size: 13px;
+            "
+            for="rc-2"
+            >ISQM 1 / engagement quality reviews up to date</label
+          >
+        </div>
+        <div class="crp-checkrow">
+          <input type="checkbox" id="rc-3" /><label
+            style="
+              margin: 0;
+              text-transform: none;
+              font-weight: 400;
+              font-size: 13px;
+            "
+            for="rc-3"
+            >No unresolved regulatory or disciplinary matters</label
+          >
+        </div>
+        <div class="crp-field" style="margin-top: 10px">
+          <label>Notes / exceptions</label
+          ><textarea
+            id="f-risknotes"
+            placeholder="Flag anything unchecked above, or other risk items."
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="crp-section">
+        <div class="crp-section-head">
+          <h3><span class="crp-section-num">06</span>People &amp; Capacity</h3>
+        </div>
+        <textarea
+          id="f-hr"
+          placeholder="Headcount changes, recruitment, attrition, training/CPD, utilisation..."
+        ></textarea>
+      </div>
+
+      <div class="crp-section">
+        <div class="crp-section-head">
+          <h3>
+            <span class="crp-section-num">07</span>Strategic Initiatives &amp;
+            Business Development
+          </h3>
+        </div>
+        <textarea
+          id="f-strategic"
+          placeholder="Pipeline, proposals submitted, partnerships, new service lines..."
+        ></textarea>
+      </div>
+
+      <div class="crp-section">
+        <div class="crp-section-head">
+          <h3>
+            <span class="crp-section-num">08</span>Matters Requiring the
+            Chairman's Decision
+          </h3>
+        </div>
+        <p class="hint">
+          Only include items that genuinely need sign-off, funding, or the
+          Chairman's intervention.
+        </p>
+        <div id="f-decisions"></div>
+        <button class="crp-add" onclick="crpAddRow('decisions')">
+          + Add decision item
+        </button>
+      </div>
+
+      <div class="crp-section">
+        <div class="crp-section-head">
+          <h3><span class="crp-section-num">09</span>Outlook — Next Period</h3>
+        </div>
+        <textarea
+          id="f-outlook"
+          placeholder="Priorities and expectations for the coming period."
+        ></textarea>
+      </div>
+
+      <div class="crp-submit-bar">
+        <p class="crp-note">
+          Submitting adds this report to the shared Chairman's Dashboard,
+          visible to everyone using this portal. Drafts are saved privately as
+          you type.
+        </p>
+        <button class="crp-btn-primary" onclick="crpSubmitReport()">
+          Submit to Chairman
+        </button>
+      </div>
+    </div>
+
+    <!-- ============ DASHBOARD VIEW ============ -->
+    <div class="crp-view" id="view-dashboard">
+      <div class="crp-dash-toolbar">
+        <select id="filterDept">
+          <option value="">All departments</option>
+        </select>
+        <select id="filterPriority">
+          <option value="">All reports</option>
+          <option value="decisions">Awaiting decision</option>
+          <option value="risk">Risk exceptions flagged</option>
+        </select>
+        <input
+          type="text"
+          id="filterSearch"
+          placeholder="Search by name or period..."
+        />
+      </div>
+      <div id="crpReportList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="crp-toast" id="crpToast"></div>
+
+<script>
+  (function () {
+    const STORE_KEY = "chairman-reports";
+    const DRAFT_KEY = "draft-report";
+    let reports = [];
+    let openId = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---- tabs ----
+    document.querySelectorAll(".crp-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document
+          .querySelectorAll(".crp-tab")
+          .forEach((t) => t.classList.remove("active"));
+        document
+          .querySelectorAll(".crp-view")
+          .forEach((v) => v.classList.remove("active"));
+        tab.classList.add("active");
+        $("view-" + tab.dataset.view).classList.add("active");
+        if (tab.dataset.view === "dashboard") renderDashboard();
+      });
+    });
+
+    // ---- dynamic rows (client updates / decisions) ----
+    function crpRowTemplate(kind, val) {
+      const row = document.createElement("div");
+      row.className = "crp-list-row";
+      if (kind === "clients") {
+        row.className = "crp-list-row crp-list-row-client";
+        row.innerHTML = `
+          <input type="text" placeholder="Client / engagement name" class="crp-row-client" value="${val?.client ? val.client.replace(/"/g, "&quot;") : ""}"/>
+          <textarea placeholder="What happened, and any action needed" class="crp-row-text">${val?.text || ""}</textarea>
+          <select class="crp-row-status">
+            <option ${val?.status === "On track" ? "selected" : ""}>On track</option>
+            <option ${val?.status === "Watch" ? "selected" : ""}>Watch</option>
+            <option ${val?.status === "At risk" ? "selected" : ""}>At risk</option>
+            <option ${val?.status === "New win" ? "selected" : ""}>New win</option>
+          </select>
+          <button class="crp-remove" onclick="this.closest('.crp-list-row').remove()">×</button>`;
+      } else {
+        row.innerHTML = `
+          <textarea placeholder="Decision needed, and by when" class="crp-row-text">${val?.text || ""}</textarea>
+          <select class="crp-row-status">
+            <option ${val?.status === "Urgent" ? "selected" : ""}>Urgent</option>
+            <option ${val?.status === "This period" ? "selected" : ""}>This period</option>
+            <option ${val?.status === "For information" ? "selected" : ""}>For information</option>
+          </select>
+          <button class="crp-remove" onclick="this.closest('.crp-list-row').remove()">×</button>`;
+      }
+      return row;
+    }
+    window.crpAddRow = function (kind) {
+      $("f-" + kind).appendChild(crpRowTemplate(kind));
+      crpSaveDraft();
+    };
+
+    function collectRows(kind) {
+      return Array.from($("f-" + kind).querySelectorAll(".crp-list-row"))
+        .map((r) => {
+          const clientEl = r.querySelector(".crp-row-client");
+          return {
+            client: clientEl ? clientEl.value.trim() : undefined,
+            text: r.querySelector(".crp-row-text").value.trim(),
+            status: r.querySelector(".crp-row-status").value,
+          };
+        })
+        .filter((x) => x.text || x.client);
+    }
+
+    // ---- gather form ----
+    function gatherForm() {
+      return {
+        name: $("f-name").value.trim(),
+        role: $("f-role").value,
+        dept: $("f-dept").value.trim(),
+        periodType: $("f-periodtype").value,
+        period: $("f-period").value.trim(),
+        summary: $("f-summary").value.trim(),
+        currency: $("f-currency").value,
+        revenue: $("f-revenue").value,
+        billings: $("f-billings").value,
+        collections: $("f-collections").value,
+        wip: $("f-wip").value,
+        variance: $("f-variance").value.trim(),
+        clients: collectRows("clients"),
+        risk: {
+          c1: $("rc-1").checked,
+          c2: $("rc-2").checked,
+          c3: $("rc-3").checked,
+          notes: $("f-risknotes").value.trim(),
+        },
+        hr: $("f-hr").value.trim(),
+        strategic: $("f-strategic").value.trim(),
+        decisions: collectRows("decisions"),
+        outlook: $("f-outlook").value.trim(),
+        orgName: $("crpOrgName").value.trim(),
+      };
+    }
+
+    function fillForm(d) {
+      if (!d) return;
+      $("f-name").value = d.name || "";
+      $("f-role").value = d.role || "Partner";
+      $("f-dept").value = d.dept || "";
+      $("f-periodtype").value = d.periodType || "Weekly";
+      $("f-period").value = d.period || "";
+      $("f-summary").value = d.summary || "";
+      $("f-currency").value = d.currency || "₦ NGN";
+      $("f-revenue").value = d.revenue || "";
+      $("f-billings").value = d.billings || "";
+      $("f-collections").value = d.collections || "";
+      $("f-wip").value = d.wip || "";
+      $("f-variance").value = d.variance || "";
+      $("rc-1").checked = !!d.risk?.c1;
+      $("rc-2").checked = !!d.risk?.c2;
+      $("rc-3").checked = !!d.risk?.c3;
+      $("f-risknotes").value = d.risk?.notes || "";
+      $("f-hr").value = d.hr || "";
+      $("f-strategic").value = d.strategic || "";
+      $("f-outlook").value = d.outlook || "";
+      $("f-clients").innerHTML = "";
+      (d.clients || []).forEach((v) =>
+        $("f-clients").appendChild(crpRowTemplate("clients", v)),
+      );
+      $("f-decisions").innerHTML = "";
+      (d.decisions || []).forEach((v) =>
+        $("f-decisions").appendChild(crpRowTemplate("decisions", v)),
+      );
+      if (d.orgName) $("crpOrgName").value = d.orgName;
+    }
+
+    // ---- draft autosave (personal) ----
+    let draftTimer;
+    function crpSaveDraft() {
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(async () => {
+        try {
+          await window.storage.set(
+            DRAFT_KEY,
+            JSON.stringify(gatherForm()),
+            false,
+          );
+        } catch (e) {}
+      }, 500);
+    }
+    document
+      .getElementById("view-submit")
+      .addEventListener("input", crpSaveDraft);
+
+    async function loadDraft() {
+      try {
+        const r = await window.storage.get(DRAFT_KEY, false);
+        if (r && r.value) fillForm(JSON.parse(r.value));
+      } catch (e) {
+        /* no draft yet */
+      }
+    }
+
+    // ---- submit ----
+    window.crpSubmitReport = async function () {
+      const d = gatherForm();
+      if (!d.name || !d.period) {
+        crpToast("Please add at least a name and reporting period.");
+        return;
+      }
+      const report = {
+        ...d,
+        id: "r_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+        submittedAt: new Date().toISOString(),
+      };
+      reports.push(report);
+      try {
+        await window.storage.set(STORE_KEY, JSON.stringify(reports), true);
+        await window.storage.delete(DRAFT_KEY, false).catch(() => {});
+      } catch (e) {
+        crpToast("Could not save — please try again.");
+        return;
+      }
+      crpToast("Report submitted to the Chairman's Dashboard.");
+      // reset form
+      [
+        "f-name",
+        "f-dept",
+        "f-period",
+        "f-summary",
+        "f-revenue",
+        "f-billings",
+        "f-collections",
+        "f-wip",
+        "f-variance",
+        "f-risknotes",
+        "f-hr",
+        "f-strategic",
+        "f-outlook",
+      ].forEach((id) => ($(id).value = ""));
+      $("f-role").value = "Partner";
+      $("f-periodtype").value = "Weekly";
+      $("rc-1").checked = false;
+      $("rc-2").checked = false;
+      $("rc-3").checked = false;
+      $("f-clients").innerHTML = "";
+      $("f-decisions").innerHTML = "";
+      $("crpCount").textContent = reports.length;
+    };
+
+    function crpToast(msg) {
+      const t = $("crpToast");
+      t.textContent = msg;
+      t.classList.add("show");
+      setTimeout(() => t.classList.remove("show"), 3200);
+    }
+
+    // ---- load shared reports ----
+    async function loadReports() {
+      try {
+        const r = await window.storage.get(STORE_KEY, true);
+        reports = r && r.value ? JSON.parse(r.value) : [];
+      } catch (e) {
+        reports = [];
+      }
+      $("crpCount").textContent = reports.length;
+      // populate department filter
+      const depts = [...new Set(reports.map((r) => r.dept).filter(Boolean))];
+      $("filterDept").innerHTML =
+        '<option value="">All departments</option>' +
+        depts.map((d) => `<option>${d}</option>`).join("");
+    }
+
+    // ---- dashboard render ----
+    function fmtMoney(cur, val) {
+      if (val === undefined || val === "" || val === null) return "—";
+      const n = Number(val);
+      if (isNaN(n)) return "—";
+      return cur.split(" ")[0] + n.toLocaleString();
+    }
+
+    function renderDashboard() {
+      const deptF = $("filterDept").value;
+      const priF = $("filterPriority").value;
+      const searchF = $("filterSearch").value.toLowerCase();
+
+      let list = reports
+        .slice()
+        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+      if (deptF) list = list.filter((r) => r.dept === deptF);
+      if (priF === "decisions")
+        list = list.filter((r) => (r.decisions || []).length > 0);
+      if (priF === "risk")
+        list = list.filter(
+          (r) =>
+            r.risk && (!r.risk.c1 || !r.risk.c2 || !r.risk.c3 || r.risk.notes),
+        );
+      if (searchF)
+        list = list.filter(
+          (r) =>
+            (r.name || "").toLowerCase().includes(searchF) ||
+            (r.period || "").toLowerCase().includes(searchF),
+        );
+
+      const wrap = $("crpReportList");
+      if (list.length === 0) {
+        wrap.innerHTML = `<div class="crp-empty"><div class="crp-empty-mark">—</div>No reports match yet. Reports submitted by Partners and Directors will appear here for the Chairman to review.</div>`;
+        return;
+      }
+
+      wrap.innerHTML = list
+        .map((r) => {
+          const riskFlag = r.risk && (!r.risk.c1 || !r.risk.c2 || !r.risk.c3);
+          const decCount = (r.decisions || []).length;
+          const isOpen = openId === r.id;
+          return `
+        <div class="crp-report-card" data-id="${r.id}">
+          <div class="crp-report-top" onclick="crpToggle('${r.id}')">
+            <div class="crp-report-who">
+              <b>${r.name || "Unnamed"} — ${r.role || ""}</b>
+              <span class="crp-report-meta">${r.dept || "—"} · ${r.periodType || ""} ${r.period || ""}</span>
+            </div>
+            <div class="crp-report-right">
+              ${decCount ? `<span class="crp-flag-pill decisions">${decCount} decision${decCount > 1 ? "s" : ""}</span>` : ""}
+              ${riskFlag ? `<span class="crp-flag-pill risk">Risk flag</span>` : ""}
+              <span class="crp-chevron">${isOpen ? "▾" : "▸"}</span>
+            </div>
+          </div>
+          <div class="crp-report-detail ${isOpen ? "open" : ""}">
+            <div class="crp-detail-block"><h4>Executive Summary</h4><p>${r.summary || "—"}</p></div>
+            <div class="crp-detail-block">
+              <h4>Financial Performance</h4>
+              <div class="crp-kpi-row">
+                <div class="crp-kpi"><div class="v">${fmtMoney(r.currency, r.revenue)}</div><div class="l">Revenue</div></div>
+                <div class="crp-kpi"><div class="v">${fmtMoney(r.currency, r.billings)}</div><div class="l">Billings</div></div>
+                <div class="crp-kpi"><div class="v">${fmtMoney(r.currency, r.collections)}</div><div class="l">Collections</div></div>
+                <div class="crp-kpi"><div class="v">${fmtMoney(r.currency, r.wip)}</div><div class="l">WIP / Receivables</div></div>
+              </div>
+              ${r.variance ? `<p style="margin-top:8px; font-size:13px; color:var(--ink-soft);">${r.variance}</p>` : ""}
+            </div>
+            ${r.clients && r.clients.length ? `<div class="crp-detail-block"><h4>Client &amp; Engagement Updates</h4><ul>${r.clients.map((c) => `<li>${c.client ? `<b>${c.client}:</b> ` : ""}${c.text} <em style="color:var(--ink-soft); font-style:normal; font-size:11px;">— ${c.status}</em></li>`).join("")}</ul></div>` : ""}
+            <div class="crp-detail-block">
+              <h4>Risk, Compliance &amp; QA</h4>
+              <ul>
+                <li>${r.risk?.c1 ? "✓" : "☐"} No open independence / conflict matters</li>
+                <li>${r.risk?.c2 ? "✓" : "☐"} ISQM 1 / engagement quality reviews up to date</li>
+                <li>${r.risk?.c3 ? "✓" : "☐"} No unresolved regulatory or disciplinary matters</li>
+              </ul>
+              ${r.risk?.notes ? `<p>${r.risk.notes}</p>` : ""}
+            </div>
+            ${r.hr ? `<div class="crp-detail-block"><h4>People &amp; Capacity</h4><p>${r.hr}</p></div>` : ""}
+            ${r.strategic ? `<div class="crp-detail-block"><h4>Strategic Initiatives</h4><p>${r.strategic}</p></div>` : ""}
+            ${r.decisions && r.decisions.length ? `<div class="crp-detail-block"><h4>Matters Requiring the Chairman's Decision</h4>${r.decisions.map((d) => `<div class="crp-decision-item"><b>${d.status}</b> — ${d.text}</div>`).join("")}</div>` : ""}
+            ${r.outlook ? `<div class="crp-detail-block"><h4>Outlook — Next Period</h4><p>${r.outlook}</p></div>` : ""}
+            <button class="crp-print-btn" onclick="event.stopPropagation(); crpPrintOne('${r.id}')">Print / Export this report</button>
+          </div>
+        </div>`;
+        })
+        .join("");
+    }
+
+    window.crpToggle = function (id) {
+      openId = openId === id ? null : id;
+      renderDashboard();
+    };
+
+    window.crpPrintOne = function (id) {
+      openId = id;
+      renderDashboard();
+      setTimeout(() => window.print(), 100);
+    };
+
+    ["filterDept", "filterPriority", "filterSearch"].forEach((id) => {
+      $(id).addEventListener("input", renderDashboard);
+      $(id).addEventListener("change", renderDashboard);
+    });
+
+    // ---- init ----
+    (async function init() {
+      await loadReports();
+      await loadDraft();
+    })();
+  })();
+</script>

@@ -33,7 +33,8 @@ interface EmailJob {
   notificationId?: string;
   to: string;
   subject: string;
-  html: string;
+  body: string;
+  link?: string;
 }
 
 @Injectable()
@@ -101,7 +102,8 @@ export class NotificationsService {
           notificationId,
           to: r.email,
           subject: input.title,
-          html: `<p>${input.body ?? input.title}</p>${input.link ? `<p><a href="${input.link}">Open</a></p>` : ''}`,
+          body: input.body ?? input.title,
+          ...(input.link ? { link: input.link } : {}),
         });
       }
     }

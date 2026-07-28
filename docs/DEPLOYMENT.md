@@ -67,8 +67,12 @@ docker compose -f deploy/docker-compose.yml --profile full up -d
 ## 3. Configuration & secrets
 
 - **Never in git.** `.env` and `compose.env*` are gitignored. The repo ships only `*.example` templates.
-- **Per-env values** (DB URL, JWT secrets, `RESEND_API_KEY`, `R2_*`, `API_BASE_URL`, domains) live in an
-  environment file **on the VM**, rendered by **Ansible** from an encrypted **Ansible Vault** file.
+- **Per-env values** (DB URL, JWT secrets, `RESEND_API_KEY`, `STORAGE_DRIVER` + `R2_*`, `API_BASE_URL`,
+  `WEB_APP_URL`, domains) live in environment files **on the VM**, rendered by **Ansible** from an
+  encrypted **Ansible Vault** file.
+- **Local dev:** copy storage settings into `apps/api/.env` (`STORAGE_DRIVER`, `R2_*`) and email settings
+  into `apps/worker/.env` (`RESEND_API_KEY`, `EMAIL_FROM`, `WEB_APP_URL`). The root `.env.example` is a
+  reference checklist — CLI/dev cwd is inside each app.
 - Compose injects them via `env_file:` per service. Rotating a secret = update Vault → re-run the deploy
   playbook (no image rebuild).
 - CI holds only what it needs to build/push images and reach the VM: a **registry token** and a

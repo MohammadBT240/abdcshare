@@ -115,6 +115,7 @@ survives only as a per-engagement **team tag** (member_role: Partner/Manager/Aud
 | **Super Admin** | Operations lead | **Only role that creates/manages engagements** (create, update, transition) and assigns staff to them. Full request lifecycle, uploads **working papers and final reports** (final-report = SA-only), deletes/exports documents, reviews submissions, decides reviews + sign-off. Read-only visibility into governance areas. May carry a **partner designation** (Partner / Principal Partner). |
 | **Staff** | Working practitioner | Works inside the engagements they're **attached to** (team membership). Raises/updates/assigns requests, uploads working papers, reviews client submissions, participates in discussions, submits work for review. **Row-scoped** to their engagements. |
 | **Client** | Self-service | Sees **only their own** client's engagements/requests, submits responses, participates in discussions, receives notifications. |
+| **Guest** | Invited reporter | Invited by the Principal Partner solely to submit a **Chairman report**. Provisioned with a temp password + forced password change; sees only their own report(s). |
 
 **Row-level scope:** Client → their client's rows; Staff → engagements they're on the team of (+ those
 requests/documents); Platform/Super Admin → unrestricted. Enforced in the services (`common/security/access-scope.ts`).

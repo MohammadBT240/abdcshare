@@ -1,25 +1,32 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
 import { SubmissionStatus, type Paginated } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
 import { engagementScopeWhere, resolveScope } from '../../common/security/access-scope';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
+import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { NotificationsService, type NotifyRecipient } from '../notifications/notifications.service';
 import { ClientSubmissionEntity } from './infrastructure/persistence/client-submission.entity';
+import { SubmissionFileEntity } from './infrastructure/persistence/submission-file.entity';
 import { RequestEntity } from '../requests/infrastructure/persistence/request.entity';
 import { UserEntity } from '../users/infrastructure/persistence/user.entity';
 import type {
   CreateSubmissionDto,
   ReviewSubmissionDto,
+  SubmissionFileConfirmDto,
+  SubmissionFilePresignDto,
   SubmissionListQueryDto,
 } from './presentation/dto/submission.dto';
 import { SubmissionResponseDto } from './presentation/dto/submission.dto';
+
+const SUBMISSION_POPULATE = ['request', 'submittedBy', 'reviewedBy', 'files'] as const;
 
 @Injectable()
 export class SubmissionsService {
   constructor(
     private readonly em: EntityManager,
     private readonly notifications: NotificationsService,
+    @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
 
   /** `where` for a request under the caller's scope (own client / own engagements). */
@@ -39,8 +46,59 @@ export class SubmissionsService {
       reviewedById: s.reviewedBy ? s.reviewedBy.id : null,
       reviewReason: s.reviewReason ?? null,
       reviewedAt: s.reviewedAt ?? null,
+      files: s.files.getItems().map((f) => ({
+        id: f.id,
+        fileName: f.fileName,
+        mimeType: f.mimeType ?? null,
+        sizeBytes: f.sizeBytes ?? null,
+        status: f.status,
+      })),
       createdAt: s.createdAt,
     };
+  }
+
+  /** Load a submission the caller can access (own client / own engagements). */
+  private async loadScoped(id: string, user: AuthenticatedUser): Promise<ClientSubmissionEntity> {
+    const eng = engagementScopeWhere(resolveScope(user));
+    const where = Object.keys(eng).length ? { id, request: { engagement: eng } } : { id };
+    const submission = await this.em.findOne(
+      ClientSubmissionEntity,
+      where as FilterQuery<ClientSubmissionEntity>,
+    );
+    if (!submission) throw new NotFoundException('Submission not found');
+    return submission;
+  }
+
+  /** Presign an upload for a file to attach to a submission (client). */
+  async presignFile(id: string, dto: SubmissionFilePresignDto, user: AuthenticatedUser) {
+    await this.loadScoped(id, user);
+    return this.storage.presignUpload({
+      keyPrefix: `submissions/${id}`,
+      fileName: dto.fileName,
+      contentType: dto.contentType,
+    });
+  }
+
+  /** Confirm an uploaded file onto a submission (only while it's still Pending). */
+  async confirmFile(
+    id: string,
+    dto: SubmissionFileConfirmDto,
+    user: AuthenticatedUser,
+  ): Promise<SubmissionResponseDto> {
+    const submission = await this.loadScoped(id, user);
+    if (submission.status !== SubmissionStatus.Pending) {
+      throw new BadRequestException('Cannot attach files to an already-reviewed submission');
+    }
+    this.em.create(SubmissionFileEntity, {
+      submission,
+      storageKey: dto.storageKey,
+      fileName: dto.fileName,
+      mimeType: dto.mimeType ?? null,
+      sizeBytes: dto.sizeBytes ?? null,
+      status: SubmissionStatus.Pending,
+    });
+    await this.em.flush();
+    return this.getOne(id, user);
   }
 
   /** A client responds to a request. Opens Pending, awaiting staff review. */
@@ -95,7 +153,7 @@ export class SubmissionsService {
       ClientSubmissionEntity,
       where as FilterQuery<ClientSubmissionEntity>,
       {
-        populate: ['request', 'submittedBy', 'reviewedBy'],
+        populate: [...SUBMISSION_POPULATE],
         orderBy: { createdAt: 'desc', id: 'asc' },
         limit,
         offset,
@@ -108,7 +166,7 @@ export class SubmissionsService {
     const eng = engagementScopeWhere(resolveScope(user));
     const where = Object.keys(eng).length ? { id, request: { engagement: eng } } : { id };
     const submission = await this.em.findOne(ClientSubmissionEntity, where as FilterQuery<ClientSubmissionEntity>, {
-      populate: ['request', 'submittedBy', 'reviewedBy'],
+      populate: [...SUBMISSION_POPULATE],
     });
     if (!submission) throw new NotFoundException('Submission not found');
     return this.toDto(submission);

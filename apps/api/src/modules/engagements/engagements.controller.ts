@@ -22,6 +22,9 @@ import {
   EngagementDetailResponseDto,
   EngagementListQueryDto,
   EngagementListResponseDto,
+  CreateSignOffDto,
+  RevokeSignOffDto,
+  SignOffResponseDto,
   TransitionEngagementDto,
   UpdateEngagementDto,
 } from './presentation/dto/engagement.dto';
@@ -31,6 +34,33 @@ import {
 @Controller('engagements')
 export class EngagementsController {
   constructor(private readonly engagements: EngagementsService) {}
+
+  @Get(':id/sign-offs')
+  @RequirePermission('engagement:view')
+  listSignOffs(@Param('id', ParseUUIDPipe) id: string): Promise<SignOffResponseDto[]> {
+    return this.engagements.listSignOffs(id);
+  }
+
+  @Post(':id/sign-offs')
+  @RequirePermission('review:signoff')
+  signOff(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateSignOffDto,
+    @CurrentUser('userId') userId: string,
+  ): Promise<SignOffResponseDto> {
+    return this.engagements.signOff(id, dto, userId);
+  }
+
+  @Post(':id/sign-offs/:signOffId/revoke')
+  @RequirePermission('review:signoff')
+  revokeSignOff(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('signOffId', ParseUUIDPipe) signOffId: string,
+    @Body() dto: RevokeSignOffDto,
+    @CurrentUser('userId') userId: string,
+  ): Promise<SignOffResponseDto> {
+    return this.engagements.revokeSignOff(id, signOffId, dto, userId);
+  }
 
   @Post()
   @RequirePermission('engagement:create')

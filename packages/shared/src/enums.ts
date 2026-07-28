@@ -5,25 +5,45 @@ export const ROLE_NAMES = [
   'Super Admin',
   'Staff',
   'Client',
+  'Guest',
 ] as const;
 export type RoleName = (typeof ROLE_NAMES)[number];
 
 export enum EngagementStatus {
   Planning = 'Planning',
-  Fieldwork = 'Fieldwork',
-  Review = 'Review',
+  Execution = 'Execution',
+  Reporting = 'Reporting',
   Completed = 'Completed',
   Archived = 'Archived',
 }
 
 /** Allowed forward transitions for an engagement's lifecycle. */
 export const ENGAGEMENT_TRANSITIONS: Record<EngagementStatus, EngagementStatus[]> = {
-  [EngagementStatus.Planning]: [EngagementStatus.Fieldwork],
-  [EngagementStatus.Fieldwork]: [EngagementStatus.Review, EngagementStatus.Planning],
-  [EngagementStatus.Review]: [EngagementStatus.Completed, EngagementStatus.Fieldwork],
-  [EngagementStatus.Completed]: [EngagementStatus.Archived, EngagementStatus.Review],
+  [EngagementStatus.Planning]: [EngagementStatus.Execution],
+  [EngagementStatus.Execution]: [EngagementStatus.Reporting, EngagementStatus.Planning],
+  [EngagementStatus.Reporting]: [EngagementStatus.Completed, EngagementStatus.Execution],
+  [EngagementStatus.Completed]: [EngagementStatus.Archived, EngagementStatus.Reporting],
   [EngagementStatus.Archived]: [],
 };
+
+/** The three working stages an item (request/document) can belong to. */
+export enum EngagementPhase {
+  Planning = 'Planning',
+  Execution = 'Execution',
+  Reporting = 'Reporting',
+}
+
+/** Which working stage the engagement's status maps to (terminal → Reporting). */
+export function phaseForStatus(status: EngagementStatus): EngagementPhase {
+  switch (status) {
+    case EngagementStatus.Planning:
+      return EngagementPhase.Planning;
+    case EngagementStatus.Execution:
+      return EngagementPhase.Execution;
+    default:
+      return EngagementPhase.Reporting; // Reporting / Completed / Archived
+  }
+}
 
 export enum EngagementMemberRole {
   Partner = 'Partner',
@@ -34,6 +54,7 @@ export enum EngagementMemberRole {
 export enum DocumentCategory {
   WorkingPaper = 'WorkingPaper',
   FinalReport = 'FinalReport',
+  Supporting = 'Supporting', // engagement-level reference material, no request class
 }
 
 export enum DocumentStatus {
@@ -69,6 +90,54 @@ export enum ReportReviewDecision {
 
 /** Max client-review cycles a final report may go through before it locks. */
 export const MAX_REPORT_REVIEW_ROUNDS = 3;
+
+// ---- Partner / Chairman reports -------------------------------------------
+
+export enum PartnerReportStatus {
+  Draft = 'Draft',
+  Submitted = 'Submitted',
+  Reviewed = 'Reviewed',
+}
+
+export enum ReportingOfficerTitle {
+  Partner = 'Partner',
+  Director = 'Director',
+  HeadOfDepartment = 'HeadOfDepartment',
+  ManagingConsultant = 'ManagingConsultant',
+}
+
+export enum ReportPeriodType {
+  Weekly = 'Weekly',
+  Monthly = 'Monthly',
+  Quarterly = 'Quarterly',
+  AdHoc = 'AdHoc',
+}
+
+export enum ReportCurrency {
+  NGN = 'NGN',
+  USD = 'USD',
+}
+
+/** Status of a client/engagement update row in a report. */
+export enum ReportUpdateStatus {
+  OnTrack = 'OnTrack',
+  Watch = 'Watch',
+  AtRisk = 'AtRisk',
+  NewWin = 'NewWin',
+}
+
+/** Priority of a "matter requiring the Chairman's decision" row. */
+export enum ReportDecisionPriority {
+  Urgent = 'Urgent',
+  ThisPeriod = 'ThisPeriod',
+  ForInformation = 'ForInformation',
+}
+
+export enum PartnerReportInviteStatus {
+  Invited = 'Invited',
+  Submitted = 'Submitted',
+  Revoked = 'Revoked',
+}
 
 export enum SubmissionStatus {
   Pending = 'Pending',

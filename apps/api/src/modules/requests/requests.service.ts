@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
-import { type Paginated } from '@abdcshare/shared';
+import { phaseForStatus, type Paginated } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
 import { engagementScopeWhere, resolveScope } from '../../common/security/access-scope';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
@@ -20,6 +20,7 @@ import { RequestTypeEntity } from '../request-types/infrastructure/persistence/r
 import { RequestStageEntity } from '../request-stages/infrastructure/persistence/request-stage.entity';
 import { RequestStatusEntity } from '../request-statuses/infrastructure/persistence/request-status.entity';
 import { UserEntity } from '../users/infrastructure/persistence/user.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 import type {
   AssignRequestDto,
   CreateRequestDto,
@@ -41,7 +42,10 @@ export const REQUEST_EVENT = {
 
 @Injectable()
 export class RequestsService {
-  constructor(private readonly em: EntityManager) {}
+  constructor(
+    private readonly em: EntityManager,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   private writeHistory(
     request: RequestEntity,
@@ -94,6 +98,7 @@ export class RequestsService {
       stageName: r.stage ? r.stage.name : null,
       statusId: r.status ? r.status.id : null,
       statusName: r.status ? r.status.name : null,
+      phase: r.phase ?? null,
       description: r.description,
       dueDate: r.dueDate ?? null,
       createdAt: r.createdAt,
@@ -173,6 +178,7 @@ export class RequestsService {
       requestType,
       stage,
       status,
+      phase: dto.phase ?? phaseForStatus(engagement.status),
       description: dto.description,
       dueDate: dto.dueDate ?? null,
       createdBy: this.em.getReference(UserEntity, userId),
@@ -204,6 +210,7 @@ export class RequestsService {
     if (query.requestClassId) where.requestType = { requestClass: query.requestClassId };
     if (query.stageId) where.stage = query.stageId;
     if (query.statusId) where.status = query.statusId;
+    if (query.phase) where.phase = query.phase;
     if (query.assigneeId) where.assignees = { user: query.assigneeId };
     if (query.q) where.description = { $ilike: `%${query.q}%` };
     // Row-level scope (Client → own engagements; Staff → engagements they're on)
@@ -299,6 +306,16 @@ export class RequestsService {
       assignedBy: this.em.getReference(UserEntity, user.userId),
     });
     this.writeHistory(request, user.userId, REQUEST_EVENT.Assigned, { toValue: assignee.fullName });
+    await this.notifications.emit({
+      recipients: [{ userId: assignee.id, email: assignee.email ?? null }],
+      type: 'request.assigned',
+      title: 'You were assigned to a request',
+      body: request.description?.slice(0, 140),
+      entityType: 'request',
+      entityId: id,
+      link: `/requests/${id}`,
+      excludeUserId: user.userId,
+    });
     await this.em.flush();
     return this.getOne(id, user);
   }

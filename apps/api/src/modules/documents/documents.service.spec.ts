@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
-import { DocumentCategory, DocumentStatus, EVENT } from '@abdcshare/shared';
+import { DocumentCategory, DocumentStatus, EngagementPhase, EngagementStatus, EVENT } from '@abdcshare/shared';
 import { DocumentsService } from './documents.service';
+import { DocumentEntity } from './infrastructure/persistence/document.entity';
 import { DocumentFileEntity } from './infrastructure/persistence/document-file.entity';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 
@@ -27,6 +28,35 @@ describe('DocumentsService', () => {
         ),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(em.findOne).not.toHaveBeenCalled(); // rejected before any load
+    });
+
+    it('creates a Supporting document with no request class, phase defaulting to the engagement stage', async () => {
+      const created: Array<{ entity: unknown; data: Record<string, unknown> }> = [];
+      const em = {
+        findOne: jest.fn(async () => ({ id: 'e1', department: { id: 1 }, status: EngagementStatus.Planning })),
+        create: jest.fn((entity: unknown, data: Record<string, unknown>) => {
+          const row = { id: 'doc-1', ...data };
+          created.push({ entity, data: row });
+          return row;
+        }),
+        getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+        persistAndFlush: jest.fn(async () => undefined),
+      };
+      const service = new DocumentsService(
+        em as never,
+        { enqueue: jest.fn() } as never,
+        { presignUpload: jest.fn(), presignDownload: jest.fn() } as never,
+      );
+      jest.spyOn(service, 'getOne').mockResolvedValue({ id: 'doc-1' } as never);
+
+      await service.create(
+        { engagementId: 'e1', category: DocumentCategory.Supporting, title: 'Prior-year file' },
+        superAdmin,
+      );
+
+      const doc = created.find((c) => c.entity === DocumentEntity)?.data;
+      expect(doc?.requestClass).toBeNull(); // engagement-level, no request class
+      expect(doc?.phase).toBe(EngagementPhase.Planning); // defaulted from engagement stage
     });
   });
 

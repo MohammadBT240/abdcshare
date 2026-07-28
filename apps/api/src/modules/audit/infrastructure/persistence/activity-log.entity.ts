@@ -2,6 +2,7 @@ import {
   Entity,
   Index,
   ManyToOne,
+  OptionalProps,
   PrimaryKey,
   Property,
 } from "@mikro-orm/core";
@@ -11,6 +12,8 @@ import { UserEntity } from "../../../users/infrastructure/persistence/user.entit
 @Entity({ tableName: "activity_log" })
 @Index({ properties: ["entityType", "entityId"] })
 export class ActivityLogEntity {
+  [OptionalProps]?: "id" | "createdAt";
+
   @PrimaryKey({ type: "uuid" })
   id: string = randomUUID();
 

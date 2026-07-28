@@ -6,6 +6,12 @@ import IORedis from 'ioredis';
 import { EVENT, OutboxStatus, QUEUE, type NotificationJob } from '@abdcshare/shared';
 import { OutboxEntity } from '../database/outbox.entity';
 import { EmailDispatchService } from '../email/email-dispatch.service';
+import {
+  AccountCreatedEmail,
+  GenericNotificationEmail,
+  PasswordChangedEmail,
+  PasswordResetEmail,
+} from '../email/templates';
 
 /**
  * Consumes the notifications queue, does the side effect (email / in-app fan-out),
@@ -69,24 +75,60 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
         const email = typeof payload.email === 'string' ? payload.email : null;
         const tempPassword = typeof payload.tempPassword === 'string' ? payload.tempPassword : '';
         if (email) {
-          await this.email.send(
+          const base = this.config.get<string>('WEB_APP_URL', 'http://localhost:3000').replace(/\/+$/, '');
+          const link = `${base}/login?email=${encodeURIComponent(email)}`;
+          await this.email.sendReact(
             email,
             'Your ABDC Share account',
-            `<p>An account was created for you.</p>
-             <p><strong>Username:</strong> ${email}<br/>
-             <strong>Temporary password:</strong> ${tempPassword}</p>
-             <p>Please sign in and change your password.</p>`,
+            AccountCreatedEmail({ email, tempPassword, loginUrl: link }),
+          );
+        }
+        break;
+      }
+      case EVENT.PasswordResetRequested: {
+        const email = typeof payload.email === 'string' ? payload.email : null;
+        const token = typeof payload.token === 'string' ? payload.token : '';
+        if (email) {
+          const base = this.config.get<string>('WEB_APP_URL', 'http://localhost:3000').replace(/\/+$/, '');
+          const link = `${base}/reset-password?token=${encodeURIComponent(token)}`;
+          await this.email.sendReact(
+            email,
+            'Reset your ABDC Share password',
+            PasswordResetEmail({ resetUrl: link }),
+          );
+        }
+        break;
+      }
+      case EVENT.PasswordChanged: {
+        const email = typeof payload.email === 'string' ? payload.email : null;
+        if (email) {
+          await this.email.sendReact(
+            email,
+            'Your ABDC Share password was changed',
+            PasswordChangedEmail(),
           );
         }
         break;
       }
       case EVENT.NotificationEmail: {
         const emails = Array.isArray(payload.emails)
-          ? (payload.emails as Array<{ notificationId?: string; to: string; subject: string; html: string }>)
+          ? (payload.emails as Array<{
+              notificationId?: string;
+              to: string;
+              subject: string;
+              body?: string;
+              link?: string;
+              html?: string;
+            }>)
           : [];
         for (const e of emails) {
           if (!e?.to) continue;
-          await this.email.send(e.to, e.subject, e.html);
+          const body = e.body ?? e.html ?? e.subject;
+          await this.email.sendReact(
+            e.to,
+            e.subject,
+            GenericNotificationEmail({ title: e.subject, body, link: e.link }),
+          );
           if (e.notificationId) {
             await em
               .getConnection()

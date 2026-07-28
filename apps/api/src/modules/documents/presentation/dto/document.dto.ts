@@ -1,20 +1,36 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import {
   DocumentCategory,
   DocumentParticipantRole,
   DocumentStatus,
+  EngagementPhase,
   type PageMeta,
 } from '@abdcshare/shared';
 import { PaginationQueryDto } from '../../../../common/dto/pagination-query.dto';
 
 export class CreateDocumentDto {
   @ApiProperty() @IsUUID() engagementId!: string;
-  @ApiProperty({ description: 'request class (must be in the engagement scope).' }) @IsInt() requestClassId!: number;
+  @ApiPropertyOptional({ description: 'Request class (required for WorkingPaper/FinalReport; omit for Supporting).' })
+  @IsOptional() @IsInt() requestClassId?: number;
   @ApiPropertyOptional({ description: 'Optional request this document answers.' })
   @IsOptional() @IsUUID() requestId?: string;
   @ApiProperty({ enum: DocumentCategory }) @IsEnum(DocumentCategory) category!: DocumentCategory;
+  @ApiPropertyOptional({ enum: EngagementPhase, description: 'Defaults to the engagement stage.' })
+  @IsOptional() @IsEnum(EngagementPhase) phase?: EngagementPhase;
   @ApiProperty() @IsString() @MaxLength(255) title!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
 }
@@ -37,6 +53,18 @@ export class ConfirmUploadDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) sizeBytes?: number;
 }
 
+export class PresignBatchDto {
+  @ApiProperty({ type: [PresignUploadDto] })
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(50) @ValidateNested({ each: true }) @Type(() => PresignUploadDto)
+  files!: PresignUploadDto[];
+}
+
+export class ConfirmBatchDto {
+  @ApiProperty({ type: [ConfirmUploadDto] })
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(50) @ValidateNested({ each: true }) @Type(() => ConfirmUploadDto)
+  files!: ConfirmUploadDto[];
+}
+
 export class AddDocumentParticipantDto {
   @ApiProperty() @IsUUID() userId!: string;
   @ApiProperty({ enum: DocumentParticipantRole })
@@ -54,6 +82,7 @@ export class DocumentListQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() requestId?: string;
   @ApiPropertyOptional({ enum: DocumentCategory }) @IsOptional() @IsEnum(DocumentCategory) category?: DocumentCategory;
   @ApiPropertyOptional({ enum: DocumentStatus }) @IsOptional() @IsEnum(DocumentStatus) status?: DocumentStatus;
+  @ApiPropertyOptional({ enum: EngagementPhase }) @IsOptional() @IsEnum(EngagementPhase) phase?: EngagementPhase;
 }
 
 export class DocumentFileDto {
@@ -74,11 +103,12 @@ export class DocumentParticipantDto {
 export class DocumentResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() engagementId!: string;
-  @ApiProperty() requestClassId!: number;
+  @ApiPropertyOptional() requestClassId?: number | null;
   @ApiPropertyOptional() requestClassName?: string | null;
   @ApiPropertyOptional() requestId?: string | null;
   @ApiProperty() departmentId!: number;
   @ApiProperty({ enum: DocumentCategory }) category!: DocumentCategory;
+  @ApiPropertyOptional({ enum: EngagementPhase }) phase?: EngagementPhase | null;
   @ApiProperty() title!: string;
   @ApiPropertyOptional() description?: string | null;
   @ApiProperty({ enum: DocumentStatus }) status!: DocumentStatus;
