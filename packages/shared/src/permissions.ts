@@ -46,8 +46,10 @@ export const PERMISSIONS = [
   'report-review:respond', // Client: approve / request changes
   // partner weekly reports (granted by DESIGNATION, not role)
   'partner-report:submit',
+  'partner-report:view', // list/read the module (authors see own; Chairman sees all)
   'partner-report:review',
   'partner-report:view-all',
+  'partner-report:invite', // Principal Partner: invite a Guest to submit a report
   // cross-cutting
   'notification:receive',
   'audit:view',
@@ -86,12 +88,16 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'engagement:view', 'request:view', 'submission:respond', 'discussion:participate',
     'report-review:respond', 'notification:receive',
   ],
+  // Guests are invited by the Principal Partner solely to submit a report to the Chairman.
+  Guest: ['partner-report:submit', 'partner-report:view', 'notification:receive'],
 };
 
 /** Extra permissions granted by a Super Admin's partner designation (additive to role). */
 export const DESIGNATION_PERMISSIONS: Record<PartnerDesignation, Permission[]> = {
-  Partner: ['partner-report:submit'],
-  PrincipalPartner: ['partner-report:review', 'partner-report:view-all'],
+  Partner: ['partner-report:submit', 'partner-report:view'],
+  PrincipalPartner: [
+    'partner-report:view', 'partner-report:review', 'partner-report:view-all', 'partner-report:invite',
+  ],
 };
 
 /** Resolve the effective permission set for a role + optional partner designation. */

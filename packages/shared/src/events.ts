@@ -18,5 +18,8 @@ export const EVENT = {
   ReviewSubmitted: 'review.submitted',
   ReviewDecided: 'review.decided',
   NotificationEmail: 'notification.email',
+  PartnerReportInvited: 'partner_report.invited',
+  PartnerReportSubmitted: 'partner_report.submitted',
+  PartnerReportReviewed: 'partner_report.reviewed',
 } as const;
 export type EventType = (typeof EVENT)[keyof typeof EVENT];
