@@ -1,0 +1,24 @@
+{
+  "name": "@abdcshare/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "generate": "openapi-typescript ./openapi.json -o src/generated/schema.ts",
+    "generate:live": "openapi-typescript \"${API_BASE_URL:-http://localhost:4000}/api/docs-json\" -o src/generated/schema.ts",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0"
+  },
+  "devDependencies": {
+    "@abdcshare/config": "workspace:*",
+    "eslint": "^9.18.0",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3"
+  }
+}

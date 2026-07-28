@@ -74,6 +74,7 @@ export class AuthService {
       email: user.email,
       role: user.role.roleName,
       mustChangePassword: user.mustChangePassword,
+      partnerDesignation: user.partnerDesignation ?? null,
     };
   }
 

@@ -229,6 +229,24 @@ key index-backed, exports streamed in batches. Grids = offset + `keepPreviousDat
   centrally in `components/ui` — don't fork primitives per feature. No inline `style` except dynamic values.
 - Reuse shared `DataTable`, `PageToolbar`, `Card` — don't rebuild tables per page.
 
+### 14.1 Skeleton-first loading (web — mandatory)
+
+Every async UI surface ships with a **matching skeleton** before real content. No blank screens or
+spinner-only pages.
+
+1. **Three loading layers:**
+   - **Route:** `loading.tsx` per route segment (App Router suspense boundary).
+   - **Query:** TanStack Query `isPending` / `isFetching` → render the feature skeleton (not `null`).
+   - **Mutation:** Form submit → disable inputs + inline skeleton or `aria-busy` on the primary action.
+2. **1:1 layout match:** Skeleton mirrors final layout (same grid, card count, sidebar width) to avoid layout shift.
+3. **Centralized skeleton folder (locked):** All domain/page skeleton components live **only** under
+   `apps/web/src/components/skeletons/`. Do **not** co-locate skeletons in `features/*`, route folders,
+   or next to layout components. The shadcn base primitive stays in `components/ui/skeleton.tsx`.
+4. **Barrel export:** `components/skeletons/index.ts` re-exports every skeleton; pages, `loading.tsx`,
+   and hooks import from `@/components/skeletons` (never deep paths).
+5. **Naming:** `<Feature><Part>Skeleton` — e.g. `AuthCardSkeleton`, `AppHeaderSkeleton`. One file per skeleton.
+6. **No fetch in components:** Data via BFF + hooks only (ARCHITECTURE §6).
+
 ---
 
 ## 15. Error handling

@@ -5,6 +5,7 @@ packages:
 # pnpm 11: explicit build-script decisions (must be real booleans, not placeholders).
 allowBuilds:
   '@scarf/scarf': false # optional telemetry — no build needed
+  esbuild: true
   msgpackr-extract: false # optional native accelerator — JS fallback is fine
   sharp: true # Next.js image optim — installs prebuilt binaries (no compile)
   unrs-resolver: true # native module resolver (eslint import tooling) — prebuilt binaries

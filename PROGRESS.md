@@ -539,8 +539,21 @@ Structured periodic reports to the Chairman (Principal Partner), modelled on `ch
   `GenericNotification` via `@react-email/render`; API notification outbox payload now `{ subject, body, link? }`.
 - **Env alignment** — `.env.example` files document per-app copy (`apps/api` storage, `apps/worker` email).
 
+## Web Slice 1 — Auth BFF, api-client, skeleton-first UI (complete)
+- **`packages/api-client`** — `openapi-typescript` + `openapi-fetch`; committed auth subset OpenAPI for offline
+  codegen; `pnpm generate:api-client` / `generate:api-client:live`.
+- **`apps/web` auth BFF** — `/api/bff/auth/*` (login, refresh, logout, me, forgot/reset/change-password);
+  httpOnly cookies (`abdc_access`, `abdc_refresh`); silent refresh on `me`.
+- **shadcn primitives** — button, input, label, card, skeleton; **centralized skeletons** under
+  `components/skeletons/` with barrel export (`AuthCardSkeleton`, `AppShellSkeleton`, `DashboardSkeleton`, …).
+- **Auth flow** — `(auth)` route group (login, change-password, forgot/reset) + middleware cookie gate;
+  `(app)` shell with `useAuth`, permission-filtered sidebar, forced password-change redirect.
+- **Dashboard** — authed welcome + BFF health proxy status.
+- **Docs** — DEVELOPMENT_GUIDELINES §14.1 skeleton-first rules.
+- **Verify:** `pnpm --filter @abdcshare/web typecheck && build` green.
+
 ## Pending / next
-1. **Web frontend** + `api-client` generation (deferred by request).
+1. **Web Slice 2** — domain CRUD screens (users, engagements, admin tables).
 2. **Extract shared persistence** — worker duplicates `outbox.entity.ts`; notifications email_sent update
    uses raw SQL to avoid duplicating the entity. A shared persistence package would clean this up.
 3. **API e2e (Supertest)** — needs `supertest` + a live DB; unit specs in place (~19 files).
