@@ -10,6 +10,7 @@ import { AssignDesignationDto } from './presentation/dto/assign-designation.dto'
 import { BulkCsvDto } from './presentation/dto/bulk-csv.dto';
 import { UserListQueryDto } from './presentation/dto/user-list-query.dto';
 import { UserListResponseDto, UserResponseDto } from './presentation/dto/user-response.dto';
+import { AvatarConfirmDto, AvatarPresignDto, MeResponseDto, UpdateMeDto } from './presentation/dto/me.dto';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -33,6 +34,30 @@ export class UsersController {
   }
 
   // ---- static routes BEFORE :id so they don't get captured as an id ----
+
+  /** Own profile — any authenticated user (no permission required). */
+  @Get('me')
+  getMe(@CurrentUser('userId') userId: string): Promise<MeResponseDto> {
+    return this.users.getMe(userId);
+  }
+
+  @Patch('me')
+  updateMe(@CurrentUser('userId') userId: string, @Body() dto: UpdateMeDto): Promise<MeResponseDto> {
+    return this.users.updateMe(userId, dto);
+  }
+
+  @Post('me/avatar/presign')
+  avatarPresign(@CurrentUser('userId') userId: string, @Body() dto: AvatarPresignDto) {
+    return this.users.avatarPresignUpload(userId, dto);
+  }
+
+  @Post('me/avatar')
+  avatarConfirm(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: AvatarConfirmDto,
+  ): Promise<MeResponseDto> {
+    return this.users.avatarConfirm(userId, dto.storageKey);
+  }
 
   @Get('export')
   @RequirePermission('user:view')

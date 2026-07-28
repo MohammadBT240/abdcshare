@@ -1,9 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { EVENT, type Paginated, type PartnerDesignation } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
+import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { OutboxService } from '../outbox/outbox.service';
 import { UserEntity } from './infrastructure/persistence/user.entity';
 import { RoleEntity } from '../roles/infrastructure/persistence/role.entity';
@@ -16,6 +17,8 @@ import type { CreateUserDto } from './presentation/dto/create-user.dto';
 import type { UpdateUserDto } from './presentation/dto/update-user.dto';
 import type { UserListQueryDto } from './presentation/dto/user-list-query.dto';
 import { UserResponseDto } from './presentation/dto/user-response.dto';
+import type { AvatarPresignDto, UpdateMeDto } from './presentation/dto/me.dto';
+import { MeResponseDto } from './presentation/dto/me.dto';
 
 const PLATFORM_ADMIN = 'Platform Admin';
 const SUPER_ADMIN = 'Super Admin';
@@ -29,7 +32,76 @@ export class UsersService {
   constructor(
     private readonly em: EntityManager,
     private readonly outbox: OutboxService,
+    @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
+
+  private async loadMe(userId: string): Promise<UserEntity> {
+    const user = await this.em.findOne(UserEntity, { id: userId }, { populate: ['role'] });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  private async toMeDto(u: UserEntity): Promise<MeResponseDto> {
+    return {
+      id: u.id,
+      titleId: u.title ? u.title.id : null,
+      firstName: u.firstName,
+      middleName: u.middleName ?? null,
+      surname: u.surname,
+      fullName: u.fullName,
+      email: u.email,
+      role: u.role.roleName,
+      partnerDesignation: u.partnerDesignation ?? null,
+      departmentId: u.department ? u.department.id : null,
+      genderId: u.gender ? u.gender.id : null,
+      maritalStatusId: u.maritalStatus ? u.maritalStatus.id : null,
+      phoneNumber: u.phoneNumber ?? null,
+      officialAddress: u.officialAddress ?? null,
+      residentialAddress: u.residentialAddress ?? null,
+      avatarUrl: u.avatarPath ? await this.storage.presignDownload(u.avatarPath) : null,
+      isActive: u.isActive,
+      mustChangePassword: u.mustChangePassword,
+    };
+  }
+
+  /** The authenticated user's own full profile. */
+  async getMe(userId: string): Promise<MeResponseDto> {
+    return this.toMeDto(await this.loadMe(userId));
+  }
+
+  /** Self-service edit of own profile (not role/department/email — those are admin-managed). */
+  async updateMe(userId: string, dto: UpdateMeDto): Promise<MeResponseDto> {
+    const user = await this.loadMe(userId);
+    if (dto.titleId != null) user.title = this.em.getReference(TitleEntity, dto.titleId);
+    if (dto.genderId != null) user.gender = this.em.getReference(GenderEntity, dto.genderId);
+    if (dto.maritalStatusId != null) {
+      user.maritalStatus = this.em.getReference(MaritalStatusEntity, dto.maritalStatusId);
+    }
+    if (dto.firstName != null) user.firstName = dto.firstName;
+    if (dto.middleName !== undefined) user.middleName = dto.middleName ?? null;
+    if (dto.surname != null) user.surname = dto.surname;
+    if (dto.phoneNumber !== undefined) user.phoneNumber = dto.phoneNumber ?? null;
+    if (dto.officialAddress !== undefined) user.officialAddress = dto.officialAddress ?? null;
+    if (dto.residentialAddress !== undefined) user.residentialAddress = dto.residentialAddress ?? null;
+    user.fullName = buildFullName(user.firstName, user.middleName, user.surname);
+    await this.em.flush();
+    return this.toMeDto(user);
+  }
+
+  async avatarPresignUpload(userId: string, dto: AvatarPresignDto) {
+    return this.storage.presignUpload({
+      keyPrefix: `avatars/${userId}`,
+      fileName: dto.fileName,
+      contentType: dto.contentType,
+    });
+  }
+
+  async avatarConfirm(userId: string, storageKey: string): Promise<MeResponseDto> {
+    const user = await this.loadMe(userId);
+    user.avatarPath = storageKey;
+    await this.em.flush();
+    return this.toMeDto(user);
+  }
 
   private toDto(u: UserEntity): UserResponseDto {
     return {
