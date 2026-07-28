@@ -31,6 +31,7 @@ import { ReportReviewsModule } from './modules/report-reviews/report-reviews.mod
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { InsightsModule } from './modules/insights/insights.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
+import { PartnerReportsModule } from './modules/partner-reports/partner-reports.module';
 import { DiscussionsModule } from './modules/discussions/discussions.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { CompanyProfileModule } from './modules/company-profile/company-profile.module';
@@ -64,6 +65,7 @@ import { HealthModule } from './health/health.module';
     NotificationsModule,
     InsightsModule,
     RemindersModule,
+    PartnerReportsModule,
     DiscussionsModule,
     ReviewsModule,
     CompanyProfileModule,
