@@ -86,7 +86,8 @@ your confirm; trivial to add back as `{id,name,is_active}` lookups if needed.
 **password_reset_tokens** — (id, user_id FK, token_hash UQ, expires_at, used_at).
 > **Dropped:** `users_access` (per-user grants) → replaced by role→permission RBAC.
 >
-> **Roles (v5):** `Platform Admin`, `Super Admin`, `Staff`, `Client`. **`Auditor` is no longer a role** —
+> **Roles (v8):** `Platform Admin`, `Super Admin`, `Staff`, `Client`, **`Guest`** (invited by the Principal
+> Partner solely to submit a report; forced password change on first login). **`Auditor` is no longer a role** —
 > every Staff is a working practitioner; "Auditor" survives as the per-engagement **team member_role**
 > tag (Partner/Manager/Auditor). **Engagements are created by Super Admin only**; staff work inside the
 > engagements they're attached to. **Row-level scope:** Client → own client's rows; Staff → engagements
@@ -124,8 +125,14 @@ Development, Shared Services, Other.
 
 **engagements** — top-level container for a client's work
 | id uuid PK · client_id FK · engagement_type_id FK · department_id FK · reference_code varchar UQ ·
-| title · period_label varchar null · status enum(Planning,Fieldwork,Review,Completed,Archived) ·
+| title · period_label varchar null · **status enum(Planning,Execution,Reporting,Completed,Archived)** ·
 | start_date / target_completion_date date null · completed_at timestamptz null · created_by FK |
+
+> **Stages (v7):** the working lifecycle is **Planning → Execution → Reporting → Completed → Archived**
+> (Fieldwork→Execution, Review→Reporting rename). Requests and documents carry a `phase`
+> (Planning/Execution/Reporting) for the stage they belong to — e.g. **planning preliminaries** are
+> requests/documents with `phase = Planning`. **`Supporting`** documents are engagement-level reference
+> material (no request class), uploadable by any team member.
 
 - **engagement_types** `{ id int PK, name UQ, is_active }`.
 - **request_classes** `{ id int PK, code UQ null, name UQ, description text null, is_active }`.
@@ -146,32 +153,36 @@ Super Admins can carry a **partner designation** (`users.partner_designation`, �
   (`UNIQUE (partner_designation) WHERE partner_designation = 'PrincipalPartner'`) **and** a service guard.
 - `Partner` may be held by many Super Admins; a Super Admin may also have **no** designation.
 
-**Weekly reporting flow:** each **Partner** submits a weekly report; the **Principal Partner** reviews.
+**Reporting flow (v8 — structured):** **Partners** (and invited **Guests**) submit periodic structured
+reports to the **Chairman** (Principal Partner), who reviews. Modelled on the chairman-reporting-portal
+(sections: reporting officer · executive summary · financials · client/engagement updates · people &
+capacity · matters requiring decision · outlook. Risk/Compliance/QA and Strategic Initiatives are
+intentionally excluded).
 
-**partner_weekly_reports**
-| Column | Type | Note |
-|--------|------|------|
-| id | uuid | PK |
-| partner_id | uuid | FK → users.id (must be a Partner) |
-| week_start_date | date | Monday of the reporting week |
-| title | varchar | null |
-| body | text | the report content (rich text) |
-| status | enum(Draft, Submitted, Reviewed) | |
-| submitted_at | timestamptz | null |
-| reviewed_by | uuid | FK → users.id (the Principal Partner), null |
-| reviewed_at | timestamptz | null |
-| review_notes | text | null |
-| created_at / updated_at | timestamptz | |
-| | | **UQ (partner_id, week_start_date)** — one report per partner per week |
+**partner_reports** — id uuid PK · submitted_by FK → users · invite_id FK → partner_report_invites null
+(set for Guest reports) · reporting_officer_name · officer_title enum(Partner,Director,HeadOfDepartment,
+ManagingConsultant) · department · period_type enum(Weekly,Monthly,Quarterly,AdHoc) · period_label null ·
+executive_summary text null · currency enum(NGN,USD) null · fee_revenue/billings_raised/collections_received/
+outstanding_wip numeric(18,2) null · variance_vs_budget varchar null · people_capacity text null ·
+outlook text null · status enum(Draft,Submitted,Reviewed) · submitted_at null · reviewed_by FK null ·
+review_notes null · reviewed_at null.
 
-**partner_weekly_report_files** *(optional attachments)* — id, report_id FK, storage_key, file_name,
-mime_type, size_bytes, uploaded_at.
+**partner_report_engagement_updates** *(04)* — id, report_id FK, client_engagement, update text,
+status enum(OnTrack,Watch,AtRisk,NewWin), sort_order.
+**partner_report_decisions** *(08)* — id, report_id FK, decision text,
+priority enum(Urgent,ThisPeriod,ForInformation), sort_order.
 
-**Automation:** the worker runs a **weekly scheduled reminder** (BullMQ repeatable job) nudging Partners
-who haven't submitted, and notifies the Principal Partner when a report is submitted (outbox → worker).
+**partner_report_invites** *(Guest access)* — id uuid · invited_by FK → users (the Principal Partner) ·
+guest_user FK → users (the provisioned `Guest`) · email · status enum(Invited,Submitted,Revoked).
+The Principal Partner invites by email → a **`Guest`-role user** is provisioned (temp password +
+`must_change_password`, credentials + login link emailed) → the guest logs in, changes password, and
+submits one report to the Chairman.
 
-**Permissions:** `partner-report:submit` (Partner), `partner-report:review` + `partner-report:view-all`
-(Principal Partner). A Partner sees only their own reports; the Principal Partner sees all.
+**Automation / permissions:** submit → notifies the Chairman; review → notifies the author.
+`partner-report:submit` (Partner desig + Guest role), `partner-report:view` (authors see own / Chairman
+sees all), `partner-report:review` + `partner-report:view-all` + `partner-report:invite` (Principal
+Partner). **`mustChangePassword` is globally enforced** (MustChangePasswordGuard) so an invited guest must
+set a password before doing anything.
 
 ---
 
@@ -179,7 +190,9 @@ who haven't submitted, and notifies the Principal Partner when a report is submi
 
 **requests** *(legacy `request_client`)*
 | id uuid PK · engagement_id FK · request_type_id FK (→ request_class derived) · stage_id FK → request_stages ·
-| status_id FK → request_statuses · description text · due_date date null · created_by FK |
+| status_id FK → request_statuses · **phase enum(Planning,Execution,Reporting) null** (the engagement
+| stage this request belongs to; defaults to the engagement's current stage) · description text ·
+| due_date date null · created_by FK |
 
 - **request_types** *(legacy `request_type`)* `{ id int PK, request_class_id FK, name, expected_documents int (legacy documents_no), is_active }` — **grouped under request class** (UQ on request_class_id+name).
 - **request_stages** `{ id int PK, name, sort_order, is_active }`.
@@ -196,8 +209,9 @@ Legacy had, per service line: `*_working_paper`(+`_files`) and `*_final_reports`
 `_advisors`/`_staffs`). Unified:
 
 **documents** — the logical paper/report
-| id uuid PK · engagement_id FK · request_class_id FK · request_id FK null · department_id FK ·
-| category enum(WorkingPaper, FinalReport) · title (legacy paper_title/report_title) ·
+| id uuid PK · engagement_id FK · **request_class_id FK null** (null for Supporting) · request_id FK null ·
+| department_id FK · **phase enum(Planning,Execution,Reporting) null** ·
+| **category enum(WorkingPaper, FinalReport, Supporting)** · title (legacy paper_title/report_title) ·
 | description text (legacy *_description) · status enum(Draft, Ready, UnderReview, SignedOff) ·
 | current_version int · **client_review_state enum(NotSent, AwaitingClient, ChangesRequested, Locked,
 | Approved, Overridden)** · **client_review_round int** (final-report client review; NotSent/0 for working
@@ -252,10 +266,11 @@ email_sent bool, email_sent_at null, created_at.
 
 ---
 
-## 12. Company profile (CORRECTED — a document library, not a singleton)
-Legacy `company_profiles` stores **multiple** company-profile documents (title, description, file).
-**company_profile_documents** — id, title, description text, storage_key, file_name, file_url null,
-size_bytes, mime_type, status enum(Active, Archived), created_by FK, created_at, updated_at.
+## 12. Company profile (DECIDED — a settings singleton, not a library)
+**company_profile** — a **single row** holding the firm's branding/letterhead source: `id` (singleton),
+`name`, `logo_path` null, `email` null, `phone` null, `address` text null, `updated_by` FK null,
+`updated_at`. Managed via `GET`/`PATCH /api/company-profile` (`company-profile:view` / `:manage`).
+_(Supersedes the earlier "document library" idea.)_
 
 ---
 
@@ -300,7 +315,7 @@ validation `result` before the user commits the import.)
 | *_final_reports(_files) ×6 | `documents`(FinalReport) + `document_files` | **unify** |
 | *_final_report_auditors/advisors/staffs | `document_participants` | **unify** |
 | reviews | `reviews` | keep |
-| company_profiles | `company_profile_documents` | keep (corrected as library) |
+| company_profiles | `company_profile` (singleton settings) | keep (decided: singleton) |
 | notifications / notification_preferences | `notifications` / `notification_preferences` | keep |
 | email_queue | `outbox` | adapt (Redis/BullMQ) |
 | activity_log | `activity_log` | keep |

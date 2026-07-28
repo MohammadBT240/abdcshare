@@ -28,6 +28,9 @@ cp apps/api/.env.example apps/api/.env
 cp apps/worker/.env.example apps/worker/.env
 cp apps/web/.env.example apps/web/.env
 
+# Copy storage vars into apps/api/.env and email vars into apps/worker/.env
+# (dev commands run with cwd inside each app — root .env is reference only).
+
 docker compose -f deploy/docker-compose.yml up -d postgres redis
 pnpm --filter @abdcshare/shared build
 pnpm db:setup    # migrate + seed (or migration:up + seed:dev)

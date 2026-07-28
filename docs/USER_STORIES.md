@@ -7,7 +7,7 @@
 >
 > Format: **As a** _role_, **I want** _capability_, **so that** _benefit_ — with acceptance criteria (AC),
 > the guarding **permission**, and MoSCoW priority. Roles: Platform Admin (PA), Super Admin (SA),
-> Staff (ST), Client (CL). Sub-flags on SA: Principal Partner (PP), Partner (PT).
+> Staff (ST), Client (CL), Guest (invited to submit a Chairman report). Sub-flags on SA: Principal Partner (PP), Partner (PT).
 > **(v5: `Auditor` is no longer a role — every Staff is a working practitioner; "Auditor" is now only a
 > per-engagement team tag. Engagements are created by Super Admin only; Staff are row-scoped to the
 > engagements they're attached to.)**
@@ -27,7 +27,7 @@
 | D | Reference data (`global_*` lookups) | `reference-data:*` |
 | E | Catalogues (request classes, request types, stages, statuses, engagement types) | `catalogue:*` |
 | F | Departments | `department:manage` |
-| G | Company-profile document library | `company-profile:*` |
+| G | Company profile (firm settings singleton) | `company-profile:*` |
 | H | Engagements | `engagement:*` |
 | I | Requests | `request:*` |
 | J | Client submissions | `submission:*` |
@@ -88,15 +88,17 @@
 - **F-1 (M, PA)** Manage departments (Assurance, Tax, Advisory, Business Dev, Shared Services, Other; add/rename/deactivate). `department:manage`. _(formerly service lines)_
 - **F-2 (S, PA)** Assign users a home department.
 
-## Epic G — Company-profile document library _(corrected: a library, not a singleton)_
+## Epic G — Company profile _(decided: a settings singleton, not a library)_
 
-- **G-1 (M, PA)** Upload/manage company-profile documents (title, description, file, status Active/Archived). `company-profile:manage`.
-- **G-2 (M, SA/ST)** View/download company-profile documents. `company-profile:view`.
+- **G-1 (M, PA)** Manage the firm's **company profile** — a single record: name, logo, email, phone, address (letterhead / branding source). `company-profile:manage`.
+- **G-2 (M, SA/ST)** View the company profile. `company-profile:view`.
 
 ## Epic H — Engagements
 
 - **H-1 (M, SA)** Open an engagement for a client (client, engagement type, department, optional period, dates). AC: unique reference code; logged. `engagement:create`.
-- **H-2 (M, SA)** Status lifecycle Planning→Fieldwork→Review→Completed→Archived, with history + owners. AC: allowed transitions only; completion requires terminal requests (configurable). `engagement:transition`.
+- **H-2 (M, SA)** Stage lifecycle **Planning→Execution→Reporting→Completed→Archived**, with history + owners. AC: allowed transitions only; **completion requires every in-scope request class to be signed off** (or an engagement-wide sign-off). `engagement:transition`.
+- **H-6 (M, team)** **Stage-tagged work items:** requests and documents carry the engagement stage they belong to (Planning/Execution/Reporting, default = current stage) — so *planning preliminaries* (client requests + team uploads with `phase=Planning`) group together. 🆕
+- **H-7 (M, team)** **General supporting documents** — engagement-level reference material with no request class (`category=Supporting`), uploadable by any team member for future reference. `working-paper:upload`. 🆕
 - **H-3 (M, SA)** Assign engagement team (Partner/Manager/Auditor roles). AC: only team + admins can act on its requests. `engagement:update`.
 - **H-4 (M, team)** Engagement workspace: request classes with grouped requests, progress %, documents. `engagement:view`.
 - **H-5 (S, SA)** Add request classes to an engagement (from allowed set). `engagement:update`.
@@ -117,7 +119,7 @@
 ## Epic J — Client submissions
 
 - **J-1 (M, CL)** See requests raised for my engagements, grouped by engagement/request class, with due dates & status. `request:view`.
-- **J-2 (M, CL)** Respond to a request and upload the requested document(s) (message + files). AC: notifies assigned auditor; updates status. `submission:respond`. _(client-response / client_response_sub)_
+- **J-2 (M, CL)** Respond to a request and upload the requested document(s) (message + files). AC: notifies assigned auditor; updates status. `submission:respond`. _(client-response / client_response_sub)_ ✅
 - **J-3 (M, ST/SA)** Accept or return a submitted document with reason. AC: return requires reason; per-file status; notifies client; logged. `submission:review`. _(update-response-document-status)_
 - **J-4 (S, CL)** See per-document status (Pending/Accepted/Returned + reason).
 
@@ -128,7 +130,7 @@
 - **K-3 (M, authorised)** Secure download/inline preview (presigned GET; authorised vs engagement membership + `document:view`). `document:view`. _(parity: storage/download, viewer)_
 - **K-4 (S, ST/SA)** Document **versioning** (re-upload = new version; history kept). 🆕
 - **K-5 (M, ST/SA)** **Export** an engagement's / request class's documents as a zip (worker). `document:export`. _(parity: 13× export_*)_
-- **K-6 (S, ST/SA)** **Bulk upload** many documents (presign many → confirm many). 
+- **K-6 (S, ST/SA)** **Bulk upload** many documents (presign many → confirm many). ✅
 - **K-7 (M, SA)** Delete a document uploaded in error (logged; storage cleaned). `document:delete` (Super Admin only). _(parity: bulk_delete_audit_papers etc.)_
 
 ### Final-report client review cycle 🆕
@@ -159,18 +161,19 @@
 - **N-3 (M, system)** Transactional emails via Resend (worker): credentials, reset/changed, request created/updated, document accepted/returned, discussion posted, partner-report reminder/submitted. _(parity: email_queue + templates)_
 - **N-4 (S)** Deadline reminders for due/overdue requests. 🆕
 
-## Epic O — Partner weekly reports 🆕
+## Epic O — Partner / Chairman reports 🆕 ✅
 
-- **O-1 (M, PT)** Submit my **weekly report** (week of, body, optional attachments); one per week. AC: `partner-report:submit`; unique per partner/week; Draft→Submitted; notifies Principal Partner via outbox.
-- **O-2 (M, PP)** Review any partner's weekly report; add review notes (Submitted→Reviewed). `partner-report:review`.
-- **O-3 (M, PP)** See **all** partners' reports, filter by week/partner/status. `partner-report:view-all`.
-- **O-4 (M, PT)** See only my own reports & their review status. `partner-report:submit`.
-- **O-5 (S, worker)** Weekly reminder to Partners who haven't submitted; escalation summary to the Principal Partner. (BullMQ repeatable job.)
+- **O-1 (M, PT/Guest)** Submit a **structured periodic report** to the Chairman — reporting officer, executive summary, financials, client/engagement updates, people & capacity, matters requiring decision, outlook. Draft→Submitted; notifies the Chairman. `partner-report:submit`. ✅ _(excludes Risk/Compliance/QA + Strategic Initiatives per decision)_
+- **O-2 (M, PP)** Review any report; add review notes (Submitted→Reviewed); notifies the author. `partner-report:review`. ✅
+- **O-3 (M, PP)** See **all** reports + dashboard, filter by period/status. `partner-report:view-all`. ✅
+- **O-4 (M, PT/Guest)** See only my own reports & review status. `partner-report:view`. ✅
+- **O-5 (M, PP)** 🆕 **Invite a guest** (email + name) to submit a report — a new email provisions a **`Guest`** login (temp password + login link; forced password change on first login); an email that **already has an account** is not re-provisioned but simply **reminded** to submit. `partner-report:invite`. ✅
+- **O-6 (S, worker)** 🆕 **Periodic reminder** (weekly, Mondays 08:00) nudges guests with an outstanding invite (still `Invited`) to submit. `PartnerReportReminderService`. ✅
 
 ## Epic P — Dashboards & analytics 🆕
 
-- **P-1 (M, SA/PP)** Firm dashboard: active engagements by status, overdue requests, upcoming deadlines, completion %.
-- **P-2 (M, ST)** Personal dashboard: my assigned requests & deadlines.
+- **P-1 (M, SA/PP)** Firm dashboard: active engagements by status, overdue requests, upcoming deadlines, completion %. ✅ (headline counts built; charts/% pending)
+- **P-2 (M, ST)** Personal dashboard: my assigned requests & deadlines. ✅
 - **P-3 (S, SA)** Per-engagement analytics: request-class progress, request aging, workload by member.
 - **P-4 (S, CL)** Client dashboard: outstanding requests & returned documents.
 - **P-5 (C, PA)** Governance dashboard: users by role/department, catalogue/reference-data health.
@@ -178,14 +181,14 @@
 
 ## Epic Q — Search, reporting & exports
 
-- **Q-1 (S, SA/ST)** Global search across engagements, clients, requests, documents (role-scoped). 🆕
+- **Q-1 (S, SA/ST)** Global search across engagements, clients, requests, documents (role-scoped). 🆕 ✅
 - **Q-2 (M, SA)** Reports of requests & documents **grouped by request class** (per engagement + roll-up); paginated. `document:export`.
 - **Q-3 (M, SA)** Export any report to CSV/Excel; bundle documents to zip (respecting filters).
 - **Q-4 (C, SA)** Firm-wide engagement status report across clients.
 
 ## Epic R — Audit trail
 
-- **R-1 (M, PA/SA)** Immutable activity log of significant actions (logins, user/client/catalogue changes, engagement/request/document changes, status transitions, sign-offs, partner-report actions). `audit:view`. _(parity: activity_log)_
+- **R-1 (M, PA/SA)** Immutable activity log of significant actions (logins, user/client/catalogue changes, engagement/request/document changes, status transitions, sign-offs, partner-report actions). `audit:view`. _(parity: activity_log)_ ✅ (via a global audit interceptor)
 - **R-2 (S, SA)** View/filter the log per engagement/user/date; export. `audit:view`.
 
 ---
