@@ -21,7 +21,9 @@
     "migration:down": "pnpm --filter @abdcshare/api migration:down",
     "db:setup": "pnpm --filter @abdcshare/api db:setup",
     "db:migrate": "pnpm --filter @abdcshare/api db:migrate",
-    "seed:dev": "pnpm --filter @abdcshare/api seed:dev"
+    "seed:dev": "pnpm --filter @abdcshare/api seed:dev",
+    "generate:api-client": "pnpm --filter @abdcshare/api-client generate",
+    "generate:api-client:live": "pnpm --filter @abdcshare/api-client generate:live"
   },
   "devDependencies": {
     "turbo": "^2.10.5",
