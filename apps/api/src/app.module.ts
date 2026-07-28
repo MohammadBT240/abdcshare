@@ -3,6 +3,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { JwtModule } from '@nestjs/jwt';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { validateEnv } from './config/env.schema';
 import mikroOrmConfig from './database/mikro-orm.config';
@@ -41,6 +42,9 @@ import { HealthModule } from './health/health.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 120 }],
+    }),
     ScheduleModule.forRoot(),
     JwtModule.register({ global: true }),
     MikroOrmModule.forRoot(mikroOrmConfig),
@@ -73,6 +77,7 @@ import { HealthModule } from './health/health.module';
     HealthModule,
   ],
   providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: MustChangePasswordGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },

@@ -1,14 +1,6 @@
-import { randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
+import { buildStorageKey } from './storage-key.util';
 import type { PresignedUpload, PresignUploadInput, StoragePort } from './storage.port';
-
-/** Filename → safe object-key segment. */
-function slugify(name: string): string {
-  const dot = name.lastIndexOf('.');
-  const base = (dot > 0 ? name.slice(0, dot) : name).replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 80);
-  const ext = dot > 0 ? name.slice(dot).replace(/[^a-zA-Z0-9.]+/g, '').slice(0, 12) : '';
-  return `${base || 'file'}${ext}`;
-}
 
 /**
  * Dependency-free dev storage. Generates stable keys and dev upload/download URLs
@@ -23,7 +15,7 @@ export class LocalStorageAdapter implements StoragePort {
   }
 
   presignUpload(input: PresignUploadInput): Promise<PresignedUpload> {
-    const storageKey = `${input.keyPrefix.replace(/\/+$/, '')}/${randomUUID()}-${slugify(input.fileName)}`;
+    const storageKey = buildStorageKey(input.keyPrefix, input.fileName);
     const expiresIn = this.config.get<number>('STORAGE_UPLOAD_TTL', 900);
     return Promise.resolve({
       storageKey,

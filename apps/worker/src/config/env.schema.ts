@@ -6,6 +6,7 @@ export const envSchema = z.object({
   REDIS_URL: z.string().url(),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default('ABDC Share <no-reply@example.com>'),
+  WEB_APP_URL: z.string().url().default('http://localhost:3000'),
 });
 export type Env = z.infer<typeof envSchema>;
 
