@@ -7,6 +7,8 @@ import { SubmissionsService } from './submissions.service';
 import {
   CreateSubmissionDto,
   ReviewSubmissionDto,
+  SubmissionFileConfirmDto,
+  SubmissionFilePresignDto,
   SubmissionListQueryDto,
   SubmissionListResponseDto,
   SubmissionResponseDto,
@@ -46,6 +48,26 @@ export class SubmissionsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<SubmissionResponseDto> {
     return this.submissions.getOne(id, user);
+  }
+
+  @Post('submissions/:id/files/presign')
+  @RequirePermission('submission:respond')
+  presignFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SubmissionFilePresignDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.submissions.presignFile(id, dto, user);
+  }
+
+  @Post('submissions/:id/files')
+  @RequirePermission('submission:respond')
+  confirmFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SubmissionFileConfirmDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SubmissionResponseDto> {
+    return this.submissions.confirmFile(id, dto, user);
   }
 
   /** Staff accepts or returns a pending submission. */

@@ -13,6 +13,7 @@ import { EngagementEntity } from './infrastructure/persistence/engagement.entity
 import { EngagementTeamMemberEntity } from './infrastructure/persistence/engagement-team-member.entity';
 import { EngagementRequestClassEntity } from './infrastructure/persistence/engagement-request-class.entity';
 import { EngagementStatusHistoryEntity } from './infrastructure/persistence/engagement-status-history.entity';
+import { EngagementSignOffEntity } from './infrastructure/persistence/engagement-sign-off.entity';
 import { ClientEntity } from '../clients/infrastructure/persistence/client.entity';
 import { EngagementTypeEntity } from '../engagement-types/infrastructure/persistence/engagement-type.entity';
 import { DepartmentEntity } from '../departments/infrastructure/persistence/department.entity';
@@ -22,13 +23,16 @@ import type {
   AddRequestClassDto,
   AddTeamMemberDto,
   CreateEngagementDto,
+  CreateSignOffDto,
   EngagementListQueryDto,
+  RevokeSignOffDto,
   TransitionEngagementDto,
   UpdateEngagementDto,
 } from './presentation/dto/engagement.dto';
 import {
   EngagementDetailResponseDto,
   EngagementResponseDto,
+  SignOffResponseDto,
 } from './presentation/dto/engagement.dto';
 
 @Injectable()
@@ -197,6 +201,9 @@ export class EngagementsService {
         }`,
       );
     }
+    if (dto.toStatus === EngagementStatus.Completed) {
+      await this.assertFullySignedOff(id);
+    }
     engagement.status = dto.toStatus;
     engagement.completedAt = dto.toStatus === EngagementStatus.Completed ? new Date() : null;
     this.em.create(EngagementStatusHistoryEntity, {
@@ -275,5 +282,107 @@ export class EngagementsService {
     if (!existing) throw new NotFoundException('request class is not in scope for this engagement');
     await this.em.removeAndFlush(existing);
     return this.getOne(id);
+  }
+
+  // ---- Sign-offs ----------------------------------------------------------
+
+  private signOffDto(s: EngagementSignOffEntity): SignOffResponseDto {
+    return {
+      id: s.id,
+      requestClassId: s.requestClass ? s.requestClass.id : null,
+      signedById: s.signedBy.id,
+      signedAt: s.signedAt,
+      note: s.note ?? null,
+      revoked: s.revokedAt != null,
+      revokedAt: s.revokedAt ?? null,
+    };
+  }
+
+  async listSignOffs(id: string): Promise<SignOffResponseDto[]> {
+    await this.em.findOneOrFail(EngagementEntity, { id });
+    const rows = await this.em.find(
+      EngagementSignOffEntity,
+      { engagement: id } as FilterQuery<EngagementSignOffEntity>,
+      { populate: ['requestClass', 'signedBy'], orderBy: { signedAt: 'desc' } },
+    );
+    return rows.map((s) => this.signOffDto(s));
+  }
+
+  async signOff(id: string, dto: CreateSignOffDto, userId: string): Promise<SignOffResponseDto> {
+    const engagement = await this.em.findOneOrFail(EngagementEntity, { id });
+    let requestClass = null;
+    if (dto.requestClassId != null) {
+      const inScope = await this.em.findOne(EngagementRequestClassEntity, {
+        engagement: id,
+        requestClass: dto.requestClassId,
+      });
+      if (!inScope) throw new BadRequestException('request class is not in scope for this engagement');
+      // Prevent duplicate active sign-off for the same class.
+      const dup = await this.em.findOne(EngagementSignOffEntity, {
+        engagement: id,
+        requestClass: dto.requestClassId,
+        revokedAt: null,
+      });
+      if (dup) throw new ConflictException('This request class is already signed off');
+      requestClass = this.em.getReference(RequestClassEntity, dto.requestClassId);
+    }
+    const signOff = this.em.create(EngagementSignOffEntity, {
+      engagement,
+      requestClass,
+      signedBy: this.em.getReference(UserEntity, userId),
+      signedAt: new Date(),
+      note: dto.note ?? null,
+    });
+    await this.em.persistAndFlush(signOff);
+    return this.signOffDto(signOff);
+  }
+
+  async revokeSignOff(
+    id: string,
+    signOffId: string,
+    dto: RevokeSignOffDto,
+    userId: string,
+  ): Promise<SignOffResponseDto> {
+    const signOff = await this.em.findOne(
+      EngagementSignOffEntity,
+      { id: signOffId, engagement: id },
+      { populate: ['requestClass', 'signedBy'] },
+    );
+    if (!signOff) throw new NotFoundException('Sign-off not found');
+    if (signOff.revokedAt) throw new BadRequestException('Sign-off already revoked');
+    signOff.revokedBy = this.em.getReference(UserEntity, userId);
+    signOff.revokedAt = new Date();
+    signOff.revokeReason = dto.reason ?? null;
+    await this.em.flush();
+    return this.signOffDto(signOff);
+  }
+
+  /** Completion guard: engagement-wide sign-off, or every in-scope request class signed off. */
+  private async assertFullySignedOff(engagementId: string): Promise<void> {
+    const wide = await this.em.count(EngagementSignOffEntity, {
+      engagement: engagementId,
+      requestClass: null,
+      revokedAt: null,
+    } as FilterQuery<EngagementSignOffEntity>);
+    if (wide > 0) return;
+
+    const classes = await this.em.find(EngagementRequestClassEntity, {
+      engagement: engagementId,
+    } as FilterQuery<EngagementRequestClassEntity>, { populate: ['requestClass'] });
+    if (classes.length === 0) {
+      throw new BadRequestException('Add and sign off request classes before completing the engagement');
+    }
+    const signed = await this.em.find(
+      EngagementSignOffEntity,
+      { engagement: engagementId, revokedAt: null, requestClass: { $ne: null } } as FilterQuery<EngagementSignOffEntity>,
+      { populate: ['requestClass'] },
+    );
+    const signedIds = new Set(signed.map((s) => s.requestClass?.id));
+    const missing = classes.filter((c) => !signedIds.has(c.requestClass.id)).length;
+    if (missing > 0) {
+      throw new BadRequestException(
+        `Sign off all request classes before completing (${missing} still unsigned)`,
+      );
+    }
   }
 }

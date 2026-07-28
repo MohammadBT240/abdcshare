@@ -56,9 +56,9 @@ describe('EngagementsService', () => {
     });
 
     it('rejects transitioning to the current status', async () => {
-      const service = serviceWith(EngagementStatus.Fieldwork);
+      const service = serviceWith(EngagementStatus.Execution);
       await expect(
-        service.transition('e1', { toStatus: EngagementStatus.Fieldwork }, 'u1'),
+        service.transition('e1', { toStatus: EngagementStatus.Execution }, 'u1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });

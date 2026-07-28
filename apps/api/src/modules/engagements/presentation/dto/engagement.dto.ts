@@ -92,3 +92,23 @@ export class EngagementListResponseDto {
   @ApiProperty({ type: [EngagementResponseDto] }) data!: EngagementResponseDto[];
   @ApiProperty() meta!: PageMeta;
 }
+
+export class CreateSignOffDto {
+  @ApiPropertyOptional({ description: 'Request class to sign off; omit for an engagement-wide sign-off.' })
+  @IsOptional() @IsInt() requestClassId?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() note?: string;
+}
+
+export class RevokeSignOffDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() reason?: string;
+}
+
+export class SignOffResponseDto {
+  @ApiProperty() id!: string;
+  @ApiPropertyOptional() requestClassId?: number | null;
+  @ApiProperty() signedById!: string;
+  @ApiProperty() signedAt!: Date;
+  @ApiPropertyOptional() note?: string | null;
+  @ApiProperty() revoked!: boolean;
+  @ApiPropertyOptional() revokedAt?: Date | null;
+}
