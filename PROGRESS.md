@@ -552,12 +552,36 @@ Structured periodic reports to the Chairman (Principal Partner), modelled on `ch
 - **Docs** — DEVELOPMENT_GUIDELINES §14.1 skeleton-first rules.
 - **Verify:** `pnpm --filter @abdcshare/web typecheck && build` green.
 
+## Web Slice 2 — Admin CRUD, list infrastructure & dashboard (complete)
+- **API** — `GET /api/roles` (`user:view`) for user forms; company-profile singleton `ensure()` fixed to
+  look up / create `id = 1` (empty `findOne` criteria was 500ing).
+- **`packages/api-client`** — full live OpenAPI regenerated (`openapi.json` + `schema.ts`); explicit
+  `AuthUser` / `AuthTokens` / notification exports where Nest omits response schemas.
+- **Generic BFF proxy** — `/api/bff/proxy/[...path]` with allow-listed prefixes + silent refresh;
+  `bffApi()` client helper. Dedicated auth + notifications routes unchanged.
+- **List infra** — TanStack Table `DataTable`, `useListParams` (URL `page/pageSize/q/sort`),
+  `PageToolbar`, dialog/select/table/badge/textarea/alert-dialog; skeletons
+  (`DataTableSkeleton`, `PageToolbarSkeleton`, `FormCardSkeleton`).
+- **Users admin** — list/create/detail-edit/deactivate + Super Admin designation; reference/roles/
+  departments/clients selects on create.
+- **Catalogues admin** — engagement types (incl. allowed request-classes dialog), request
+  classes/types/stages/statuses, departments — dialog CRUD + deactivate.
+- **Clients + company profile** — clients list/create (primary contact)/edit/deactivate; company
+  profile singleton form (`logoPath` upload deferred).
+- **Nav / middleware / dashboard** — sidebar admin links permission-gated; `/admin/*` cookie-protected;
+  dashboard cards from live `GET /api/dashboard`.
+- **Verify:** web typecheck + build green; BFF smoke (roles, users, engagement-types, company-profile,
+  dashboard) 200 after admin login.
+- **Deferred (Slice 3+):** engagements/requests UI, document upload, notifications feed/preferences,
+  partner reports UI, bulk CSV import, avatar upload, audit viewer, search bar UI.
+
 ## Pending / next
-1. **Web Slice 2** — domain CRUD screens (users, engagements, admin tables).
+1. **Web Slice 3** — engagements/requests screens + document upload UI.
 2. **Extract shared persistence** — worker duplicates `outbox.entity.ts`; notifications email_sent update
    uses raw SQL to avoid duplicating the entity. A shared persistence package would clean this up.
 3. **API e2e (Supertest)** — needs `supertest` + a live DB; unit specs in place (~19 files).
-4. **Data note (Mac):** migrate any `role = 'Auditor'` users to `Staff` (likely none).
+4. **Data note (Mac):** migrate any `role = 'Auditor'` users to `Staff` (likely none). Seed DB may still
+   show role id 3 as `"Auditor"` in `GET /api/roles` — shared enums use `Staff`.
 5. **Jest on the Mac:** sandbox can't run it (jest 30 vs ts-jest 29 + pnpm preset resolution).
 
 ## Open decisions still outstanding
