@@ -6,12 +6,13 @@ import { useAuthContext } from '@/components/providers/auth-provider';
 import { NotificationsBell } from '@/components/layout/notifications-bell';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { UserMenu } from '@/components/layout/user-menu';
-import { useShell } from '@/components/layout/shell-context';
 import { Button } from '@/components/ui/button';
+import { useUIStore } from '@/store/useUIStore';
 
 export function AppHeader() {
   const { user, isPending } = useAuthContext();
-  const { sidebarCollapsed, toggleSidebar } = useShell();
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
 
   if (isPending || !user) return <AppHeaderSkeleton />;
 

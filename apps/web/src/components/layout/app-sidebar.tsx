@@ -19,7 +19,7 @@ import type { Permission } from '@abdcshare/shared';
 import { cn } from '@/lib/utils';
 import { AppSidebarSkeleton } from '@/components/skeletons';
 import { useAuthContext } from '@/components/providers/auth-provider';
-import { useShell } from '@/components/layout/shell-context';
+import { useUIStore } from '@/store/useUIStore';
 
 interface NavItem {
   label: string;
@@ -83,7 +83,7 @@ function isActivePath(pathname: string, href: string): boolean {
 export function AppSidebar() {
   const pathname = usePathname();
   const { can, isPending } = useAuthContext();
-  const { sidebarCollapsed } = useShell();
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
 
   if (isPending) return <AppSidebarSkeleton />;
 

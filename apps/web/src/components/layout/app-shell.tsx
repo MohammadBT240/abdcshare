@@ -4,7 +4,6 @@ import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
-import { ShellProvider } from '@/components/layout/shell-context';
 import { AppShellSkeleton } from '@/components/skeletons';
 import { useAuth } from '@/features/auth/hooks/use-auth';
 
@@ -28,14 +27,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (user.mustChangePassword) return <AppShellSkeleton />;
 
   return (
-    <ShellProvider>
-      <div className="flex min-h-screen">
-        <AppSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <AppHeader />
-          <main className="flex-1 px-4 py-6 lg:px-6">{children}</main>
-        </div>
+    <div className="flex min-h-screen">
+      <AppSidebar />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <AppHeader />
+        <main className="flex-1 px-4 py-6 lg:px-6">{children}</main>
       </div>
-    </ShellProvider>
+    </div>
   );
 }
