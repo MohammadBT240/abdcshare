@@ -1,16 +1,60 @@
 import createClient, { type Middleware } from 'openapi-fetch';
-import type { paths } from './generated/schema';
+import type { components, paths } from './generated/schema';
 
-export type { paths };
+export type { paths, components };
 export type ApiPaths = paths;
 
-export type AuthUser = paths['/api/auth/me']['get']['responses'][200]['content']['application/json'];
-export type AuthTokens = paths['/api/auth/login']['post']['responses'][200]['content']['application/json'];
-export type NotificationList =
-  paths['/api/notifications']['get']['responses'][200]['content']['application/json'];
-export type NotificationItem = NotificationList['data'][number];
-export type UnreadCount =
-  paths['/api/notifications/unread-count']['get']['responses'][200]['content']['application/json'];
+/** Explicit response shapes — Nest Swagger often omits response content without @ApiOkResponse. */
+export type AuthUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  role: string;
+  mustChangePassword: boolean;
+  partnerDesignation?: 'PrincipalPartner' | 'Partner' | null;
+};
+
+export type AuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+  user: AuthUser;
+};
+
+export type PageMeta = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+  nextCursor?: string | null;
+};
+
+export type NotificationItem = {
+  id: string;
+  type: string;
+  title: string;
+  body?: string | null;
+  entityType?: string | null;
+  entityId?: string | null;
+  link?: string | null;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+};
+
+export type NotificationList = {
+  data: NotificationItem[];
+  meta: PageMeta;
+};
+
+export type UnreadCount = { count: number };
+
+export type CreateUserBody = components['schemas']['CreateUserDto'];
+export type UpdateUserBody = components['schemas']['UpdateUserDto'];
+export type CreateClientBody = components['schemas']['CreateClientDto'];
+export type UpdateClientBody = components['schemas']['UpdateClientDto'];
+export type RoleItem = components['schemas']['RoleResponseDto'];
 
 export interface CreateApiClientOptions {
   baseUrl: string;
