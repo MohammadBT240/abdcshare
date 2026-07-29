@@ -1,7 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, ChevronDown, Fingerprint, LogOut, UserRound } from 'lucide-react';
+import {
+  IconChevronDown,
+  IconFingerprint,
+  IconLogout,
+  IconRosetteDiscountCheck,
+  IconUser,
+} from '@tabler/icons-react';
 import { toast } from 'sonner';
 import type { AuthUser } from '@abdcshare/api-client';
 import { Button } from '@/components/ui/button';
@@ -59,7 +65,7 @@ export function UserMenu({ user }: { user: AuthUser }) {
               {user.role}
             </span>
           </span>
-          <ChevronDown className="hidden h-3.5 w-3.5 text-muted-foreground sm:block" />
+          <IconChevronDown className="hidden h-3.5 w-3.5 text-muted-foreground sm:block" />
         </Button>
       </DropdownMenuTrigger>
 
@@ -72,7 +78,7 @@ export function UserMenu({ user }: { user: AuthUser }) {
           <div className="min-w-0">
             <p className="flex items-center gap-1 truncate text-sm font-semibold">
               {user.fullName}
-              <BadgeCheck className="h-4 w-4 shrink-0 text-primary" />
+              <IconRosetteDiscountCheck className="h-4 w-4 shrink-0 text-primary" />
             </p>
             <p className="truncate text-xs text-muted-foreground">{user.email}</p>
           </div>
@@ -83,14 +89,14 @@ export function UserMenu({ user }: { user: AuthUser }) {
             <span className="truncate text-sm font-medium">{user.role}</span>
             <span className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               User type
-              <UserRound className="h-3 w-3" />
+              <IconUser className="h-3 w-3" />
             </span>
           </div>
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-sm">{shortId}</span>
             <span className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               User ID
-              <Fingerprint className="h-3 w-3" />
+              <IconFingerprint className="h-3 w-3" />
             </span>
           </div>
         </div>
@@ -100,7 +106,7 @@ export function UserMenu({ user }: { user: AuthUser }) {
             onSelect={() => void logout()}
             className="justify-center font-medium text-destructive focus:bg-destructive/10 focus:text-destructive"
           >
-            <LogOut className="mr-2 h-4 w-4" />
+            <IconLogout className="mr-2 h-4 w-4" />
             Sign Out
           </DropdownMenuItem>
         </div>

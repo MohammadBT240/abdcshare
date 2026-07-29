@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Bell } from 'lucide-react';
+import { IconBell } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -67,7 +67,7 @@ export function NotificationsBell() {
           className="relative h-9 w-9 px-0"
           aria-label={count > 0 ? `${count} unread notifications` : 'Notifications'}
         >
-          <Bell className="h-4 w-4" />
+          <IconBell className="h-4 w-4" />
           {count > 0 ? (
             <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
               {count > 99 ? '99+' : count}

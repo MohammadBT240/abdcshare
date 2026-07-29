@@ -3,7 +3,7 @@
 import { Suspense, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { type ColumnDef } from '@tanstack/react-table';
-import { Plus } from 'lucide-react';
+import { IconPlus } from '@tabler/icons-react';
 import { DataTable } from '@/components/data/data-table';
 import { useListParams } from '@/components/data/use-list-params';
 import { PageToolbar } from '@/components/layout/page-toolbar';
@@ -59,7 +59,7 @@ function UsersListInner() {
         actions={
           can('user:manage') ? (
             <Button type="button" onClick={() => router.push('/admin/users/new')}>
-              <Plus className="h-4 w-4" />
+              <IconPlus className="h-4 w-4" />
               Add User
             </Button>
           ) : null

@@ -4,17 +4,17 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  BarChart3,
-  Briefcase,
-  Building2,
-  FolderOpen,
-  Inbox,
-  LayoutDashboard,
-  Library,
-  UserRound,
-  Users,
-  type LucideIcon,
-} from 'lucide-react';
+  IconBooks,
+  IconBriefcase,
+  IconBuilding,
+  IconChartBar,
+  IconFolderOpen,
+  IconInbox,
+  IconLayoutDashboard,
+  IconUser,
+  IconUsers,
+  type Icon,
+} from '@tabler/icons-react';
 import type { Permission } from '@abdcshare/shared';
 import { cn } from '@/lib/utils';
 import { AppSidebarSkeleton } from '@/components/skeletons';
@@ -24,7 +24,7 @@ import { useUIStore } from '@/store/useUIStore';
 interface NavItem {
   label: string;
   href: string;
-  icon: LucideIcon;
+  icon: Icon;
   permission?: Permission;
   anyOf?: Permission[];
 }
@@ -37,22 +37,22 @@ interface NavSection {
 const SECTIONS: NavSection[] = [
   {
     heading: 'Dashboard',
-    items: [{ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard }],
+    items: [{ label: 'Dashboard', href: '/dashboard', icon: IconLayoutDashboard }],
   },
   {
     heading: 'Workspace',
     items: [
-      { label: 'Engagements', href: '#', icon: Briefcase, permission: 'engagement:view' },
-      { label: 'Requests', href: '#', icon: Inbox, permission: 'request:view' },
-      { label: 'Documents', href: '#', icon: FolderOpen, permission: 'document:view' },
+      { label: 'Engagements', href: '#', icon: IconBriefcase, permission: 'engagement:view' },
+      { label: 'Requests', href: '#', icon: IconInbox, permission: 'request:view' },
+      { label: 'Documents', href: '#', icon: IconFolderOpen, permission: 'document:view' },
     ],
   },
   {
     heading: 'User Management',
     items: [
-      { label: 'Users', href: '/admin/users', icon: Users, permission: 'user:view' },
-      { label: 'Clients', href: '/admin/clients', icon: UserRound, permission: 'client:view' },
-      { label: 'Catalogues', href: '/admin/catalogues', icon: Library, permission: 'catalogue:view' },
+      { label: 'Users', href: '/admin/users', icon: IconUsers, permission: 'user:view' },
+      { label: 'Clients', href: '/admin/clients', icon: IconUser, permission: 'client:view' },
+      { label: 'Catalogues', href: '/admin/catalogues', icon: IconBooks, permission: 'catalogue:view' },
     ],
   },
   {
@@ -61,7 +61,7 @@ const SECTIONS: NavSection[] = [
       {
         label: 'Company Profile',
         href: '/admin/company-profile',
-        icon: Building2,
+        icon: IconBuilding,
         permission: 'company-profile:view',
       },
     ],
@@ -69,7 +69,7 @@ const SECTIONS: NavSection[] = [
   {
     heading: 'Reports',
     items: [
-      { label: 'Partner Reports', href: '#', icon: BarChart3, permission: 'partner-report:view' },
+      { label: 'Partner Reports', href: '#', icon: IconChartBar, permission: 'partner-report:view' },
     ],
   },
 ];

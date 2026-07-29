@@ -1,6 +1,6 @@
 'use client';
 
-import { Monitor, Moon, Sun } from 'lucide-react';
+import { IconDeviceDesktop, IconMoon, IconSun } from '@tabler/icons-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -13,9 +13,9 @@ import {
 import { cn } from '@/lib/utils';
 
 const OPTIONS = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'system', label: 'System', icon: Monitor },
+  { value: 'light', label: 'Light', icon: IconSun },
+  { value: 'dark', label: 'Dark', icon: IconMoon },
+  { value: 'system', label: 'System', icon: IconDeviceDesktop },
 ] as const;
 
 export function ThemeToggle() {
@@ -25,7 +25,7 @@ export function ThemeToggle() {
   useEffect(() => setMounted(true), []);
 
   // Render a stable placeholder until mounted to avoid hydration mismatch
-  const CurrentIcon = mounted && resolvedTheme === 'dark' ? Moon : Sun;
+  const CurrentIcon = mounted && resolvedTheme === 'dark' ? IconMoon : IconSun;
 
   return (
     <DropdownMenu>

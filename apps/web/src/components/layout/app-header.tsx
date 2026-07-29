@@ -1,6 +1,6 @@
 'use client';
 
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from '@tabler/icons-react';
 import { AppHeaderSkeleton } from '@/components/skeletons';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { NotificationsBell } from '@/components/layout/notifications-bell';
@@ -28,9 +28,9 @@ export function AppHeader() {
           aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {sidebarCollapsed ? (
-            <PanelLeftOpen className="h-4 w-4" />
+            <IconLayoutSidebarLeftExpand className="h-4 w-4" />
           ) : (
-            <PanelLeftClose className="h-4 w-4" />
+            <IconLayoutSidebarLeftCollapse className="h-4 w-4" />
           )}
         </Button>
         <span className="truncate text-sm font-semibold text-primary">

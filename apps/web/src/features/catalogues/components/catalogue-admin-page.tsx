@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useState } from 'react';
 import { type ColumnDef } from '@tanstack/react-table';
-import { Plus } from 'lucide-react';
+import { IconPlus } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/data/data-table';
 import { useListParams } from '@/components/data/use-list-params';
@@ -248,7 +248,7 @@ function CatalogueAdminInner({
                 setOpen(true);
               }}
             >
-              <Plus className="h-4 w-4" />
+              <IconPlus className="h-4 w-4" />
               Add
             </Button>
           ) : null

@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, Clock3, FileCheck2, Inbox, Users } from 'lucide-react';
+import { IconBriefcase, IconClock, IconFileCheck, IconInbox, IconUsers } from '@tabler/icons-react';
 import { DashboardSkeleton } from '@/components/skeletons';
 import { PageToolbar } from '@/components/layout/page-toolbar';
 import { useAuthContext } from '@/components/providers/auth-provider';
@@ -51,22 +51,22 @@ export default function DashboardPage() {
             <StatCard
               title="Engagements"
               value={data?.engagements.total ?? 0}
-              icon={<Briefcase className="h-5 w-5 text-primary" />}
+              icon={<IconBriefcase className="h-5 w-5 text-primary" />}
             />
             <StatCard
               title="Requests in scope"
               value={data?.requests.inScope ?? 0}
-              icon={<Inbox className="h-5 w-5 text-primary" />}
+              icon={<IconInbox className="h-5 w-5 text-primary" />}
             />
             <StatCard
               title="Overdue requests"
               value={data?.requests.overdue ?? 0}
-              icon={<Clock3 className="h-5 w-5 text-destructive" />}
+              icon={<IconClock className="h-5 w-5 text-destructive" />}
             />
             <StatCard
               title="Assigned to me"
               value={data?.requests.assignedToMe ?? 0}
-              icon={<Users className="h-5 w-5 text-primary" />}
+              icon={<IconUsers className="h-5 w-5 text-primary" />}
             />
           </div>
 
@@ -94,7 +94,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <FileCheck2 className="h-5 w-5 text-primary" />
+                  <IconFileCheck className="h-5 w-5 text-primary" />
                   <div>
                     <p className="text-2xl font-bold">
                       {data?.finalReports.awaitingClientReview ?? 0}
