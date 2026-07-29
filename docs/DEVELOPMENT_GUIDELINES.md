@@ -177,6 +177,12 @@ Split state by concern; do not put everything in one store.
 access/refresh tokens in Zustand (httpOnly BFF cookies only). Subscribe with selectors
 (`useUIStore((s) => s.sidebarCollapsed)`), not the whole store.
 
+### 6.6 Icons *(web)*
+**`@tabler/icons-react` only** — import named `Icon*` components (e.g. `IconBell`). Do not reintroduce
+`lucide-react`. Do not use Metronic Duotune / `public/icons` dumps for app chrome. Prefer `className`
+sizing (`h-4 w-4`) to match existing UI. `components.json` sets `"iconLibrary": "tabler"` for future
+shadcn CLI adds.
+
 ---
 
 ## 7. Forms (web)

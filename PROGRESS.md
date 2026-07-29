@@ -574,6 +574,7 @@ Structured periodic reports to the Chairman (Principal Partner), modelled on `ch
   dashboard) 200 after admin login.
 - **FE state (Ondoo-aligned):** TanStack Query for server data; Zustand `useUIStore` / `useAuthStore`
   for shell chrome + persisted session user metadata (no tokens). See DEVELOPMENT_GUIDELINES §6.5.
+- **Icons:** `@tabler/icons-react` sole icon system (Lucide removed). See DEVELOPMENT_GUIDELINES §6.6.
 - **Deferred (Slice 3+):** engagements/requests UI, document upload, notifications feed/preferences,
   partner reports UI, bulk CSV import, avatar upload, audit viewer, search bar UI.
 
