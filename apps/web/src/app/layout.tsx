@@ -4,12 +4,12 @@ import { Providers } from './providers';
 
 export const metadata: Metadata = {
   title: 'abdcshare',
-  description: 'ABDC document-share & practice-management portal',
+  description: 'ABDC document-share portal',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">
         <Providers>{children}</Providers>
       </body>
