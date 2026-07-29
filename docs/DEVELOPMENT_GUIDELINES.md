@@ -161,6 +161,22 @@ calls no other hook shouldn't be a hook.
 ### 6.4 Shared hooks
 `usePermissions`, `useDebounce`, `useConfirm`, `useMediaQuery` live in `web/hooks`, generic, domain-agnostic.
 
+### 6.5 Client vs server state *(web — Ondoo-aligned)*
+Split state by concern; do not put everything in one store.
+
+| Concern | Tool | Location |
+|--------|------|----------|
+| Server / async API data | TanStack Query | `features/*/hooks` via BFF / `api-client` |
+| Client UI chrome (sidebar, etc.) | Zustand | `apps/web/src/store/useUIStore.ts` |
+| Session user metadata (no tokens) | Zustand + persist | `apps/web/src/store/useAuthStore.ts` (synced from `/me` Query) |
+| Shareable list filters / page | URL search params | `useListParams` |
+| Forms | react-hook-form + zod | feature forms |
+| Theme | `next-themes` | root `Providers` (not a Zustand theme store) |
+
+**Hard rules:** never duplicate API entities (users, clients, catalogues, …) in Zustand; never store
+access/refresh tokens in Zustand (httpOnly BFF cookies only). Subscribe with selectors
+(`useUIStore((s) => s.sidebarCollapsed)`), not the whole store.
+
 ---
 
 ## 7. Forms (web)

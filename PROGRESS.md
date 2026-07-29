@@ -572,6 +572,8 @@ Structured periodic reports to the Chairman (Principal Partner), modelled on `ch
   dashboard cards from live `GET /api/dashboard`.
 - **Verify:** web typecheck + build green; BFF smoke (roles, users, engagement-types, company-profile,
   dashboard) 200 after admin login.
+- **FE state (Ondoo-aligned):** TanStack Query for server data; Zustand `useUIStore` / `useAuthStore`
+  for shell chrome + persisted session user metadata (no tokens). See DEVELOPMENT_GUIDELINES §6.5.
 - **Deferred (Slice 3+):** engagements/requests UI, document upload, notifications feed/preferences,
   partner reports UI, bulk CSV import, avatar upload, audit viewer, search bar UI.
 
