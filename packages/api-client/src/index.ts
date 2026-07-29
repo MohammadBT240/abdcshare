@@ -6,6 +6,11 @@ export type ApiPaths = paths;
 
 export type AuthUser = paths['/api/auth/me']['get']['responses'][200]['content']['application/json'];
 export type AuthTokens = paths['/api/auth/login']['post']['responses'][200]['content']['application/json'];
+export type NotificationList =
+  paths['/api/notifications']['get']['responses'][200]['content']['application/json'];
+export type NotificationItem = NotificationList['data'][number];
+export type UnreadCount =
+  paths['/api/notifications/unread-count']['get']['responses'][200]['content']['application/json'];
 
 export interface CreateApiClientOptions {
   baseUrl: string;
