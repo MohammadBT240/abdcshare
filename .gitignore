@@ -11,3 +11,12 @@ coverage/
 .turbo/
 .DS_Store
 *.tsbuildinfo
+
+# Metronic / legacy theme dumps — do not commit; use Tabler + public/logos only
+apps/web/public/auth/
+apps/web/public/avatars/
+apps/web/public/flags/
+apps/web/public/icons/
+apps/web/public/misc/
+apps/web/public/svg/
+apps/web/public/users/
