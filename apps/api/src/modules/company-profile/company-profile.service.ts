@@ -23,11 +23,22 @@ export class CompanyProfileService {
     };
   }
 
-  /** Fetch the singleton, creating an empty one on first access. */
+  /** Fetch the singleton (id = 1), creating an empty one on first access. */
   private async ensure(): Promise<CompanyProfileEntity> {
-    const existing = await this.em.findOne(CompanyProfileEntity, {}, { populate: ['updatedBy'] });
+    const existing = await this.em.findOne(
+      CompanyProfileEntity,
+      { id: 1 },
+      { populate: ['updatedBy'] },
+    );
     if (existing) return existing;
-    const created = this.em.create(CompanyProfileEntity, { name: '', updatedAt: new Date() });
+
+    // DB default on `id` is hard-coded to 1 (singleton). Insert explicitly as id 1
+    // so findOne({ id: 1 }) stays consistent across empty / pre-seeded DBs.
+    const created = this.em.create(CompanyProfileEntity, {
+      id: 1,
+      name: '',
+      updatedAt: new Date(),
+    });
     await this.em.persistAndFlush(created);
     return created;
   }

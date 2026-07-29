@@ -16,6 +16,7 @@ import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { OutboxModule } from './modules/outbox/outbox.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
+import { RolesModule } from './modules/roles/roles.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ReferenceModule } from './modules/reference/reference.module';
 import { RequestClassesModule } from './modules/request-classes/request-classes.module';
@@ -53,6 +54,7 @@ import { HealthModule } from './health/health.module';
     OutboxModule,
     AuthModule,
     UsersModule,
+    RolesModule,
     ClientsModule,
     ReferenceModule,
     RequestClassesModule,
