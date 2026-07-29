@@ -14,11 +14,13 @@ import { loginSchema, type LoginFormValues } from '@/features/auth/schemas/auth.
 import { useInvalidateAuth } from '@/features/auth/hooks/use-auth';
 import { bffJson, BffClientError } from '@/lib/bff/client';
 import type { AuthUser } from '@abdcshare/api-client';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const invalidateAuth = useInvalidateAuth();
+  const setUser = useAuthStore((s) => s.setUser);
   const [submitting, setSubmitting] = useState(false);
   const defaultEmail = searchParams.get('email') ?? '';
 
@@ -34,6 +36,7 @@ export function LoginForm() {
         method: 'POST',
         body: JSON.stringify(values),
       });
+      setUser(data.user);
       await invalidateAuth();
       if (data.user.mustChangePassword) {
         router.replace('/change-password');

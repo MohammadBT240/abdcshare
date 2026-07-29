@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { bffJson } from '@/lib/bff/client';
 import { useInvalidateAuth } from '@/features/auth/hooks/use-auth';
+import { useAuthStore } from '@/store/useAuthStore';
 
 function initialsOf(fullName: string): string {
   return (
@@ -29,10 +30,12 @@ function initialsOf(fullName: string): string {
 export function UserMenu({ user }: { user: AuthUser }) {
   const router = useRouter();
   const invalidateAuth = useInvalidateAuth();
+  const clearUser = useAuthStore((s) => s.clearUser);
 
   async function logout() {
     try {
       await bffJson('/api/bff/auth/logout', { method: 'POST' });
+      clearUser();
       await invalidateAuth();
       router.replace('/login');
     } catch {

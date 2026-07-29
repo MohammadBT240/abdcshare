@@ -15,10 +15,12 @@ import {
 } from '@/features/auth/schemas/auth.schema';
 import { useInvalidateAuth } from '@/features/auth/hooks/use-auth';
 import { bffJson, BffClientError } from '@/lib/bff/client';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export function ChangePasswordForm() {
   const router = useRouter();
   const invalidateAuth = useInvalidateAuth();
+  const clearUser = useAuthStore((s) => s.clearUser);
   const [submitting, setSubmitting] = useState(false);
 
   const form = useForm<ChangePasswordFormValues>({
@@ -38,6 +40,7 @@ export function ChangePasswordForm() {
       });
       toast.success('Password updated — please sign in again');
       await bffJson('/api/bff/auth/logout', { method: 'POST' });
+      clearUser();
       await invalidateAuth();
       router.replace('/login');
     } catch (err) {
