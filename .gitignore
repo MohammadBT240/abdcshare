@@ -20,3 +20,4 @@ apps/web/public/icons/
 apps/web/public/misc/
 apps/web/public/svg/
 apps/web/public/users/
+.pnpm-store/
