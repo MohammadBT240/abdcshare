@@ -1,26 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getAuthedApiClient } from '@/lib/bff/authed-client';
-import { jsonError } from '@/lib/bff/auth-helpers';
+import { getAccessTokenWithRefresh, upstream } from '@/lib/bff/upstream';
+import { mapApiError } from '@/lib/bff/errors';
 
 export async function GET(req: Request): Promise<NextResponse> {
-  const client = await getAuthedApiClient();
-  if (!client) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+  const access = await getAccessTokenWithRefresh();
+  if (!access) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
 
   const url = new URL(req.url);
-  const page = url.searchParams.get('page');
-  const pageSize = url.searchParams.get('pageSize');
-  const unread = url.searchParams.get('unread');
-
-  const { data, response, error } = await client.GET('/api/notifications', {
-    params: {
-      query: {
-        ...(page ? { page: Number(page) } : {}),
-        ...(pageSize ? { pageSize: Number(pageSize) } : {}),
-        ...(unread ? { unread } : {}),
-      },
-    },
+  const result = await upstream(`/api/notifications${url.search}`, {
+    method: 'GET',
+    accessToken: access,
   });
 
-  if (!response.ok || !data) return jsonError(response.status, error);
-  return NextResponse.json(data);
+  if (result.status >= 400) {
+    return NextResponse.json(mapApiError(result.status, result.body), { status: result.status });
+  }
+  return NextResponse.json(result.body, { status: result.status });
 }
