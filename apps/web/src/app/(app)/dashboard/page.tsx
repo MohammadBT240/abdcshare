@@ -1,52 +1,138 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { DashboardSkeleton, PageHeaderSkeleton } from '@/components/skeletons';
+import { Briefcase, Clock3, FileCheck2, Inbox, Users } from 'lucide-react';
+import { DashboardSkeleton } from '@/components/skeletons';
+import { PageToolbar } from '@/components/layout/page-toolbar';
 import { useAuthContext } from '@/components/providers/auth-provider';
-import { bffJson } from '@/lib/bff/client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { bffApi } from '@/lib/bff/client';
 
-type HealthResponse = { status?: string; ok?: boolean };
+interface DashboardSummary {
+  engagements: { total: number; byStatus: Record<string, number> };
+  requests: { inScope: number; overdue: number; assignedToMe: number };
+  finalReports: { awaitingClientReview: number };
+  notifications: { unread: number };
+}
 
 export default function DashboardPage() {
   const { user, isPending } = useAuthContext();
-
-  const health = useQuery({
-    queryKey: ['bff', 'health'],
-    queryFn: () => bffJson<HealthResponse>('/api/bff/health'),
+  const summary = useQuery({
+    queryKey: ['dashboard'],
+    queryFn: () => bffApi<DashboardSummary>('/api/dashboard'),
     staleTime: 30_000,
   });
 
   if (isPending || !user) return <DashboardSkeleton />;
 
+  const data = summary.data;
+  const day = new Date().toLocaleDateString(undefined, { weekday: 'long' });
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Welcome back, {user.fullName} · {user.role}
-        </p>
-      </div>
+      <PageToolbar
+        title="Platform Governance"
+        breadcrumbs={[
+          { label: 'Home', href: '/dashboard' },
+          { label: 'Dashboard' },
+        ]}
+        description={`Welcome back, ${user.fullName}`}
+        actions={<Badge variant="success">{day}</Badge>}
+      />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-lg border border-border bg-card p-6 shadow-aca">
-          <h2 className="text-sm font-medium text-muted-foreground">Your account</h2>
-          <p className="mt-2 text-lg font-semibold">{user.email}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Role: {user.role}</p>
-        </div>
+      {summary.isPending ? (
+        <DashboardSkeleton />
+      ) : summary.isError ? (
+        <p className="text-sm text-destructive">Unable to load dashboard stats</p>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              title="Engagements"
+              value={data?.engagements.total ?? 0}
+              icon={<Briefcase className="h-5 w-5 text-primary" />}
+            />
+            <StatCard
+              title="Requests in scope"
+              value={data?.requests.inScope ?? 0}
+              icon={<Inbox className="h-5 w-5 text-primary" />}
+            />
+            <StatCard
+              title="Overdue requests"
+              value={data?.requests.overdue ?? 0}
+              icon={<Clock3 className="h-5 w-5 text-destructive" />}
+            />
+            <StatCard
+              title="Assigned to me"
+              value={data?.requests.assignedToMe ?? 0}
+              icon={<Users className="h-5 w-5 text-primary" />}
+            />
+          </div>
 
-        <div className="rounded-lg border border-border bg-card p-6 shadow-aca">
-          <h2 className="text-sm font-medium text-muted-foreground">API status</h2>
-          {health.isPending ? (
-            <PageHeaderSkeleton />
-          ) : health.isError ? (
-            <p className="mt-2 text-sm text-destructive">Unable to reach API</p>
-          ) : (
-            <p className="mt-2 text-lg font-semibold capitalize">
-              {health.data?.status ?? (health.data?.ok ? 'ok' : 'unknown')}
-            </p>
-          )}
-        </div>
-      </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Engagements by status</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {Object.entries(data?.engagements.byStatus ?? {}).map(([status, count]) => (
+                  <div key={status} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{status}</span>
+                    <span className="font-semibold">{count}</span>
+                  </div>
+                ))}
+                {Object.keys(data?.engagements.byStatus ?? {}).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No engagement data yet</p>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Reviews & notifications</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <FileCheck2 className="h-5 w-5 text-primary" />
+                  <div>
+                    <p className="text-2xl font-bold">
+                      {data?.finalReports.awaitingClientReview ?? 0}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Final reports awaiting client review</p>
+                  </div>
+                </div>
+                <div className="border-t border-border pt-4">
+                  <p className="text-2xl font-bold">{data?.notifications.unread ?? 0}</p>
+                  <p className="text-sm text-muted-foreground">Unread notifications</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+function StatCard({
+  title,
+  value,
+  icon,
+}: {
+  title: string;
+  value: number;
+  icon: React.ReactNode;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex items-start justify-between p-5">
+        <div>
+          <p className="text-sm text-muted-foreground">{title}</p>
+          <p className="mt-2 text-3xl font-bold">{value}</p>
+        </div>
+        <div className="rounded-md bg-primary/10 p-2">{icon}</div>
+      </CardContent>
+    </Card>
   );
 }

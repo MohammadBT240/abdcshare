@@ -2,7 +2,12 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { ACCESS_COOKIE } from '@/lib/auth/constants';
 
 function isProtectedAppRoute(pathname: string): boolean {
-  return pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+  return (
+    pathname === '/dashboard' ||
+    pathname.startsWith('/dashboard/') ||
+    pathname === '/admin' ||
+    pathname.startsWith('/admin/')
+  );
 }
 
 export function middleware(req: NextRequest) {
@@ -29,5 +34,14 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard', '/dashboard/:path*', '/login', '/change-password', '/forgot-password', '/reset-password'],
+  matcher: [
+    '/dashboard',
+    '/dashboard/:path*',
+    '/admin',
+    '/admin/:path*',
+    '/login',
+    '/change-password',
+    '/forgot-password',
+    '/reset-password',
+  ],
 };

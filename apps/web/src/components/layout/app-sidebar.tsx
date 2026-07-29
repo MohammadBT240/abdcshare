@@ -6,9 +6,12 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   Briefcase,
+  Building2,
   FolderOpen,
   Inbox,
   LayoutDashboard,
+  Library,
+  UserRound,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -46,7 +49,22 @@ const SECTIONS: NavSection[] = [
   },
   {
     heading: 'User Management',
-    items: [{ label: 'Admin', href: '#', icon: Users, anyOf: ['user:view', 'catalogue:view'] }],
+    items: [
+      { label: 'Users', href: '/admin/users', icon: Users, permission: 'user:view' },
+      { label: 'Clients', href: '/admin/clients', icon: UserRound, permission: 'client:view' },
+      { label: 'Catalogues', href: '/admin/catalogues', icon: Library, permission: 'catalogue:view' },
+    ],
+  },
+  {
+    heading: 'Settings',
+    items: [
+      {
+        label: 'Company Profile',
+        href: '/admin/company-profile',
+        icon: Building2,
+        permission: 'company-profile:view',
+      },
+    ],
   },
   {
     heading: 'Reports',
@@ -55,6 +73,12 @@ const SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+function isActivePath(pathname: string, href: string): boolean {
+  if (href === '#') return false;
+  if (href === '/dashboard') return pathname === '/dashboard';
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -79,7 +103,6 @@ export function AppSidebar() {
         sidebarCollapsed ? 'w-[76px] px-3 py-4' : 'w-64 px-4 py-4',
       )}
     >
-      {/* Logo card — white surface like the legacy sidebar */}
       <Link
         href="/dashboard"
         className={cn(
@@ -107,7 +130,7 @@ export function AppSidebar() {
             ) : null}
             <div className="space-y-0.5">
               {section.items.map((item) => {
-                const active = pathname === item.href;
+                const active = isActivePath(pathname, item.href);
                 const Icon = item.icon;
                 return (
                   <Link
@@ -130,7 +153,6 @@ export function AppSidebar() {
         ))}
       </nav>
 
-      {/* Version badge pinned to the bottom, like the legacy sidebar */}
       <div
         className={cn(
           'mt-4 rounded-md bg-white/10 py-2 text-center text-xs font-medium text-white/80',
