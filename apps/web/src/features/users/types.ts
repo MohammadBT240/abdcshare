@@ -9,8 +9,15 @@ export interface UserRecord {
   email: string;
   role: string;
   partnerDesignation?: 'PrincipalPartner' | 'Partner' | null;
+  titleId?: number | null;
+  genderId?: number | null;
+  maritalStatusId?: number | null;
   departmentId?: number | null;
+  clientId?: string | null;
   phoneNumber?: string | null;
+  officialAddress?: string | null;
+  residentialAddress?: string | null;
+  avatarUrl?: string | null;
   isActive: boolean;
   mustChangePassword: boolean;
   createdAt: string;

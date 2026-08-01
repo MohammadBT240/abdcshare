@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { bffApi } from '@/lib/bff/client';
 import type {
   ClientOption,
@@ -15,6 +15,7 @@ export function useUsersList(queryString: string) {
   return useQuery({
     queryKey: ['users', 'list', queryString],
     queryFn: () => bffApi<UserListResponse>(`/api/users?${queryString}`),
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -104,18 +105,25 @@ export function useDeactivateUser() {
   });
 }
 
-export function useAssignDesignation(id: string) {
+export function useAssignDesignation(id?: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (designation: 'PrincipalPartner' | 'Partner' | null) =>
-      bffApi<UserRecord>(`/api/users/${id}/designation`, {
+    mutationFn: (input: {
+      id?: string;
+      designation: 'PrincipalPartner' | 'Partner' | null;
+    }) => {
+      const userId = input.id ?? id;
+      if (!userId) throw new Error('User id is required');
+      return bffApi<UserRecord>(`/api/users/${userId}/designation`, {
         method: 'PATCH',
-        body: JSON.stringify({ designation }),
-      }),
-    onSuccess: async () => {
+        body: JSON.stringify({ designation: input.designation }),
+      });
+    },
+    onSuccess: async (_data, variables) => {
+      const userId = variables.id ?? id;
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['users'] }),
-        qc.invalidateQueries({ queryKey: ['users', id] }),
+        userId ? qc.invalidateQueries({ queryKey: ['users', userId] }) : Promise.resolve(),
       ]);
     },
   });

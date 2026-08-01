@@ -1,40 +1,96 @@
 'use client';
 
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { type ColumnDef } from '@tanstack/react-table';
-import { IconPlus } from '@tabler/icons-react';
-import { DataTable } from '@/components/data/data-table';
-import { useListParams } from '@/components/data/use-list-params';
+import { IconEye, IconPlus, IconUserOff } from '@tabler/icons-react';
+import { toast } from 'sonner';
+import {
+  DataTable,
+  EntityCell,
+  FilterBar,
+  RowActions,
+  snColumn,
+  StatusBadge,
+  useListParams,
+  type RowActionItem,
+} from '@/components/data';
+import { AppSelect, ConfirmDialog } from '@/components/forms';
 import { PageToolbar } from '@/components/layout/page-toolbar';
 import { DataTableSkeleton } from '@/components/skeletons';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { useAuthContext } from '@/components/providers/auth-provider';
-import { useRoles, useUsersList } from '@/features/users/hooks/use-users';
+import { AddUserDialog } from '@/features/users/components/add-user-dialog';
+import { useDeactivateUser, useRoles, useUsersList } from '@/features/users/hooks/use-users';
+import { FILTERABLE_ROLE_NAMES } from '@/features/users/schemas/user.schema';
 import type { UserRecord } from '@/features/users/types';
+import { BffClientError } from '@/lib/bff/client';
 
 function UsersListInner() {
   const router = useRouter();
   const { can } = useAuthContext();
-  const { params, setParams, queryString } = useListParams();
+  const canManage = can('user:manage');
+  const { params, setParams, setSearchQueryDebounced, queryString } = useListParams();
   const [searchDraft, setSearchDraft] = useState(params.q);
+  const [addOpen, setAddOpen] = useState(false);
+  const [deactivateTarget, setDeactivateTarget] = useState<UserRecord | null>(null);
   const list = useUsersList(queryString);
   const roles = useRoles();
+  const deactivate = useDeactivateUser();
 
-  const columns = useMemo<ColumnDef<UserRecord, unknown>[]>(
-    () => [
-      { header: 'Name', accessorKey: 'fullName' },
+  useEffect(() => {
+    setSearchDraft(params.q);
+  }, [params.q]);
+
+  const roleOptions = useMemo(
+    () =>
+      (roles.data ?? [])
+        .filter((r) => (FILTERABLE_ROLE_NAMES as readonly string[]).includes(r.roleName))
+        .map((r) => ({ value: String(r.id), label: r.roleName })),
+    [roles.data],
+  );
+
+  const columns = useMemo<ColumnDef<UserRecord, unknown>[]>(() => {
+    const page = list.data?.meta.page ?? params.page;
+    const pageSize = list.data?.meta.pageSize ?? params.pageSize;
+
+    return [
+      snColumn<UserRecord>(page, pageSize),
+      {
+        id: 'user',
+        header: 'User',
+        cell: ({ row }) => {
+          const record = row.original;
+          return (
+            <EntityCell
+              primary={record.fullName}
+              secondary={record.email}
+              avatarUrl={record.avatarUrl}
+              initials={`${record.firstName?.[0] ?? ''}${record.surname?.[0] ?? ''}`}
+            />
+          );
+        },
+      },
       { header: 'Email', accessorKey: 'email' },
-      { header: 'Role', accessorKey: 'role' },
+      {
+        header: 'Role',
+        cell: ({ row }) => (
+          <div className="space-y-0.5">
+            <div>{row.original.role}</div>
+            {row.original.partnerDesignation ? (
+              <div className="text-xs text-muted-foreground">
+                {row.original.partnerDesignation === 'PrincipalPartner'
+                  ? 'Principal Partner'
+                  : 'Partner'}
+              </div>
+            ) : null}
+          </div>
+        ),
+      },
       {
         header: 'Status',
-        cell: ({ row }) => (
-          <Badge variant={row.original.isActive ? 'success' : 'secondary'}>
-            {row.original.isActive ? 'Active' : 'Inactive'}
-          </Badge>
-        ),
+        cell: ({ row }) => <StatusBadge status={row.original.isActive} />,
       },
       {
         header: 'Created',
@@ -43,12 +99,46 @@ function UsersListInner() {
             ? new Date(row.original.createdAt).toLocaleDateString()
             : '—',
       },
-    ],
-    [],
-  );
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => {
+          const record = row.original;
+          const items: RowActionItem[] = [
+            {
+              label: canManage ? 'View / Edit' : 'View',
+              icon: <IconEye className="h-4 w-4" />,
+              onClick: () => router.push(`/admin/users/${record.id}`),
+            },
+          ];
+          if (canManage && record.isActive) {
+            items.push({
+              label: 'Deactivate',
+              icon: <IconUserOff className="h-4 w-4" />,
+              onClick: () => setDeactivateTarget(record),
+              destructive: true,
+              separatorBefore: true,
+            });
+          }
+          return <RowActions items={items} />;
+        },
+      },
+    ];
+  }, [canManage, list.data?.meta.page, list.data?.meta.pageSize, params.page, params.pageSize, router]);
+
+  async function confirmDeactivate() {
+    if (!deactivateTarget) return;
+    try {
+      await deactivate.mutateAsync(deactivateTarget.id);
+      toast.success(`${deactivateTarget.fullName} deactivated`);
+      setDeactivateTarget(null);
+    } catch (err) {
+      toast.error(err instanceof BffClientError ? err.message : 'Deactivate failed');
+    }
+  }
 
   return (
-    <div>
+    <div className="w-full min-w-0">
       <PageToolbar
         title="Users"
         breadcrumbs={[
@@ -57,63 +147,75 @@ function UsersListInner() {
           { label: 'Users' },
         ]}
         actions={
-          can('user:manage') ? (
-            <Button type="button" onClick={() => router.push('/admin/users/new')}>
+          canManage ? (
+            <Button type="button" size="sm" onClick={() => setAddOpen(true)}>
               <IconPlus className="h-4 w-4" />
               Add User
             </Button>
           ) : null
         }
       />
+      <AddUserDialog open={addOpen} onOpenChange={setAddOpen} />
 
-      <div className="mb-3 flex flex-wrap gap-2">
-        <Select
+      <FilterBar>
+        <AppSelect
+          size="sm"
+          className="w-[9.5rem] sm:w-44"
+          triggerClassName="h-9"
           value={params.extra.roleId ?? 'all'}
           onValueChange={(v) =>
             setParams({ extra: { roleId: v === 'all' ? undefined : v } })
           }
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All roles</SelectItem>
-            {(roles.data ?? []).map((r) => (
-              <SelectItem key={r.id} value={String(r.id)}>
-                {r.roleName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
+          options={[{ value: 'all', label: 'All roles' }, ...roleOptions]}
+          placeholder="Role"
+          isLoading={roles.isPending}
+        />
+        <AppSelect
+          size="sm"
+          className="w-[9.5rem] sm:w-40"
+          triggerClassName="h-9"
           value={params.extra.isActive ?? 'all'}
           onValueChange={(v) => setParams({ extra: { isActive: v === 'all' ? undefined : v } })}
-        >
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="true">Active</SelectItem>
-            <SelectItem value="false">Inactive</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+          options={[
+            { value: 'all', label: 'All statuses' },
+            { value: 'true', label: 'Active' },
+            { value: 'false', label: 'Inactive' },
+          ]}
+          placeholder="Status"
+        />
+        <Input
+          value={searchDraft}
+          onChange={(e) => {
+            const q = e.target.value;
+            setSearchDraft(q);
+            setSearchQueryDebounced(q);
+          }}
+          placeholder="Search users…"
+          className="h-9 min-w-[10rem] flex-1 basis-40 sm:max-w-xs"
+        />
+      </FilterBar>
 
       <DataTable
         columns={columns}
         data={list.data?.data ?? []}
         meta={list.data?.meta}
         isPending={list.isPending}
-        search={searchDraft}
-        searchPlaceholder="Search users…"
-        onSearchChange={(q) => {
-          setSearchDraft(q);
-          setParams({ q });
-        }}
         onPageChange={(page) => setParams({ page })}
         onRowClick={(row) => router.push(`/admin/users/${row.id}`)}
         emptyMessage="No users found"
+      />
+
+      <ConfirmDialog
+        open={Boolean(deactivateTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeactivateTarget(null);
+        }}
+        title="Deactivate user?"
+        description={`${deactivateTarget?.fullName ?? 'This user'} will no longer be able to sign in.`}
+        confirmLabel="Deactivate"
+        variant="destructive"
+        confirming={deactivate.isPending}
+        onConfirm={() => void confirmDeactivate()}
       />
     </div>
   );
