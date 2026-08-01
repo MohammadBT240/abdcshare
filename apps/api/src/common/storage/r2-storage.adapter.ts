@@ -2,7 +2,7 @@ import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { ConfigService } from '@nestjs/config';
 import { buildStorageKey } from './storage-key.util';
-import type { PresignedUpload, PresignUploadInput, StoragePort } from './storage.port';
+import type { DirectUploadInput, PresignedUpload, PresignUploadInput, StoragePort } from './storage.port';
 
 /**
  * Cloudflare R2 adapter via the S3-compatible API. Activated when `STORAGE_DRIVER=r2`.
@@ -42,6 +42,19 @@ export class R2StorageAdapter implements StoragePort {
       headers: { 'Content-Type': input.contentType },
       expiresIn,
     };
+  }
+
+  async upload(input: DirectUploadInput): Promise<{ storageKey: string }> {
+    const storageKey = buildStorageKey(input.keyPrefix, input.fileName, this.objectPrefix);
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: storageKey,
+        ContentType: input.contentType,
+        Body: input.body,
+      }),
+    );
+    return { storageKey };
   }
 
   async presignDownload(storageKey: string, downloadName?: string): Promise<string> {

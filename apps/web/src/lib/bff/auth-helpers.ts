@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { createServerApiClient } from '@/lib/auth/api';
 import { clearAuthCookies, getAccessToken, getRefreshToken, setAuthCookies } from '@/lib/auth/cookies';
 import { mapApiError } from '@/lib/bff/errors';
+import type { AuthTokens, AuthUser } from '@abdcshare/api-client';
 
 /** Call /auth/me with silent refresh on 401. Returns user JSON or null. */
-export async function fetchMeWithRefresh(): Promise<{ user: unknown } | null> {
+export async function fetchMeWithRefresh(): Promise<{ user: AuthUser } | null> {
   let access = await getAccessToken();
   const refresh = await getRefreshToken();
   if (!access && !refresh) return null;
@@ -20,9 +21,10 @@ export async function fetchMeWithRefresh(): Promise<{ user: unknown } | null> {
     const rotated = await refreshClient.POST('/api/auth/refresh', {
       body: { refreshToken: refresh },
     });
-    if (rotated.data?.accessToken && rotated.data.refreshToken) {
-      await setAuthCookies(rotated.data.accessToken, rotated.data.refreshToken);
-      access = rotated.data.accessToken;
+    const tokens = rotated.data as Pick<AuthTokens, 'accessToken' | 'refreshToken'> | undefined;
+    if (tokens?.accessToken && tokens.refreshToken) {
+      await setAuthCookies(tokens.accessToken, tokens.refreshToken);
+      access = tokens.accessToken;
       res = await tryMe(access);
     } else {
       await clearAuthCookies();
@@ -30,11 +32,14 @@ export async function fetchMeWithRefresh(): Promise<{ user: unknown } | null> {
     }
   }
 
-  if (!res.response.ok || !res.data) {
+  if (!res.response.ok) {
     if (res.response.status === 401) await clearAuthCookies();
     return null;
   }
-  return { user: res.data };
+
+  const user = (res.data as AuthUser | undefined) ?? ((await res.response.clone().json().catch(() => null)) as AuthUser | null);
+  if (!user) return null;
+  return { user };
 }
 
 export function jsonError(status: number, body: unknown): NextResponse {

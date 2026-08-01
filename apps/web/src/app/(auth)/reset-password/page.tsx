@@ -1,10 +1,11 @@
 'use client';
 
 import { Suspense } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useSearchParams } from 'next/navigation';
+import { Card, CardContent } from '@/components/ui/card';
+import { AuthBrand, AuthCardFooter } from '@/components/layout/auth-brand';
 import { AuthFormSkeleton } from '@/components/skeletons';
 import { ResetPasswordForm } from '@/features/auth/components/reset-password-form';
-import { useSearchParams } from 'next/navigation';
 
 function ResetPasswordInner() {
   const searchParams = useSearchParams();
@@ -14,22 +15,14 @@ function ResetPasswordInner() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-foreground">abdcshare</h1>
-        <p className="mt-1 text-sm text-muted-foreground">ABDC Practice Portal</p>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Reset password</CardTitle>
-          <CardDescription>Choose a new password for your account</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Suspense fallback={<AuthFormSkeleton />}>
-            <ResetPasswordInner />
-          </Suspense>
-        </CardContent>
-      </Card>
-    </div>
+    <Card>
+      <CardContent className="space-y-6 p-8">
+        <AuthBrand title="Reset password" subtitle="Choose a new password for your account." />
+        <Suspense fallback={<AuthFormSkeleton />}>
+          <ResetPasswordInner />
+        </Suspense>
+        <AuthCardFooter />
+      </CardContent>
+    </Card>
   );
 }

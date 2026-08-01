@@ -1,9 +1,16 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { EVENT, type Paginated } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
+import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { OutboxService } from '../outbox/outbox.service';
 import { ClientEntity } from './infrastructure/persistence/client.entity';
 import { ClientTypeEntity } from '../reference/infrastructure/persistence/client-types.entity';
@@ -26,20 +33,32 @@ export class ClientsService {
   constructor(
     private readonly em: EntityManager,
     private readonly outbox: OutboxService,
+    @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
 
-  private toDto(c: ClientEntity): ClientResponseDto {
+  private async toDto(c: ClientEntity): Promise<ClientResponseDto> {
     const contact = c.primaryContact;
     return {
       id: c.id,
       name: c.name,
       clientType: c.clientType ? c.clientType.name : null,
+      clientTypeId: c.clientType ? c.clientType.id : null,
       companyName: c.companyName ?? null,
+      companyRegisteredAddress: c.companyRegisteredAddress ?? null,
+      incorporationDate: c.incorporationDate ?? null,
       incorporationNo: c.incorporationNo ?? null,
+      officialAddress: c.officialAddress ?? null,
+      residentialAddress: c.residentialAddress ?? null,
       email: c.email ?? null,
       phoneNumber: c.phoneNumber ?? null,
       primaryContactName: contact ? contact.fullName : null,
+      primaryContactFirstName: contact ? contact.firstName : null,
+      primaryContactSurname: contact ? contact.surname : null,
       primaryContactEmail: contact ? contact.email : null,
+      primaryContactPhone: contact ? (contact.phoneNumber ?? null) : null,
+      primaryContactId: contact ? contact.id : null,
+      primaryContactAvatarUrl:
+        contact?.avatarPath ? await this.storage.presignDownload(contact.avatarPath) : null,
       isActive: c.isActive,
       createdAt: c.createdAt,
     };
@@ -111,7 +130,8 @@ export class ClientsService {
       limit,
       offset,
     });
-    return paginated(rows.map((c) => this.toDto(c)), total, page, pageSize);
+    const data = await Promise.all(rows.map((c) => this.toDto(c)));
+    return paginated(data, total, page, pageSize);
   }
 
   async getOne(id: string): Promise<ClientResponseDto> {
@@ -121,18 +141,62 @@ export class ClientsService {
   }
 
   async update(id: string, dto: UpdateClientDto): Promise<ClientResponseDto> {
-    const client = await this.em.findOneOrFail(ClientEntity, { id }, { populate: ['clientType', 'primaryContact'] });
+    const client = await this.em.findOneOrFail(
+      ClientEntity,
+      { id },
+      { populate: ['clientType', 'primaryContact'] },
+    );
+
     if (dto.name != null) client.name = dto.name;
-    if (dto.clientTypeId != null) client.clientType = this.em.getReference(ClientTypeEntity, dto.clientTypeId);
-    if (dto.companyName != null) client.companyName = dto.companyName;
-    if (dto.companyRegisteredAddress != null) client.companyRegisteredAddress = dto.companyRegisteredAddress;
-    if (dto.incorporationDate != null) client.incorporationDate = dto.incorporationDate;
-    if (dto.incorporationNo != null) client.incorporationNo = dto.incorporationNo;
-    if (dto.officialAddress != null) client.officialAddress = dto.officialAddress;
-    if (dto.residentialAddress != null) client.residentialAddress = dto.residentialAddress;
-    if (dto.email != null) client.email = dto.email;
-    if (dto.phoneNumber != null) client.phoneNumber = dto.phoneNumber;
+    if (dto.clientTypeId !== undefined) {
+      client.clientType =
+        dto.clientTypeId == null ? null : this.em.getReference(ClientTypeEntity, dto.clientTypeId);
+    }
+    if (dto.companyName !== undefined) client.companyName = dto.companyName ?? null;
+    if (dto.companyRegisteredAddress !== undefined) {
+      client.companyRegisteredAddress = dto.companyRegisteredAddress ?? null;
+    }
+    if (dto.incorporationDate !== undefined) client.incorporationDate = dto.incorporationDate ?? null;
+    if (dto.incorporationNo !== undefined) client.incorporationNo = dto.incorporationNo ?? null;
+    if (dto.officialAddress !== undefined) client.officialAddress = dto.officialAddress ?? null;
+    if (dto.residentialAddress !== undefined) {
+      client.residentialAddress = dto.residentialAddress ?? null;
+    }
+    if (dto.email !== undefined) client.email = dto.email ?? null;
+    if (dto.phoneNumber !== undefined) client.phoneNumber = dto.phoneNumber ?? null;
     if (dto.isActive != null) client.isActive = dto.isActive;
+
+    if (dto.contact) {
+      const contact = client.primaryContact;
+      if (!contact) throw new BadRequestException('Client has no primary contact to update');
+
+      if (dto.contact.email != null) {
+        const email = dto.contact.email.toLowerCase();
+        const clash = await this.em.findOne(UserEntity, { email, id: { $ne: contact.id } });
+        if (clash) throw new ConflictException('A user with the contact email already exists');
+        contact.email = email;
+      }
+      if (dto.contact.firstName != null) contact.firstName = dto.contact.firstName;
+      if (dto.contact.middleName !== undefined) contact.middleName = dto.contact.middleName ?? null;
+      if (dto.contact.surname != null) contact.surname = dto.contact.surname;
+      if (dto.contact.phoneNumber !== undefined) {
+        contact.phoneNumber = dto.contact.phoneNumber ?? null;
+      }
+      if (dto.contact.titleId !== undefined) {
+        contact.title =
+          dto.contact.titleId == null
+            ? null
+            : this.em.getReference(TitleEntity, dto.contact.titleId);
+      }
+      contact.fullName = buildFullName(contact.firstName, contact.middleName, contact.surname);
+
+      // Keep individual client display name in sync with the person.
+      const typeName = client.clientType?.name?.toLowerCase();
+      if (typeName === 'individual' && dto.name == null) {
+        client.name = contact.fullName;
+      }
+    }
+
     await this.em.flush();
     return this.toDto(client);
   }

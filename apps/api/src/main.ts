@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { json, urlencoded } from 'express';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -7,7 +8,11 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: false });
+  // Disable built-in parser so we can raise the limit for avatar base64 uploads (~2 MB → ~2.8 MB JSON).
+  const app = await NestFactory.create(AppModule, { bufferLogs: false, bodyParser: false });
+  app.use(json({ limit: '4mb' }));
+  app.use(urlencoded({ extended: true, limit: '4mb' }));
+
   const config = app.get(ConfigService);
 
   app.setGlobalPrefix(config.get('API_GLOBAL_PREFIX', 'api'));

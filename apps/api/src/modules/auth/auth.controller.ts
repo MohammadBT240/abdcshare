@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -19,6 +19,7 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)
+  @ApiOkResponse({ type: AuthTokensDto })
   login(@Body() dto: LoginDto): Promise<AuthTokensDto> {
     return this.auth.login(dto);
   }
@@ -27,6 +28,7 @@ export class AuthController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(200)
+  @ApiOkResponse({ type: AuthTokensDto })
   refresh(@Body() dto: RefreshDto): Promise<Pick<AuthTokensDto, 'accessToken' | 'refreshToken'>> {
     return this.auth.refresh(dto.refreshToken);
   }
@@ -37,7 +39,7 @@ export class AuthController {
   @HttpCode(202)
   async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ ok: true }> {
     await this.auth.requestPasswordReset(dto);
-    return { ok: true }; // neutral — never reveals whether the email exists
+    return { ok: true };
   }
 
   @Public()
@@ -57,6 +59,7 @@ export class AuthController {
 
   @ApiBearerAuth()
   @Get('me')
+  @ApiOkResponse({ type: AuthUserDto })
   me(@CurrentUser('userId') userId: string): Promise<AuthUserDto> {
     return this.auth.me(userId);
   }

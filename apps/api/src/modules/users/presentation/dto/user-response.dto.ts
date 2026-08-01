@@ -11,8 +11,15 @@ export class UserResponseDto {
   @ApiProperty() role!: string;
   @ApiPropertyOptional({ enum: ['PrincipalPartner', 'Partner'], nullable: true })
   partnerDesignation?: PartnerDesignation | null;
+  @ApiPropertyOptional() titleId?: number | null;
+  @ApiPropertyOptional() genderId?: number | null;
+  @ApiPropertyOptional() maritalStatusId?: number | null;
   @ApiPropertyOptional() departmentId?: number | null;
+  @ApiPropertyOptional() clientId?: string | null;
   @ApiPropertyOptional() phoneNumber?: string | null;
+  @ApiPropertyOptional() officialAddress?: string | null;
+  @ApiPropertyOptional() residentialAddress?: string | null;
+  @ApiPropertyOptional() avatarUrl?: string | null;
   @ApiProperty() isActive!: boolean;
   @ApiProperty() mustChangePassword!: boolean;
   @ApiProperty() createdAt!: Date;
