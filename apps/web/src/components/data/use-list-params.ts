@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 export interface ListParams {
@@ -78,5 +78,30 @@ export function useListParams(defaults?: { pageSize?: number }) {
     return sp.toString();
   }, [params]);
 
-  return { params, setParams, queryString };
+  const setParamsRef = useRef(setParams);
+  setParamsRef.current = setParams;
+
+  const setSearchQuery = useCallback((q: string) => {
+    setParamsRef.current({ q });
+  }, []);
+
+  const debouncedSetSearchQueryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setSearchQueryDebounced = useCallback((q: string, delayMs = 300) => {
+    if (debouncedSetSearchQueryRef.current) {
+      clearTimeout(debouncedSetSearchQueryRef.current);
+    }
+    debouncedSetSearchQueryRef.current = setTimeout(() => {
+      setParamsRef.current({ q });
+    }, delayMs);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (debouncedSetSearchQueryRef.current) clearTimeout(debouncedSetSearchQueryRef.current);
+    },
+    [],
+  );
+
+  return { params, setParams, setSearchQuery, setSearchQueryDebounced, queryString };
 }
