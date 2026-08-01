@@ -1,12 +1,11 @@
 'use client';
 
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { type ColumnDef } from '@tanstack/react-table';
 import { IconPlus } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/data/data-table';
 import { useListParams } from '@/components/data/use-list-params';
-import { PageToolbar } from '@/components/layout/page-toolbar';
 import { DataTableSkeleton } from '@/components/skeletons';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { Badge } from '@/components/ui/badge';
@@ -43,6 +42,7 @@ type FieldKey = 'name' | 'code' | 'description' | 'sortOrder' | 'expectedDocumen
 
 interface CatalogueAdminPageProps {
   title: string;
+  description?: string;
   resource: string;
   managePermission?: 'catalogue:manage' | 'department:manage';
   fields?: FieldKey[];
@@ -53,6 +53,7 @@ interface CatalogueAdminPageProps {
 
 export function CatalogueAdminPage({
   title,
+  description,
   resource,
   managePermission = 'catalogue:manage',
   fields = ['name'],
@@ -63,6 +64,7 @@ export function CatalogueAdminPage({
     <Suspense fallback={<DataTableSkeleton />}>
       <CatalogueAdminInner
         title={title}
+        description={description}
         resource={resource}
         managePermission={managePermission}
         fields={fields}
@@ -75,6 +77,7 @@ export function CatalogueAdminPage({
 
 function CatalogueAdminInner({
   title,
+  description,
   resource,
   managePermission = 'catalogue:manage',
   fields = ['name'],
@@ -84,10 +87,14 @@ function CatalogueAdminInner({
   const fieldList = fields ?? ['name'];
   const { can } = useAuthContext();
   const canManage = can(managePermission!);
-  const { params, setParams, queryString } = useListParams();
+  const { params, setParams, setSearchQueryDebounced, queryString } = useListParams();
   const [searchDraft, setSearchDraft] = useState(params.q);
   const list = useCatalogueList(resource, queryString);
   const mutations = useCatalogueMutations(resource);
+
+  useEffect(() => {
+    setSearchDraft(params.q);
+  }, [params.q]);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CatalogueRow | null>(null);
@@ -224,36 +231,35 @@ function CatalogueAdminInner({
 
   return (
     <div>
-      <PageToolbar
-        title={title}
-        breadcrumbs={[
-          { label: 'Home', href: '/dashboard' },
-          { label: 'Catalogues', href: '/admin/catalogues' },
-          { label: title },
-        ]}
-        actions={
-          canManage ? (
-            <Button
-              type="button"
-              onClick={() => {
-                setEditing(null);
-                setForm({
-                  name: '',
-                  code: '',
-                  description: '',
-                  sortOrder: '',
-                  expectedDocuments: '1',
-                  requestClassId: requestClasses?.[0] ? String(requestClasses[0].id) : '',
-                });
-                setOpen(true);
-              }}
-            >
-              <IconPlus className="h-4 w-4" />
-              Add
-            </Button>
-          ) : null
-        }
-      />
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <h2 className="text-lg font-semibold leading-tight text-foreground">{title}</h2>
+          {description ? (
+            <p className="text-sm text-muted-foreground">{description}</p>
+          ) : null}
+        </div>
+        {canManage ? (
+          <Button
+            type="button"
+            className="h-9 shrink-0"
+            onClick={() => {
+              setEditing(null);
+              setForm({
+                name: '',
+                code: '',
+                description: '',
+                sortOrder: '',
+                expectedDocuments: '1',
+                requestClassId: requestClasses?.[0] ? String(requestClasses[0].id) : '',
+              });
+              setOpen(true);
+            }}
+          >
+            <IconPlus className="h-4 w-4" />
+            Add
+          </Button>
+        ) : null}
+      </div>
 
       <DataTable
         columns={columns}
@@ -263,7 +269,7 @@ function CatalogueAdminInner({
         search={searchDraft}
         onSearchChange={(q) => {
           setSearchDraft(q);
-          setParams({ q });
+          setSearchQueryDebounced(q);
         }}
         onPageChange={(page) => setParams({ page })}
       />

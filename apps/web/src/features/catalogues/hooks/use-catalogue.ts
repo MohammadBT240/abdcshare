@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import type { PageMeta } from '@abdcshare/api-client';
 import { bffApi } from '@/lib/bff/client';
 
@@ -26,6 +26,7 @@ export function useCatalogueList(resource: string, queryString: string) {
   return useQuery({
     queryKey: ['catalogue', resource, queryString],
     queryFn: () => bffApi<CatalogueList>(`/api/${resource}?${queryString}`),
+    placeholderData: keepPreviousData,
   });
 }
 
