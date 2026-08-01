@@ -27,7 +27,7 @@
 | D | Reference data (`global_*` lookups) | `reference-data:*` |
 | E | Catalogues (request classes, request types, stages, statuses, engagement types) | `catalogue:*` |
 | F | Departments | `department:manage` |
-| G | Company profile (firm settings singleton) | `company-profile:*` |
+| G | Company profiles (staff reference document library) | `company-profile:*` |
 | H | Engagements | `engagement:*` |
 | I | Requests | `request:*` |
 | J | Client submissions | `submission:*` |
@@ -88,10 +88,10 @@
 - **F-1 (M, PA)** Manage departments (Assurance, Tax, Advisory, Business Dev, Shared Services, Other; add/rename/deactivate). `department:manage`. _(formerly service lines)_
 - **F-2 (S, PA)** Assign users a home department.
 
-## Epic G — Company profile _(decided: a settings singleton, not a library)_
+## Epic G — Company profiles _(decided: multi-document reference library)_
 
-- **G-1 (M, PA)** Manage the firm's **company profile** — a single record: name, logo, email, phone, address (letterhead / branding source). `company-profile:manage`.
-- **G-2 (M, SA/ST)** View the company profile. `company-profile:view`.
+- **G-1 (M, PA)** Upload / rename / replace / archive **company profile documents** (name + file; PDF/DOC/DOCX). `company-profile:manage`.
+- **G-2 (M, SA/ST)** Browse and download company profile documents for staff reference. `company-profile:view`.
 
 ## Epic H — Engagements
 

@@ -13,7 +13,7 @@ const ALLOWED_PREFIXES = [
   'request-statuses',
   'departments',
   'reference',
-  'company-profile',
+  'company-profiles',
   'dashboard',
   'search',
 ] as const;
@@ -41,8 +41,16 @@ async function handle(
   const apiPath = `/api/${path.join('/')}${url.search}`;
   const method = req.method.toUpperCase();
   const contentType = req.headers.get('content-type');
-  const body =
-    method === 'GET' || method === 'HEAD' ? null : await req.text().catch(() => null);
+  const isMultipart = Boolean(contentType?.includes('multipart/form-data'));
+
+  let body: string | ArrayBuffer | null = null;
+  if (method !== 'GET' && method !== 'HEAD') {
+    if (isMultipart) {
+      body = await req.arrayBuffer();
+    } else {
+      body = await req.text().catch(() => null);
+    }
+  }
 
   const result = await upstream(apiPath, {
     method,

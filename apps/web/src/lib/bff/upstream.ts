@@ -41,7 +41,7 @@ export async function upstream(
   init: {
     method: string;
     accessToken: string;
-    body?: string | null;
+    body?: string | ArrayBuffer | null;
     contentType?: string | null;
   },
 ): Promise<UpstreamResult> {
@@ -49,13 +49,18 @@ export async function upstream(
     Authorization: `Bearer ${init.accessToken}`,
   };
   if (init.body != null && init.method !== 'GET' && init.method !== 'HEAD') {
-    headers['Content-Type'] = init.contentType ?? 'application/json';
+    if (init.contentType) headers['Content-Type'] = init.contentType;
   }
 
   const res = await fetch(`${getApiBaseUrl()}${apiPath}`, {
     method: init.method,
     headers,
-    body: init.method === 'GET' || init.method === 'HEAD' ? undefined : (init.body ?? undefined),
+    body:
+      init.method === 'GET' || init.method === 'HEAD' || init.body == null
+        ? undefined
+        : init.body instanceof ArrayBuffer
+          ? init.body
+          : init.body,
   });
 
   const contentType = res.headers.get('content-type');

@@ -266,11 +266,12 @@ email_sent bool, email_sent_at null, created_at.
 
 ---
 
-## 12. Company profile (DECIDED — a settings singleton, not a library)
-**company_profile** — a **single row** holding the firm's branding/letterhead source: `id` (singleton),
-`name`, `logo_path` null, `email` null, `phone` null, `address` text null, `updated_by` FK null,
-`updated_at`. Managed via `GET`/`PATCH /api/company-profile` (`company-profile:view` / `:manage`).
-_(Supersedes the earlier "document library" idea.)_
+## 12. Company profiles (DECIDED — staff reference library)
+**company_profiles** — multi-row document library for firm capability / company profile packs that staff
+can browse and download: `id` uuid PK, `name`, `storage_key`, `file_name`, `mime_type` null,
+`size_bytes` null, `is_active` bool, `created_by` FK null, `created_at`, `updated_at`.
+Managed via `/api/company-profiles` (`company-profile:view` / `:manage`). Soft-delete via `is_active`.
+_(Replaces the interim settings-singleton idea; restores legacy library semantics with name + file only.)_
 
 ---
 
@@ -315,7 +316,7 @@ validation `result` before the user commits the import.)
 | *_final_reports(_files) ×6 | `documents`(FinalReport) + `document_files` | **unify** |
 | *_final_report_auditors/advisors/staffs | `document_participants` | **unify** |
 | reviews | `reviews` | keep |
-| company_profiles | `company_profile` (singleton settings) | keep (decided: singleton) |
+| company_profiles | `company_profiles` (name + file library) | keep (library) |
 | notifications / notification_preferences | `notifications` / `notification_preferences` | keep |
 | email_queue | `outbox` | adapt (Redis/BullMQ) |
 | activity_log | `activity_log` | keep |

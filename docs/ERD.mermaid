@@ -204,7 +204,10 @@ erDiagram
     }
     COMPANY_PROFILE_DOCUMENT {
         uuid id PK
+        varchar name
         varchar storage_key
+        varchar file_name
+        bool is_active
         uuid created_by FK
     }
     ACTIVITY_LOG {
