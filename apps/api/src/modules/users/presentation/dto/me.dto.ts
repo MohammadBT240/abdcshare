@@ -23,6 +23,15 @@ export class AvatarConfirmDto {
   @IsString() storageKey!: string;
 }
 
+/** Browser → API upload (avoids direct-to-bucket CORS issues). */
+export class AvatarUploadDto {
+  @ApiProperty() @IsString() @MaxLength(255) fileName!: string;
+  @ApiProperty() @IsString() @MaxLength(150) contentType!: string;
+  @ApiProperty({ description: 'Base64-encoded image bytes (no data: URL prefix).' })
+  @IsString()
+  data!: string;
+}
+
 export class MeResponseDto {
   @ApiProperty() id!: string;
   @ApiPropertyOptional() titleId?: number | null;

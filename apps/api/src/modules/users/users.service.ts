@@ -17,11 +17,13 @@ import type { CreateUserDto } from './presentation/dto/create-user.dto';
 import type { UpdateUserDto } from './presentation/dto/update-user.dto';
 import type { UserListQueryDto } from './presentation/dto/user-list-query.dto';
 import { UserResponseDto } from './presentation/dto/user-response.dto';
-import type { AvatarPresignDto, UpdateMeDto } from './presentation/dto/me.dto';
+import type { AvatarPresignDto, AvatarUploadDto, UpdateMeDto } from './presentation/dto/me.dto';
 import { MeResponseDto } from './presentation/dto/me.dto';
 
 const PLATFORM_ADMIN = 'Platform Admin';
 const SUPER_ADMIN = 'Super Admin';
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 function buildFullName(first: string, middle: string | null | undefined, surname: string): string {
   return [first, middle, surname].filter(Boolean).join(' ');
@@ -103,7 +105,31 @@ export class UsersService {
     return this.toMeDto(user);
   }
 
-  private toDto(u: UserEntity): UserResponseDto {
+  /** Upload avatar bytes via the API (preferred — works when R2 CORS blocks browser PUT). */
+  async avatarUpload(userId: string, dto: AvatarUploadDto): Promise<MeResponseDto> {
+    if (!AVATAR_TYPES.has(dto.contentType)) {
+      throw new BadRequestException('Use a JPEG, PNG, or WebP image');
+    }
+    const body = Buffer.from(dto.data.replace(/^data:[^;]+;base64,/, ''), 'base64');
+    if (!body.length) throw new BadRequestException('Image data is empty');
+    if (body.length > MAX_AVATAR_BYTES) {
+      throw new BadRequestException('Image must be 2 MB or smaller');
+    }
+
+    const { storageKey } = await this.storage.upload({
+      keyPrefix: `avatars/${userId}`,
+      fileName: dto.fileName,
+      contentType: dto.contentType,
+      body,
+    });
+
+    const user = await this.loadMe(userId);
+    user.avatarPath = storageKey;
+    await this.em.flush();
+    return this.toMeDto(user);
+  }
+
+  private async toDto(u: UserEntity, opts?: { includeAvatar?: boolean }): Promise<UserResponseDto> {
     return {
       id: u.id,
       firstName: u.firstName,
@@ -113,8 +139,18 @@ export class UsersService {
       email: u.email,
       role: u.role.roleName,
       partnerDesignation: u.partnerDesignation ?? null,
+      titleId: u.title ? u.title.id : null,
+      genderId: u.gender ? u.gender.id : null,
+      maritalStatusId: u.maritalStatus ? u.maritalStatus.id : null,
       departmentId: u.department ? u.department.id : null,
+      clientId: u.client ? u.client.id : null,
       phoneNumber: u.phoneNumber ?? null,
+      officialAddress: u.officialAddress ?? null,
+      residentialAddress: u.residentialAddress ?? null,
+      avatarUrl:
+        opts?.includeAvatar && u.avatarPath
+          ? await this.storage.presignDownload(u.avatarPath)
+          : null,
       isActive: u.isActive,
       mustChangePassword: u.mustChangePassword,
       createdAt: u.createdAt,
@@ -152,49 +188,99 @@ export class UsersService {
     // Outbox row flushes in the same unit of work → worker emails the credentials.
     this.outbox.enqueue(EVENT.UserCreated, { userId: user.id, email, tempPassword });
     await this.em.flush();
-    return this.toDto(user);
+    return await this.toDto(user);
   }
 
   async list(query: UserListQueryDto): Promise<Paginated<UserResponseDto>> {
     const where: Record<string, unknown> = {};
-    if (query.roleId) where.role = query.roleId;
+    if (query.roleId) {
+      where.role = query.roleId;
+    } else {
+      // Portal logins are managed under Clients — exclude from the firm users report.
+      where.role = { roleName: { $nin: ['Client'] } };
+    }
     if (query.isActive != null) where.isActive = query.isActive === 'true';
     if (query.q) where.$or = [{ fullName: { $ilike: `%${query.q}%` } }, { email: { $ilike: `%${query.q}%` } }];
 
     const { page, pageSize, limit, offset } = pageParams(query);
     const [rows, total] = await this.em.findAndCount(UserEntity, where as FilterQuery<UserEntity>, {
-      populate: ['role'],
+      populate: ['role', 'department', 'title', 'gender', 'maritalStatus', 'client'],
       orderBy: { createdAt: 'desc', id: 'asc' },
       limit,
       offset,
     });
-    return paginated(rows.map((u) => this.toDto(u)), total, page, pageSize);
+    const data = await Promise.all(rows.map((u) => this.toDto(u, { includeAvatar: true })));
+    return paginated(data, total, page, pageSize);
   }
 
   async getOne(id: string): Promise<UserResponseDto> {
-    const user = await this.em.findOne(UserEntity, { id }, { populate: ['role', 'department'] });
+    const user = await this.em.findOne(
+      UserEntity,
+      { id },
+      { populate: ['role', 'department', 'title', 'gender', 'maritalStatus', 'client'] },
+    );
     if (!user) throw new NotFoundException('User not found');
-    return this.toDto(user);
+    return this.toDto(user, { includeAvatar: true });
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<UserResponseDto> {
-    const user = await this.em.findOneOrFail(UserEntity, { id }, { populate: ['role', 'department'] });
+    const user = await this.em.findOneOrFail(
+      UserEntity,
+      { id },
+      { populate: ['role', 'department', 'title', 'gender', 'maritalStatus', 'client'] },
+    );
 
     const losingAdmin =
       user.role.roleName === PLATFORM_ADMIN &&
       ((dto.roleId != null && dto.roleId !== user.role.id) || dto.isActive === false);
     if (losingAdmin) await this.assertOtherActivePlatformAdminExists(id);
 
-    if (dto.fullName != null) user.fullName = dto.fullName;
+    if (dto.email != null) {
+      const email = dto.email.toLowerCase();
+      const clash = await this.em.findOne(UserEntity, { email, id: { $ne: id } });
+      if (clash) throw new ConflictException('A user with this email already exists');
+      user.email = email;
+    }
+
+    if (dto.firstName != null) user.firstName = dto.firstName;
+    if (dto.middleName !== undefined) user.middleName = dto.middleName ?? null;
+    if (dto.surname != null) user.surname = dto.surname;
+    if (dto.firstName != null || dto.middleName !== undefined || dto.surname != null) {
+      user.fullName = buildFullName(user.firstName, user.middleName, user.surname);
+    } else if (dto.fullName != null) {
+      user.fullName = dto.fullName;
+    }
+
+    if (dto.titleId !== undefined) {
+      user.title = dto.titleId == null ? null : this.em.getReference(TitleEntity, dto.titleId);
+    }
+    if (dto.genderId !== undefined) {
+      user.gender = dto.genderId == null ? null : this.em.getReference(GenderEntity, dto.genderId);
+    }
+    if (dto.maritalStatusId !== undefined) {
+      user.maritalStatus =
+        dto.maritalStatusId == null ? null : this.em.getReference(MaritalStatusEntity, dto.maritalStatusId);
+    }
+    if (dto.departmentId !== undefined) {
+      user.department =
+        dto.departmentId == null ? null : this.em.getReference(DepartmentEntity, dto.departmentId);
+    }
+    if (dto.clientId !== undefined) {
+      user.client = dto.clientId == null ? null : this.em.getReference(ClientEntity, dto.clientId);
+    }
+    if (dto.phoneNumber !== undefined) user.phoneNumber = dto.phoneNumber ?? null;
+    if (dto.officialAddress !== undefined) user.officialAddress = dto.officialAddress ?? null;
+    if (dto.residentialAddress !== undefined) user.residentialAddress = dto.residentialAddress ?? null;
     if (dto.isActive != null) user.isActive = dto.isActive;
-    if (dto.departmentId != null) user.department = this.em.getReference(DepartmentEntity, dto.departmentId);
+
     if (dto.roleId != null && dto.roleId !== user.role.id) {
       const role = await this.em.findOne(RoleEntity, { id: dto.roleId });
       if (!role) throw new NotFoundException('Role not found');
       user.role = role;
+      if (role.roleName !== SUPER_ADMIN) user.partnerDesignation = null;
     }
     await this.em.flush();
-    return this.toDto(user);
+    return this.toDto(user, { includeAvatar: true });
   }
 
   async deactivate(id: string): Promise<UserResponseDto> {
@@ -216,7 +302,7 @@ export class UsersService {
     }
     user.partnerDesignation = designation;
     await this.em.flush();
-    return this.toDto(user);
+    return this.toDto(user, { includeAvatar: true });
   }
 
   private async assertOtherActivePlatformAdminExists(excludeUserId: string): Promise<void> {

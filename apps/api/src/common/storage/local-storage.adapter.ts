@@ -1,6 +1,8 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { ConfigService } from '@nestjs/config';
 import { buildStorageKey } from './storage-key.util';
-import type { PresignedUpload, PresignUploadInput, StoragePort } from './storage.port';
+import type { DirectUploadInput, PresignedUpload, PresignUploadInput, StoragePort } from './storage.port';
 
 /**
  * Dependency-free dev storage. Generates stable keys and dev upload/download URLs
@@ -14,6 +16,10 @@ export class LocalStorageAdapter implements StoragePort {
     return this.config.get<string>('STORAGE_PUBLIC_BASE_URL', 'http://localhost:4000').replace(/\/+$/, '');
   }
 
+  private rootDir(): string {
+    return this.config.get<string>('LOCAL_STORAGE_DIR', './storage');
+  }
+
   presignUpload(input: PresignUploadInput): Promise<PresignedUpload> {
     const storageKey = buildStorageKey(input.keyPrefix, input.fileName);
     const expiresIn = this.config.get<number>('STORAGE_UPLOAD_TTL', 900);
@@ -24,6 +30,14 @@ export class LocalStorageAdapter implements StoragePort {
       headers: { 'Content-Type': input.contentType },
       expiresIn,
     });
+  }
+
+  async upload(input: DirectUploadInput): Promise<{ storageKey: string }> {
+    const storageKey = buildStorageKey(input.keyPrefix, input.fileName);
+    const filePath = path.join(this.rootDir(), storageKey);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, input.body);
+    return { storageKey };
   }
 
   presignDownload(storageKey: string, downloadName?: string): Promise<string> {

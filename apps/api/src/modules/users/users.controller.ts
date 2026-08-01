@@ -10,7 +10,13 @@ import { AssignDesignationDto } from './presentation/dto/assign-designation.dto'
 import { BulkCsvDto } from './presentation/dto/bulk-csv.dto';
 import { UserListQueryDto } from './presentation/dto/user-list-query.dto';
 import { UserListResponseDto, UserResponseDto } from './presentation/dto/user-response.dto';
-import { AvatarConfirmDto, AvatarPresignDto, MeResponseDto, UpdateMeDto } from './presentation/dto/me.dto';
+import {
+  AvatarConfirmDto,
+  AvatarPresignDto,
+  AvatarUploadDto,
+  MeResponseDto,
+  UpdateMeDto,
+} from './presentation/dto/me.dto';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -52,6 +58,15 @@ export class UsersController {
   }
 
   @Post('me/avatar')
+  avatarUploadMe(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: AvatarUploadDto,
+  ): Promise<MeResponseDto> {
+    return this.users.avatarUpload(userId, dto);
+  }
+
+  /** @deprecated Prefer POST me/avatar with file bytes — kept for older clients. */
+  @Post('me/avatar/confirm')
   avatarConfirm(
     @CurrentUser('userId') userId: string,
     @Body() dto: AvatarConfirmDto,
@@ -112,5 +127,30 @@ export class UsersController {
     @Body() dto: AssignDesignationDto,
   ): Promise<UserResponseDto> {
     return this.users.assignDesignation(id, dto.designation ?? null);
+  }
+
+  @Post(':id/avatar/presign')
+  @RequirePermission('user:manage')
+  avatarPresignForUser(@Param('id') id: string, @Body() dto: AvatarPresignDto) {
+    return this.users.avatarPresignUpload(id, dto);
+  }
+
+  @Post(':id/avatar')
+  @RequirePermission('user:manage')
+  avatarUploadForUser(
+    @Param('id') id: string,
+    @Body() dto: AvatarUploadDto,
+  ): Promise<MeResponseDto> {
+    return this.users.avatarUpload(id, dto);
+  }
+
+  /** @deprecated Prefer POST :id/avatar with file bytes — kept for older clients. */
+  @Post(':id/avatar/confirm')
+  @RequirePermission('user:manage')
+  avatarConfirmForUser(
+    @Param('id') id: string,
+    @Body() dto: AvatarConfirmDto,
+  ): Promise<MeResponseDto> {
+    return this.users.avatarConfirm(id, dto.storageKey);
   }
 }
