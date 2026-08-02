@@ -836,6 +836,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engagements/{id}/team/{userId}/elevate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["EngagementsController_elevateTeamMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engagements/{id}/request-classes": {
         parameters: {
             query?: never;
@@ -1951,8 +1967,11 @@ export interface components {
         };
         AddTeamMemberDto: {
             userId: string;
-            /** @enum {string} */
-            memberRole: "Partner" | "Manager" | "Auditor";
+            /**
+             * Defaults to Member. Passing Lead elevates this user.
+             * @enum {string}
+             */
+            memberRole?: "Lead" | "Member";
         };
         AddRequestClassDto: {
             requestClassId: number;
@@ -3742,6 +3761,26 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    EngagementsController_elevateTeamMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
