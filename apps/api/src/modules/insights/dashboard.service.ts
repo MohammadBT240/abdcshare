@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
-import { DocumentCategory, EngagementStatus, ReportReviewState } from '@abdcshare/shared';
+import { DocumentCategory, EngagementStage, ReportReviewState } from '@abdcshare/shared';
 import { engagementScopeWhere, resolveScope } from '../../common/security/access-scope';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { EngagementEntity } from '../engagements/infrastructure/persistence/engagement.entity';
@@ -9,7 +9,7 @@ import { DocumentEntity } from '../documents/infrastructure/persistence/document
 import { NotificationEntity } from '../notifications/infrastructure/persistence/notification.entity';
 
 export interface DashboardSummary {
-  engagements: { total: number; byStatus: Record<string, number> };
+  engagements: { total: number; byStage: Record<string, number> };
   requests: { inScope: number; overdue: number; assignedToMe: number };
   finalReports: { awaitingClientReview: number };
   notifications: { unread: number };
@@ -26,9 +26,9 @@ export class DashboardService {
     const engWhere = eng as FilterQuery<EngagementEntity>;
     const reqEng = Object.keys(eng).length ? { engagement: eng } : {};
 
-    const byStatus: Record<string, number> = {};
-    for (const s of Object.values(EngagementStatus)) {
-      byStatus[s] = await this.em.count(EngagementEntity, { status: s, ...eng } as FilterQuery<EngagementEntity>);
+    const byStage: Record<string, number> = {};
+    for (const s of Object.values(EngagementStage)) {
+      byStage[s] = await this.em.count(EngagementEntity, { stage: s, ...eng } as FilterQuery<EngagementEntity>);
     }
 
     const [total, inScope, overdue, assignedToMe, awaitingClientReview, unread] = await Promise.all([
@@ -45,7 +45,7 @@ export class DashboardService {
     ]);
 
     return {
-      engagements: { total, byStatus },
+      engagements: { total, byStage },
       requests: { inScope, overdue, assignedToMe },
       finalReports: { awaitingClientReview },
       notifications: { unread },
