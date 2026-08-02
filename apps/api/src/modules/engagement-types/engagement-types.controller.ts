@@ -1,6 +1,20 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { hasPermission } from '@abdcshare/shared';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { EngagementTypesService } from './engagement-types.service';
 import {
   CreateEngagementTypeDto,
@@ -17,9 +31,19 @@ import {
 export class EngagementTypesController {
   constructor(private readonly engagementTypes: EngagementTypesService) {}
 
+  /**
+   * Create an engagement type. Allowed for catalogue:manage (admin) or engagement:create
+   * (inline create from the create-engagement dialog).
+   */
   @Post()
-  @RequirePermission('catalogue:manage')
-  create(@Body() dto: CreateEngagementTypeDto): Promise<EngagementTypeResponseDto> {
+  create(
+    @Body() dto: CreateEngagementTypeDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EngagementTypeResponseDto> {
+    const can =
+      hasPermission(user.role, 'catalogue:manage', user.partnerDesignation) ||
+      hasPermission(user.role, 'engagement:create', user.partnerDesignation);
+    if (!can) throw new ForbiddenException('Insufficient permissions');
     return this.engagementTypes.create(dto);
   }
 
@@ -44,7 +68,7 @@ export class EngagementTypesController {
     return this.engagementTypes.update(id, dto);
   }
 
-  /** Replace the allowed request-class set (empty ⇒ all request classes allowed). */
+  /** Replace suggested request-class defaults (empty ⇒ no suggestions; any class may still be scoped on an engagement). */
   @Put(':id/request-classes')
   @RequirePermission('catalogue:manage')
   setAllowedRequestClasses(

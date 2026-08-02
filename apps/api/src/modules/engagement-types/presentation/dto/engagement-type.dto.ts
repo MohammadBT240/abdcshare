@@ -14,7 +14,10 @@ export class UpdateEngagementTypeDto {
 }
 
 export class SetAllowedRequestClassesDto {
-  @ApiProperty({ type: [Number], description: 'request class ids allowed for this type. Empty ⇒ all allowed.' })
+  @ApiProperty({
+    type: [Number],
+    description: 'Suggested request class ids for this type (defaults on create). Empty ⇒ no suggestions.',
+  })
   @IsArray() @IsInt({ each: true }) requestClassIds!: number[];
 }
 
@@ -26,8 +29,11 @@ export class EngagementTypeResponseDto {
   @ApiProperty() id!: number;
   @ApiProperty() name!: string;
   @ApiProperty() isActive!: boolean;
-  @ApiProperty({ type: [Number], description: 'Allowed request class ids ([] ⇒ all allowed).' })
-  allowedRequestClassIds!: number[];
+  @ApiProperty({
+    type: [Number],
+    description: 'Suggested request class ids for new engagements of this type ([] ⇒ no suggestions).',
+  })
+  suggestedRequestClassIds!: number[];
 }
 
 export class EngagementTypeListResponseDto {

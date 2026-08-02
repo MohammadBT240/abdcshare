@@ -16,7 +16,7 @@ import { EngagementTypeResponseDto } from './presentation/dto/engagement-type.dt
 export class EngagementTypesService {
   constructor(private readonly em: EntityManager) {}
 
-  private async allowedRequestClassIds(engagementTypeId: number): Promise<number[]> {
+  private async suggestedRequestClassIds(engagementTypeId: number): Promise<number[]> {
     const links = await this.em.find(RequestClassEngagementTypeEntity, {
       engagementType: engagementTypeId,
     });
@@ -28,7 +28,7 @@ export class EngagementTypesService {
       id: et.id,
       name: et.name,
       isActive: et.isActive,
-      allowedRequestClassIds: await this.allowedRequestClassIds(et.id),
+      suggestedRequestClassIds: await this.suggestedRequestClassIds(et.id),
     };
   }
 
@@ -82,7 +82,7 @@ export class EngagementTypesService {
     return this.update(id, { isActive: false });
   }
 
-  /** Replace the allowed request-class set for a type. Empty array ⇒ all request classes allowed. */
+  /** Replace suggested request-class defaults for a type. Empty ⇒ no suggestions (any class may still be scoped on an engagement). */
   async setAllowedRequestClasses(id: number, requestClassIds: number[]): Promise<EngagementTypeResponseDto> {
     const et = await this.em.findOneOrFail(EngagementTypeEntity, { id });
     const unique = [...new Set(requestClassIds)];
