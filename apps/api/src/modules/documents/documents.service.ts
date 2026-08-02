@@ -5,56 +5,67 @@ import {
   Inject,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
-import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
+} from "@nestjs/common";
+import { EntityManager, type FilterQuery } from "@mikro-orm/postgresql";
 import {
   DocumentCategory,
   DocumentStatus,
   EngagementPhase,
   EVENT,
   hasPermission,
-  phaseForStatus,
+  phaseForStage,
   ReportReviewState,
   type Paginated,
-} from '@abdcshare/shared';
-import { pageParams, paginated } from '../../common/pagination/paginate';
-import { engagementScopeWhere, resolveScope } from '../../common/security/access-scope';
-import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
-import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
-import { OutboxService } from '../outbox/outbox.service';
-import { DocumentEntity } from './infrastructure/persistence/document.entity';
-import { DocumentFileEntity } from './infrastructure/persistence/document-file.entity';
-import { DocumentParticipantEntity } from './infrastructure/persistence/document-participant.entity';
-import { EngagementEntity } from '../engagements/infrastructure/persistence/engagement.entity';
-import { EngagementRequestClassEntity } from '../engagements/infrastructure/persistence/engagement-request-class.entity';
-import { RequestClassEntity } from '../request-classes/infrastructure/persistence/request-class.entity';
-import { RequestEntity } from '../requests/infrastructure/persistence/request.entity';
-import { UserEntity } from '../users/infrastructure/persistence/user.entity';
+} from "@abdcshare/shared";
+import { pageParams, paginated } from "../../common/pagination/paginate";
+import {
+  engagementScopeWhere,
+  resolveScope,
+} from "../../common/security/access-scope";
+import type { AuthenticatedUser } from "../../common/interfaces/authenticated-user";
+import { STORAGE, type StoragePort } from "../../common/storage/storage.port";
+import { OutboxService } from "../outbox/outbox.service";
+import { NotificationsService } from "../notifications/notifications.service";
+import { engagementTeamRecipients } from "../notifications/recipient-helpers";
+import { DocumentEntity } from "./infrastructure/persistence/document.entity";
+import { DocumentFileEntity } from "./infrastructure/persistence/document-file.entity";
+import { DocumentParticipantEntity } from "./infrastructure/persistence/document-participant.entity";
+import { EngagementEntity } from "../engagements/infrastructure/persistence/engagement.entity";
+import { EngagementRequestClassEntity } from "../engagements/infrastructure/persistence/engagement-request-class.entity";
+import { RequestClassEntity } from "../request-classes/infrastructure/persistence/request-class.entity";
+import { RequestEntity } from "../requests/infrastructure/persistence/request.entity";
+import { UserEntity } from "../users/infrastructure/persistence/user.entity";
+import { DOCUMENT_MAX_BYTES } from "./documents.constants";
 import type {
   AddDocumentParticipantDto,
   ConfirmUploadDto,
   CreateDocumentDto,
   DocumentListQueryDto,
+  ExportDocumentsDto,
   PresignUploadDto,
   SetDocumentStatusDto,
   UpdateDocumentDto,
-} from './presentation/dto/document.dto';
+} from "./presentation/dto/document.dto";
 import {
   DocumentDetailResponseDto,
   DocumentResponseDto,
   PresignedUploadResponseDto,
-} from './presentation/dto/document.dto';
+} from "./presentation/dto/document.dto";
 
 @Injectable()
 export class DocumentsService {
   constructor(
     private readonly em: EntityManager,
     private readonly outbox: OutboxService,
+    private readonly notifications: NotificationsService,
     @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
 
   /** Where-clause for a document under the caller's access scope. */
-  private scopedWhere(id: string, user?: AuthenticatedUser): Record<string, unknown> {
+  private scopedWhere(
+    id: string,
+    user?: AuthenticatedUser,
+  ): Record<string, unknown> {
     const eng = engagementScopeWhere(resolveScope(user));
     return Object.keys(eng).length ? { id, engagement: eng } : { id };
   }
@@ -69,7 +80,7 @@ export class DocumentsService {
       this.scopedWhere(id, user) as FilterQuery<DocumentEntity>,
       populate ? { populate: populate as never } : undefined,
     );
-    if (!doc) throw new NotFoundException('Document not found');
+    if (!doc) throw new NotFoundException("Document not found");
     return doc;
   }
 
@@ -88,6 +99,7 @@ export class DocumentsService {
       status: d.status,
       currentVersion: d.currentVersion,
       createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
     };
   }
 
@@ -122,51 +134,63 @@ export class DocumentsService {
       id: engagementId,
       ...engagementScopeWhere(resolveScope(user)),
     } as FilterQuery<EngagementEntity>);
-    if (!engagement) throw new NotFoundException('Engagement not found or not accessible');
+    if (!engagement)
+      throw new NotFoundException("Engagement not found or not accessible");
     return engagement;
   }
 
-  async create(dto: CreateDocumentDto, user: AuthenticatedUser): Promise<DocumentDetailResponseDto> {
-    // Final reports may be created/uploaded by Super Admin only.
-    if (
-      dto.category === DocumentCategory.FinalReport &&
-      !hasPermission(user.role, 'final-report:upload', user.partnerDesignation)
-    ) {
-      throw new ForbiddenException('Only a Super Admin may create a final report');
-    }
+  async create(
+    dto: CreateDocumentDto,
+    user: AuthenticatedUser,
+  ): Promise<DocumentDetailResponseDto> {
+    this.assertCreatePermission(dto.category, user);
 
     const engagement = await this.accessibleEngagement(dto.engagementId, user);
 
-    // Working papers & final reports group under a request class (in scope);
-    // Supporting documents are engagement-level (no request class).
+    // Supporting + FinalReport: engagement-level (no request class).
+    // WorkingPaper: optional request class (must be in engagement scope when set).
     let requestClass = null;
-    if (dto.category === DocumentCategory.Supporting) {
-      // engagement-level reference material — request class ignored.
-    } else {
-      if (dto.requestClassId == null) {
-        throw new BadRequestException('A request class is required for working papers and final reports');
+    if (dto.category === DocumentCategory.FinalReport) {
+      // Engagement deliverable — ignore class/request linkage.
+    } else if (dto.category === DocumentCategory.WorkingPaper) {
+      if (dto.requestClassId != null) {
+        const inScope = await this.em.findOne(EngagementRequestClassEntity, {
+          engagement: dto.engagementId,
+          requestClass: dto.requestClassId,
+        });
+        if (!inScope) {
+          throw new BadRequestException(
+            "request class is not in scope for this engagement — add it first",
+          );
+        }
+        requestClass = this.em.getReference(
+          RequestClassEntity,
+          dto.requestClassId,
+        );
       }
-      const inScope = await this.em.findOne(EngagementRequestClassEntity, {
-        engagement: dto.engagementId,
-        requestClass: dto.requestClassId,
-      });
-      if (!inScope) {
-        throw new BadRequestException('request class is not in scope for this engagement — add it first');
-      }
-      requestClass = this.em.getReference(RequestClassEntity, dto.requestClassId);
     }
+    // Supporting: engagement-level reference material — request class ignored.
 
     let request: RequestEntity | null = null;
-    if (dto.requestId) {
-      request = await this.em.findOne(RequestEntity, { id: dto.requestId, engagement: dto.engagementId });
-      if (!request) throw new BadRequestException('Request does not belong to this engagement');
+    if (
+      dto.category === DocumentCategory.WorkingPaper &&
+      dto.requestId
+    ) {
+      request = await this.em.findOne(RequestEntity, {
+        id: dto.requestId,
+        engagement: dto.engagementId,
+      });
+      if (!request)
+        throw new BadRequestException(
+          "Request does not belong to this engagement",
+        );
     }
 
     const doc = this.em.create(DocumentEntity, {
       engagement,
       requestClass,
       request,
-      phase: dto.phase ?? phaseForStatus(engagement.status),
+      phase: dto.phase ?? phaseForStage(engagement.stage),
       department: engagement.department, // inherit the engagement's owning department
       category: dto.category,
       title: dto.title,
@@ -177,12 +201,64 @@ export class DocumentsService {
       clientReviewRound: 0,
       createdBy: this.em.getReference(UserEntity, user.userId),
     });
-    this.outbox.enqueue(EVENT.DocumentCreated, { documentId: doc.id, category: doc.category });
+    this.outbox.enqueue(EVENT.DocumentCreated, {
+      documentId: doc.id,
+      category: doc.category,
+    });
     await this.em.persistAndFlush(doc);
     return this.getOne(doc.id, user);
   }
 
-  async list(query: DocumentListQueryDto, user?: AuthenticatedUser): Promise<Paginated<DocumentResponseDto>> {
+  /** Permission for create: Supporting → engagement:update; WorkingPaper → working-paper:upload; FinalReport → final-report:upload. */
+  private assertCreatePermission(
+    category: DocumentCategory,
+    user: AuthenticatedUser,
+  ): void {
+    if (category === DocumentCategory.Supporting) {
+      if (
+        !hasPermission(user.role, "engagement:update", user.partnerDesignation)
+      ) {
+        throw new ForbiddenException(
+          "engagement:update is required to create supporting documents",
+        );
+      }
+      return;
+    }
+    if (category === DocumentCategory.FinalReport) {
+      if (
+        !hasPermission(
+          user.role,
+          "final-report:upload",
+          user.partnerDesignation,
+        )
+      ) {
+        throw new ForbiddenException(
+          "Only a Super Admin may create a final report",
+        );
+      }
+      return;
+    }
+    if (
+      !hasPermission(user.role, "working-paper:upload", user.partnerDesignation)
+    ) {
+      throw new ForbiddenException(
+        "working-paper:upload is required to create working papers",
+      );
+    }
+  }
+
+  /** Permission for file upload / mutate on an existing document, based on its category. */
+  private assertUploadPermission(
+    category: DocumentCategory,
+    user: AuthenticatedUser,
+  ): void {
+    this.assertCreatePermission(category, user);
+  }
+
+  async list(
+    query: DocumentListQueryDto,
+    user?: AuthenticatedUser,
+  ): Promise<Paginated<DocumentResponseDto>> {
     const where: Record<string, unknown> = {};
     if (query.requestClassId) where.requestClass = query.requestClassId;
     if (query.requestId) where.request = query.requestId;
@@ -191,27 +267,56 @@ export class DocumentsService {
     if (query.phase) where.phase = query.phase;
     if (query.q) where.title = { $ilike: `%${query.q}%` };
 
-    const engWhere: Record<string, unknown> = { ...engagementScopeWhere(resolveScope(user)) };
+    const engWhere: Record<string, unknown> = {
+      ...engagementScopeWhere(resolveScope(user)),
+    };
     if (query.engagementId) engWhere.id = query.engagementId;
     if (Object.keys(engWhere).length) where.engagement = engWhere;
 
     const { page, pageSize, limit, offset } = pageParams(query);
-    const [rows, total] = await this.em.findAndCount(DocumentEntity, where as FilterQuery<DocumentEntity>, {
-      populate: ['requestClass', 'request', 'department'],
-      orderBy: { createdAt: 'desc', id: 'asc' },
-      limit,
-      offset,
-    });
-    return paginated(rows.map((d) => this.toDto(d)), total, page, pageSize);
+    const [rows, total] = await this.em.findAndCount(
+      DocumentEntity,
+      where as FilterQuery<DocumentEntity>,
+      {
+        populate: ["requestClass", "request", "department"],
+        orderBy: { createdAt: "desc", id: "asc" },
+        limit,
+        offset,
+      },
+    );
+    return paginated(
+      rows.map((d) => this.toDto(d)),
+      total,
+      page,
+      pageSize,
+    );
   }
 
-  async getOne(id: string, user?: AuthenticatedUser): Promise<DocumentDetailResponseDto> {
+  async exportDocuments(
+    dto: ExportDocumentsDto,
+    user: AuthenticatedUser,
+  ): Promise<{ accepted: true; jobId: string }> {
+    await this.accessibleEngagement(dto.engagementId, user);
+    const job = this.outbox.enqueue(EVENT.DocumentExportRequested, {
+      engagementId: dto.engagementId,
+      requestClassId: dto.requestClassId ?? null,
+      category: dto.category ?? null,
+      actorUserId: user.userId,
+    });
+    await this.em.flush();
+    return { accepted: true, jobId: job.id };
+  }
+
+  async getOne(
+    id: string,
+    user?: AuthenticatedUser,
+  ): Promise<DocumentDetailResponseDto> {
     const doc = await this.findScoped(id, user, [
-      'requestClass',
-      'request',
-      'department',
-      'files',
-      'participants.user',
+      "requestClass",
+      "request",
+      "department",
+      "files",
+      "participants.user",
     ]);
     return this.toDetailDto(doc);
   }
@@ -222,8 +327,10 @@ export class DocumentsService {
     user: AuthenticatedUser,
   ): Promise<DocumentDetailResponseDto> {
     const doc = await this.findScoped(id, user);
+    this.assertUploadPermission(doc.category, user);
     if (dto.title != null) doc.title = dto.title;
-    if (dto.description !== undefined) doc.description = dto.description ?? null;
+    if (dto.description !== undefined)
+      doc.description = dto.description ?? null;
     await this.em.flush();
     return this.getOne(id, user);
   }
@@ -243,7 +350,8 @@ export class DocumentsService {
     dto: PresignUploadDto,
     user: AuthenticatedUser,
   ): Promise<PresignedUploadResponseDto> {
-    const doc = await this.findScoped(id, user);
+    const doc = await this.findScoped(id, user, ["requestClass"]);
+    this.assertUploadPermission(doc.category, user);
     const presigned = await this.storage.presignUpload({
       keyPrefix: `documents/${doc.engagement.id}`,
       fileName: dto.fileName,
@@ -258,7 +366,8 @@ export class DocumentsService {
     files: PresignUploadDto[],
     user: AuthenticatedUser,
   ): Promise<PresignedUploadResponseDto[]> {
-    const doc = await this.findScoped(id, user);
+    const doc = await this.findScoped(id, user, ["requestClass"]);
+    this.assertUploadPermission(doc.category, user);
     return Promise.all(
       files.map((f) =>
         this.storage.presignUpload({
@@ -276,7 +385,8 @@ export class DocumentsService {
     files: ConfirmUploadDto[],
     user: AuthenticatedUser,
   ): Promise<DocumentDetailResponseDto> {
-    const doc = await this.findScoped(id, user);
+    const doc = await this.findScoped(id, user, ["requestClass"]);
+    this.assertUploadPermission(doc.category, user);
     let version = doc.currentVersion;
     const fileIds: string[] = [];
     for (const dto of files) {
@@ -294,7 +404,22 @@ export class DocumentsService {
     }
     doc.currentVersion = version;
     if (doc.status === DocumentStatus.Draft) doc.status = DocumentStatus.Ready;
-    this.outbox.enqueue(EVENT.DocumentFileUploaded, { documentId: doc.id, fileIds, count: files.length });
+    this.outbox.enqueue(EVENT.DocumentFileUploaded, {
+      documentId: doc.id,
+      fileIds,
+      count: files.length,
+    });
+    const team = await engagementTeamRecipients(this.em, doc.engagement.id);
+    await this.notifications.emit({
+      recipients: team,
+      type: "document.uploaded",
+      title: `Document upload: ${doc.title}`,
+      body: `${files.length} file(s) · ${doc.category}`,
+      entityType: "document",
+      entityId: doc.id,
+      link: `/engagements/${doc.engagement.id}`,
+      excludeUserId: user.userId,
+    });
     await this.em.persistAndFlush(doc);
     return this.getOne(id, user);
   }
@@ -305,7 +430,8 @@ export class DocumentsService {
     dto: ConfirmUploadDto,
     user: AuthenticatedUser,
   ): Promise<DocumentDetailResponseDto> {
-    const doc = await this.findScoped(id, user);
+    const doc = await this.findScoped(id, user, ["requestClass"]);
+    this.assertUploadPermission(doc.category, user);
     const version = doc.currentVersion + 1;
     const file = this.em.create(DocumentFileEntity, {
       document: doc,
@@ -318,16 +444,77 @@ export class DocumentsService {
     });
     doc.currentVersion = version;
     if (doc.status === DocumentStatus.Draft) doc.status = DocumentStatus.Ready;
-    this.outbox.enqueue(EVENT.DocumentFileUploaded, { documentId: doc.id, fileId: file.id, version });
+    this.outbox.enqueue(EVENT.DocumentFileUploaded, {
+      documentId: doc.id,
+      fileId: file.id,
+      version,
+    });
+    const team = await engagementTeamRecipients(this.em, doc.engagement.id);
+    await this.notifications.emit({
+      recipients: team,
+      type: "document.uploaded",
+      title: `Document upload: ${doc.title}`,
+      body: `${dto.fileName} · v${version}`,
+      entityType: "document",
+      entityId: doc.id,
+      link: `/engagements/${doc.engagement.id}`,
+      excludeUserId: user.userId,
+    });
     await this.em.persistAndFlush(file);
     return this.getOne(id, user);
   }
 
-  async downloadUrl(id: string, fileId: string, user: AuthenticatedUser): Promise<{ url: string }> {
+  /**
+   * Server-side multipart upload (preferred for Supporting / Planning preliminaries when
+   * browser cannot PUT to object storage). Writes bytes via StoragePort.upload then confirms.
+   */
+  async uploadDirect(
+    id: string,
+    file:
+      | { originalname: string; mimetype: string; size: number; buffer: Buffer }
+      | undefined,
+    user: AuthenticatedUser,
+  ): Promise<DocumentDetailResponseDto> {
+    const doc = await this.findScoped(id, user, ["requestClass"]);
+    this.assertUploadPermission(doc.category, user);
+    if (!file?.buffer?.length)
+      throw new BadRequestException("A file is required");
+    if (file.size > DOCUMENT_MAX_BYTES) {
+      throw new BadRequestException("File must be 100 MB or smaller");
+    }
+    const { storageKey } = await this.storage.upload({
+      keyPrefix: `documents/${doc.engagement.id}`,
+      fileName: file.originalname,
+      contentType: file.mimetype || "application/octet-stream",
+      body: file.buffer,
+    });
+    return this.confirmUpload(
+      id,
+      {
+        storageKey,
+        fileName: file.originalname,
+        mimeType: file.mimetype || undefined,
+        sizeBytes: file.size,
+      },
+      user,
+    );
+  }
+
+  async downloadUrl(
+    id: string,
+    fileId: string,
+    user: AuthenticatedUser,
+  ): Promise<{ url: string }> {
     await this.findScoped(id, user); // authorise access to the document
-    const file = await this.em.findOne(DocumentFileEntity, { id: fileId, document: id });
-    if (!file) throw new NotFoundException('File not found');
-    const url = await this.storage.presignDownload(file.storageKey, file.fileName);
+    const file = await this.em.findOne(DocumentFileEntity, {
+      id: fileId,
+      document: id,
+    });
+    if (!file) throw new NotFoundException("File not found");
+    const url = await this.storage.presignDownload(
+      file.storageKey,
+      file.fileName,
+    );
     return { url };
   }
 
@@ -338,8 +525,11 @@ export class DocumentsService {
   ): Promise<DocumentDetailResponseDto> {
     const doc = await this.findScoped(id, user);
     const participant = await this.em.findOne(UserEntity, { id: dto.userId });
-    if (!participant) throw new NotFoundException('User not found');
-    const existing = await this.em.findOne(DocumentParticipantEntity, { document: id, user: dto.userId });
+    if (!participant) throw new NotFoundException("User not found");
+    const existing = await this.em.findOne(DocumentParticipantEntity, {
+      document: id,
+      user: dto.userId,
+    });
     if (existing) {
       existing.participantRole = dto.participantRole;
     } else {
@@ -364,7 +554,8 @@ export class DocumentsService {
       document: id,
       user: participantUserId,
     });
-    if (!existing) throw new NotFoundException('Participant not found on this document');
+    if (!existing)
+      throw new NotFoundException("Participant not found on this document");
     await this.em.removeAndFlush(existing);
     return this.getOne(id, user);
   }
@@ -377,14 +568,31 @@ export class DocumentsService {
     // Sign-off is a privileged decision.
     if (
       dto.status === DocumentStatus.SignedOff &&
-      !hasPermission(user.role, 'review:signoff', user.partnerDesignation)
+      !hasPermission(user.role, "review:signoff", user.partnerDesignation)
     ) {
-      throw new ForbiddenException('Only a Super Admin may sign off a document');
+      throw new ForbiddenException(
+        "Only a Super Admin may sign off a document",
+      );
     }
     const doc = await this.findScoped(id, user);
-    if (doc.status === dto.status) throw new ConflictException(`Document is already ${dto.status}`);
+    if (doc.status === dto.status)
+      throw new ConflictException(`Document is already ${dto.status}`);
     doc.status = dto.status;
-    this.outbox.enqueue(EVENT.DocumentStatusChanged, { documentId: doc.id, status: dto.status });
+    this.outbox.enqueue(EVENT.DocumentStatusChanged, {
+      documentId: doc.id,
+      status: dto.status,
+    });
+    const team = await engagementTeamRecipients(this.em, doc.engagement.id);
+    await this.notifications.emit({
+      recipients: team,
+      type: "document.status_changed",
+      title: `Document status: ${dto.status}`,
+      body: doc.title,
+      entityType: "document",
+      entityId: doc.id,
+      link: `/engagements/${doc.engagement.id}`,
+      excludeUserId: user.userId,
+    });
     await this.em.flush();
     return this.getOne(id, user);
   }

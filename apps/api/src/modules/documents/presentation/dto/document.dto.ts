@@ -24,9 +24,14 @@ import { PaginationQueryDto } from '../../../../common/dto/pagination-query.dto'
 
 export class CreateDocumentDto {
   @ApiProperty() @IsUUID() engagementId!: string;
-  @ApiPropertyOptional({ description: 'Request class (required for WorkingPaper/FinalReport; omit for Supporting).' })
+  @ApiPropertyOptional({
+    description:
+      'Optional request class for WorkingPaper only (must be in engagement scope). Ignored for FinalReport and Supporting.',
+  })
   @IsOptional() @IsInt() requestClassId?: number;
-  @ApiPropertyOptional({ description: 'Optional request this document answers.' })
+  @ApiPropertyOptional({
+    description: 'Optional request link for WorkingPaper only. Ignored for FinalReport and Supporting.',
+  })
   @IsOptional() @IsUUID() requestId?: string;
   @ApiProperty({ enum: DocumentCategory }) @IsEnum(DocumentCategory) category!: DocumentCategory;
   @ApiPropertyOptional({ enum: EngagementPhase, description: 'Defaults to the engagement stage.' })
@@ -85,6 +90,15 @@ export class DocumentListQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: EngagementPhase }) @IsOptional() @IsEnum(EngagementPhase) phase?: EngagementPhase;
 }
 
+export class ExportDocumentsDto {
+  @ApiProperty() @IsUUID() engagementId!: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() requestClassId?: number;
+  @ApiPropertyOptional({ enum: DocumentCategory })
+  @IsOptional()
+  @IsEnum(DocumentCategory)
+  category?: DocumentCategory;
+}
+
 export class DocumentFileDto {
   @ApiProperty() id!: string;
   @ApiProperty() version!: number;
@@ -114,6 +128,7 @@ export class DocumentResponseDto {
   @ApiProperty({ enum: DocumentStatus }) status!: DocumentStatus;
   @ApiProperty() currentVersion!: number;
   @ApiProperty() createdAt!: Date;
+  @ApiProperty() updatedAt!: Date;
 }
 
 export class DocumentDetailResponseDto extends DocumentResponseDto {
