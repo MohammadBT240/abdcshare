@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-table';
 import type { PageMeta } from '@abdcshare/api-client';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DataTableSkeleton } from '@/components/skeletons';
@@ -29,6 +30,10 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   emptyMessage?: string;
   toolbar?: React.ReactNode;
+  selectable?: boolean;
+  selectedIds?: string[];
+  onSelectionChange?: (ids: string[]) => void;
+  getRowId?: (row: T) => string;
 }
 
 export function DataTable<T>({
@@ -44,11 +49,46 @@ export function DataTable<T>({
   onRowClick,
   emptyMessage = 'No records',
   toolbar,
+  selectable,
+  selectedIds = [],
+  onSelectionChange,
+  getRowId,
 }: DataTableProps<T>) {
+  const tableColumns: ColumnDef<T, unknown>[] = selectable
+    ? [
+        {
+          id: 'select',
+          header: ({ table }) => (
+            <Checkbox
+              checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
+              onCheckedChange={(checked) => table.toggleAllPageRowsSelected(Boolean(checked))}
+              aria-label="Select all rows"
+            />
+          ),
+          cell: ({ row }) => (
+            <Checkbox
+              checked={row.getIsSelected()}
+              onCheckedChange={(checked) => row.toggleSelected(Boolean(checked))}
+              onClick={(event) => event.stopPropagation()}
+              aria-label="Select row"
+            />
+          ),
+        },
+        ...columns,
+      ]
+    : columns;
+  const rowSelection = Object.fromEntries(selectedIds.map((id) => [id, true]));
   const table = useReactTable({
     data,
-    columns,
+    columns: tableColumns,
     getCoreRowModel: getCoreRowModel(),
+    getRowId,
+    enableRowSelection: selectable,
+    state: { rowSelection },
+    onRowSelectionChange: (updater) => {
+      const next = typeof updater === 'function' ? updater(rowSelection) : updater;
+      onSelectionChange?.(Object.keys(next).filter((id) => next[id]));
+    },
     manualPagination: true,
     pageCount: meta?.totalPages ?? 1,
   });
@@ -70,7 +110,7 @@ export function DataTable<T>({
       </div>
 
       {showTableSkeleton ? (
-        <DataTableSkeleton columns={columns.length || 5} showToolbar={false} />
+        <DataTableSkeleton columns={tableColumns.length || 5} showToolbar={false} />
       ) : error ? (
         <div className="rounded-lg border border-border bg-card shadow-aca">
           <ErrorState message={error} />
@@ -100,7 +140,7 @@ export function DataTable<T>({
               <TableBody>
                 {table.getRowModel().rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={tableColumns.length} className="h-24 text-center text-muted-foreground">
                       {emptyMessage}
                     </TableCell>
                   </TableRow>

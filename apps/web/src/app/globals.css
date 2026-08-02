@@ -20,8 +20,10 @@
     --border: 146 20% 84%;
     --input: 146 20% 84%;
     --ring: 146 64% 22%;
-    --radius: 0.9rem;
+    --radius: 0.75rem;
     --shadow-aca: 0 14px 36px rgba(14, 44, 29, 0.08);
+    --space-page-x: 0.75rem;
+    --space-page-y: 1rem;
   }
   .dark {
     --background: 150 22% 7%;
@@ -38,6 +40,17 @@
     --aca-sidebar-from: 150 22% 6%;
     --aca-sidebar-to: 150 22% 5%;
     --shadow-aca: 0 14px 36px rgba(0, 0, 0, 0.42);
+    --space-page-x: 0.75rem;
+    --space-page-y: 0.875rem;
   }
   body { @apply bg-background text-foreground; }
+}
+
+@layer utilities {
+  .page-pad {
+    padding-left: var(--space-page-x);
+    padding-right: var(--space-page-x);
+    padding-top: var(--space-page-y);
+    padding-bottom: calc(var(--space-page-y) * 1.25);
+  }
 }

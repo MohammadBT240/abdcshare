@@ -26,7 +26,7 @@ export function DatePicker({
   const [open, setOpen] = React.useState(false);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -42,7 +42,18 @@ export function DatePicker({
           {value ? formatDateDisplay(value) : placeholder}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent
+        className="w-auto p-0"
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => {
+          // Keep open when interacting with portaled calendar controls inside a Dialog.
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('[data-slot="calendar"], .rdp-root, [class*="rdp"]')) {
+            e.preventDefault();
+          }
+        }}
+      >
         <Calendar
           mode="single"
           selected={value}
