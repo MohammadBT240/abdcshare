@@ -19,9 +19,12 @@ import {
   AddRequestClassDto,
   AddTeamMemberDto,
   CreateEngagementDto,
+  CloneEngagementDto,
   EngagementDetailResponseDto,
+  EngagementHistoryItemDto,
   EngagementListQueryDto,
   EngagementListResponseDto,
+  EngagementWorkspaceResponseDto,
   CreateSignOffDto,
   RevokeSignOffDto,
   SignOffResponseDto,
@@ -41,25 +44,47 @@ export class EngagementsController {
     return this.engagements.listSignOffs(id);
   }
 
+  /**
+   * Authz: engagement:view at the gate; service requires review:signoff OR Lead.
+   */
   @Post(':id/sign-offs')
-  @RequirePermission('review:signoff')
+  @RequirePermission('engagement:view')
   signOff(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateSignOffDto,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<SignOffResponseDto> {
-    return this.engagements.signOff(id, dto, userId);
+    return this.engagements.signOff(id, dto, user);
   }
 
+  /** Authz: engagement:view at the gate; service requires review:signoff OR Lead. */
   @Post(':id/sign-offs/:signOffId/revoke')
-  @RequirePermission('review:signoff')
+  @RequirePermission('engagement:view')
   revokeSignOff(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('signOffId', ParseUUIDPipe) signOffId: string,
     @Body() dto: RevokeSignOffDto,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<SignOffResponseDto> {
-    return this.engagements.revokeSignOff(id, signOffId, dto, userId);
+    return this.engagements.revokeSignOff(id, signOffId, dto, user);
+  }
+
+  @Get(':id/workspace')
+  @RequirePermission('engagement:view')
+  getWorkspace(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EngagementWorkspaceResponseDto> {
+    return this.engagements.getWorkspace(id, user);
+  }
+
+  @Get(':id/history')
+  @RequirePermission('engagement:view')
+  getHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EngagementHistoryItemDto[]> {
+    return this.engagements.getHistory(id, user);
   }
 
   @Post()
@@ -89,60 +114,90 @@ export class EngagementsController {
     return this.engagements.getOne(id, user);
   }
 
+  /** Authz: engagement:view at the gate; service requires engagement:update OR Lead. */
   @Patch(':id')
-  @RequirePermission('engagement:update')
+  @RequirePermission('engagement:view')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEngagementDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<EngagementDetailResponseDto> {
-    return this.engagements.update(id, dto);
+    return this.engagements.update(id, dto, user);
   }
 
+  /** Authz: engagement:view at the gate; service requires engagement:transition OR Lead. */
   @Post(':id/transition')
-  @RequirePermission('engagement:transition')
+  @RequirePermission('engagement:view')
   transition(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionEngagementDto,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<EngagementDetailResponseDto> {
-    return this.engagements.transition(id, dto, userId);
+    return this.engagements.transition(id, dto, user);
   }
 
+  @Post(':id/clone')
+  @RequirePermission('engagement:create')
+  clone(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CloneEngagementDto,
+    @CurrentUser('userId') userId: string,
+  ): Promise<EngagementDetailResponseDto> {
+    return this.engagements.clone(id, dto, userId);
+  }
+
+  /** Authz: engagement:view at the gate; service requires engagement:update OR Lead. */
   @Post(':id/team')
-  @RequirePermission('engagement:update')
+  @RequirePermission('engagement:view')
   addTeamMember(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddTeamMemberDto,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<EngagementDetailResponseDto> {
-    return this.engagements.addTeamMember(id, dto, userId);
+    return this.engagements.addTeamMember(id, dto, user);
   }
 
+  /** Authz: engagement:view at the gate; service requires engagement:update OR Lead. */
+  @Post(':id/team/:userId/elevate')
+  @RequirePermission('engagement:view')
+  elevateTeamMember(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EngagementDetailResponseDto> {
+    return this.engagements.elevateTeamMember(id, userId, user);
+  }
+
+  /** Authz: engagement:view at the gate; service requires engagement:update OR Lead. */
   @Delete(':id/team/:userId')
-  @RequirePermission('engagement:update')
+  @RequirePermission('engagement:view')
   removeTeamMember(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<EngagementDetailResponseDto> {
-    return this.engagements.removeTeamMember(id, userId);
+    return this.engagements.removeTeamMember(id, userId, user);
   }
 
+  /** Authz: engagement:view at the gate; service requires engagement:update OR Lead. */
   @Post(':id/request-classes')
-  @RequirePermission('engagement:update')
+  @RequirePermission('engagement:view')
   addRequestClass(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddRequestClassDto,
-    @CurrentUser('userId') userId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<EngagementDetailResponseDto> {
-    return this.engagements.addRequestClass(id, dto, userId);
+    return this.engagements.addRequestClass(id, dto, user);
   }
 
+  /** Authz: engagement:view at the gate; service requires engagement:update OR Lead. */
   @Delete(':id/request-classes/:requestClassId')
-  @RequirePermission('engagement:update')
+  @RequirePermission('engagement:view')
   removeRequestClass(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('requestClassId', ParseIntPipe) requestClassId: number,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<EngagementDetailResponseDto> {
-    return this.engagements.removeRequestClass(id, requestClassId);
+    return this.engagements.removeRequestClass(id, requestClassId, user);
   }
 }

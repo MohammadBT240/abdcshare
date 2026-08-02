@@ -88,11 +88,11 @@ your confirm; trivial to add back as `{id,name,is_active}` lookups if needed.
 >
 > **Roles (v8):** `Platform Admin`, `Super Admin`, `Staff`, `Client`, **`Guest`** (invited by the Principal
 > Partner solely to submit a report; forced password change on first login). **`Auditor` is no longer a role** —
-> every Staff is a working practitioner; "Auditor" survives as the per-engagement **team member_role**
-> tag (Partner/Manager/Auditor). **Engagements are created by Super Admin only**; staff work inside the
-> engagements they're attached to. **Row-level scope:** Client → own client's rows; Staff → engagements
-> they're on the team of (+ their requests); Platform/Super Admin → unrestricted (see `common/security/
-> access-scope.ts`).
+> every Staff is a working practitioner; "Auditor" survives as a document participant role.
+> Engagement team roles are **Lead / Member** (creator is Lead; Lead has scoped ops permissions).
+> **Engagements are created by Super Admin only**; staff work inside the engagements they're attached to.
+> **Row-level scope:** Client → own client's rows; Staff → engagements they're on the team of (+ their
+> requests); Platform/Super Admin → unrestricted (see `common/security/access-scope.ts`).
 
 ---
 
@@ -125,7 +125,7 @@ Development, Shared Services, Other.
 
 **engagements** — top-level container for a client's work
 | id uuid PK · client_id FK · engagement_type_id FK · department_id FK · reference_code varchar UQ ·
-| title · period_label varchar null · **status enum(Planning,Execution,Reporting,Completed,Archived)** ·
+| title · period_label varchar null · **stage enum(Planning,Execution,Reporting,Completed,Archived)** ·
 | start_date / target_completion_date date null · completed_at timestamptz null · created_by FK |
 
 > **Stages (v7):** the working lifecycle is **Planning → Execution → Reporting → Completed → Archived**
@@ -136,8 +136,8 @@ Development, Shared Services, Other.
 
 - **engagement_types** `{ id int PK, name UQ, is_active }`.
 - **request_classes** `{ id int PK, code UQ null, name UQ, description text null, is_active }`.
-- **request_class_engagement_types** — composite PK (request_class_id, engagement_type_id): allowed request classes per type.
-- **engagement_team_members** — PK (engagement_id, user_id): member_role enum(Partner,Manager,Auditor), assigned_by FK, assigned_at.
+- **request_class_engagement_types** — composite PK (request_class_id, engagement_type_id): suggested request classes per type (soft defaults only).
+- **engagement_team_members** — PK (engagement_id, user_id): member_role enum(Lead,Member), assigned_by FK, assigned_at. Exactly one Lead per engagement (app-enforced).
 - **engagement_request_classes** — PK (engagement_id, request_class_id): sort_order, added_by FK.
 - **engagement_status_history** — id, engagement_id FK, from_status, to_status, changed_by FK, changed_at, note.
 - **engagement_sign_offs** — id, engagement_id FK, request_class_id FK null, signed_by FK, signed_at, note, revoked_by FK null, revoked_at, revoke_reason.
@@ -191,7 +191,7 @@ set a password before doing anything.
 **requests** *(legacy `request_client`)*
 | id uuid PK · engagement_id FK · request_type_id FK (→ request_class derived) · stage_id FK → request_stages ·
 | status_id FK → request_statuses · **phase enum(Planning,Execution,Reporting) null** (the engagement
-| stage this request belongs to; defaults to the engagement's current stage) · description text ·
+| working stage this request was created in; stamped at create, does not auto-follow later transitions) · description text ·
 | due_date date null · created_by FK |
 
 - **request_types** *(legacy `request_type`)* `{ id int PK, request_class_id FK, name, expected_documents int (legacy documents_no), is_active }` — **grouped under request class** (UQ on request_class_id+name).

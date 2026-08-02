@@ -28,7 +28,7 @@ export class ReviewsController {
   }
 
   @Get()
-  @RequirePermission('review:submit')
+  @RequirePermission('review:decide')
   list(
     @Query() query: ReviewListQueryDto,
     @CurrentUser() user: AuthenticatedUser,

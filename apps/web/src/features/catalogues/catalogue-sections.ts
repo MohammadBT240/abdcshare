@@ -11,7 +11,7 @@ export const CATALOGUE_SECTIONS: CatalogueSection[] = [
   {
     href: '/admin/catalogues/engagement-types',
     title: 'Engagement types',
-    description: 'Engagement categories and allowed request classes',
+    description: 'Engagement categories and suggested request classes',
   },
   {
     href: '/admin/catalogues/request-classes',

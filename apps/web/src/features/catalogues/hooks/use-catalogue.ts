@@ -14,7 +14,7 @@ export interface CatalogueRow {
   requestClassId?: number;
   requestClassName?: string | null;
   expectedDocuments?: number;
-  allowedRequestClassIds?: number[];
+  suggestedRequestClassIds?: number[];
 }
 
 export interface CatalogueList {

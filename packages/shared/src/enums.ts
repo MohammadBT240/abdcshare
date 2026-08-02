@@ -9,7 +9,8 @@ export const ROLE_NAMES = [
 ] as const;
 export type RoleName = (typeof ROLE_NAMES)[number];
 
-export enum EngagementStatus {
+/** Engagement lifecycle stage (user-facing “Stage”, not Status). */
+export enum EngagementStage {
   Planning = 'Planning',
   Execution = 'Execution',
   Reporting = 'Reporting',
@@ -17,38 +18,46 @@ export enum EngagementStatus {
   Archived = 'Archived',
 }
 
-/** Allowed forward transitions for an engagement's lifecycle. */
-export const ENGAGEMENT_TRANSITIONS: Record<EngagementStatus, EngagementStatus[]> = {
-  [EngagementStatus.Planning]: [EngagementStatus.Execution],
-  [EngagementStatus.Execution]: [EngagementStatus.Reporting, EngagementStatus.Planning],
-  [EngagementStatus.Reporting]: [EngagementStatus.Completed, EngagementStatus.Execution],
-  [EngagementStatus.Completed]: [EngagementStatus.Archived, EngagementStatus.Reporting],
-  [EngagementStatus.Archived]: [],
+/** @deprecated Use EngagementStage */
+export const EngagementStatus = EngagementStage;
+/** @deprecated Use EngagementStage */
+export type EngagementStatus = EngagementStage;
+
+/** Allowed transitions for an engagement's stage lifecycle. */
+export const ENGAGEMENT_TRANSITIONS: Record<EngagementStage, EngagementStage[]> = {
+  [EngagementStage.Planning]: [EngagementStage.Execution],
+  [EngagementStage.Execution]: [EngagementStage.Reporting, EngagementStage.Planning],
+  [EngagementStage.Reporting]: [EngagementStage.Completed, EngagementStage.Execution],
+  [EngagementStage.Completed]: [EngagementStage.Archived, EngagementStage.Reporting],
+  [EngagementStage.Archived]: [],
 };
 
-/** The three working stages an item (request/document) can belong to. */
+/** The three working phases an item (request/document) can belong to. */
 export enum EngagementPhase {
   Planning = 'Planning',
   Execution = 'Execution',
   Reporting = 'Reporting',
 }
 
-/** Which working stage the engagement's status maps to (terminal → Reporting). */
-export function phaseForStatus(status: EngagementStatus): EngagementPhase {
-  switch (status) {
-    case EngagementStatus.Planning:
+/** Working phase stamped on requests from the engagement's current stage (terminal → Reporting). */
+export function phaseForStage(stage: EngagementStage): EngagementPhase {
+  switch (stage) {
+    case EngagementStage.Planning:
       return EngagementPhase.Planning;
-    case EngagementStatus.Execution:
+    case EngagementStage.Execution:
       return EngagementPhase.Execution;
     default:
       return EngagementPhase.Reporting; // Reporting / Completed / Archived
   }
 }
 
+/** @deprecated Use phaseForStage */
+export const phaseForStatus = phaseForStage;
+
+/** Role on a specific engagement team (not a platform login role). */
 export enum EngagementMemberRole {
-  Partner = 'Partner',
-  Manager = 'Manager',
-  Auditor = 'Auditor',
+  Lead = 'Lead',
+  Member = 'Member',
 }
 
 export enum DocumentCategory {

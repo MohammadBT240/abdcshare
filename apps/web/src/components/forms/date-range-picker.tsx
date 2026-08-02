@@ -69,7 +69,7 @@ export function DateRangePicker({
   const display = formatDateRangeDisplay(value) || placeholder;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -85,7 +85,11 @@ export function DateRangePicker({
           <span className="truncate">{display}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto max-w-[calc(100vw-1.5rem)] p-0" align="start">
+      <PopoverContent
+        className="w-auto max-w-[calc(100vw-1.5rem)] p-0"
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <div className="flex flex-col sm:flex-row">
           <div className="flex flex-row gap-1 overflow-x-auto border-b border-border p-2 sm:w-40 sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r">
             {DATE_RANGE_PRESETS.map((preset) => (

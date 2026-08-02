@@ -1,6 +1,6 @@
 'use client';
 
-import { IconDownload, IconFileSpreadsheet, IconFileTypeCsv } from '@tabler/icons-react';
+import { IconDownload } from '@tabler/icons-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { FileTypeIcon } from '@/components/data/file-type-icon';
 
 export interface ExportMenuProps {
   onExportCsv?: () => void;
@@ -37,13 +38,13 @@ export function ExportMenu({
       <DropdownMenuContent align="end">
         {onExportCsv ? (
           <DropdownMenuItem onClick={onExportCsv}>
-            <IconFileTypeCsv className="mr-2 h-4 w-4" />
+            <FileTypeIcon fileName="export.csv" size={16} className="mr-2" />
             CSV
           </DropdownMenuItem>
         ) : null}
         {onExportExcel ? (
           <DropdownMenuItem onClick={onExportExcel}>
-            <IconFileSpreadsheet className="mr-2 h-4 w-4" />
+            <FileTypeIcon fileName="export.xlsx" size={16} className="mr-2" />
             Excel
           </DropdownMenuItem>
         ) : null}

@@ -1,0 +1,10 @@
+---
+description: Do not use thick left accent borders on cards or metric tiles
+alwaysApply: true
+---
+
+# No left accent border design
+
+Never use thick colored left-edge accent bars on cards, metric tiles, or panels (e.g. `border-l-4 border-l-primary`, `border-l-sky-500` as a card accent stripe).
+
+Prefer uniform borders (`border border-border`), soft background tints, or illustrations for differentiation instead.

@@ -156,11 +156,11 @@ function CatalogueAdminInner({
                 variant="outline"
                 onClick={() => {
                   setClassesTarget(row.original);
-                  setSelectedClassIds(row.original.allowedRequestClassIds ?? []);
+                  setSelectedClassIds(row.original.suggestedRequestClassIds ?? []);
                   setClassesOpen(true);
                 }}
               >
-                Allowed classes
+                Suggested classes
               </Button>
             ) : null}
             {row.original.isActive ? (
@@ -352,11 +352,12 @@ function CatalogueAdminInner({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Allowed request classes{classesTarget ? ` — ${classesTarget.name}` : ''}
+              Suggested request classes{classesTarget ? ` — ${classesTarget.name}` : ''}
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Leave none selected to allow all request classes for this engagement type.
+            Soft defaults when creating an engagement of this type. Any active class can still be
+            added on an engagement — leave none selected for no suggestions.
           </p>
           <div className="max-h-64 space-y-2 overflow-y-auto">
             {(requestClasses ?? []).map((rc) => {
@@ -392,8 +393,8 @@ function CatalogueAdminInner({
                   });
                   toast.success(
                     selectedClassIds.length === 0
-                      ? 'All request classes allowed'
-                      : 'Allowed request classes updated',
+                      ? 'No suggested classes (any class can still be added on an engagement)'
+                      : 'Suggested request classes updated',
                   );
                   setClassesOpen(false);
                 } catch (err) {

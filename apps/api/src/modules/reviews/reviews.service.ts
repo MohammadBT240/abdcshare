@@ -123,15 +123,13 @@ export class ReviewsService {
   }
 
   async list(query: ReviewListQueryDto, user: AuthenticatedUser): Promise<Paginated<ReviewResponseDto>> {
-    if (!query.requestId && !query.documentId) {
-      throw new BadRequestException('Filter by requestId or documentId');
-    }
     if (query.requestId) await this.assertRequest(query.requestId, user);
     if (query.documentId) await this.assertDocument(query.documentId, user);
 
     const where: Record<string, unknown> = {};
     if (query.requestId) where.request = query.requestId;
     if (query.documentId) where.document = query.documentId;
+    if (!query.requestId && !query.documentId) where.reviewer = user.userId;
     if (query.status) where.status = query.status;
 
     const { page, pageSize, limit, offset } = pageParams(query);

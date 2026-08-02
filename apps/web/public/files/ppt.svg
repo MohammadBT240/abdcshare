@@ -1,0 +1,6 @@
+<svg width="62" height="62" viewBox="0 0 62 62" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M15.5 0C13.3687 0 11.625 1.74375 11.625 3.875V58.125C11.625 60.2562 13.3687 62 15.5 62H54.25C56.3812 62 58.125 60.2562 58.125 58.125V15.5L42.625 0H15.5Z" fill="#F28B24"/>
+<path d="M46.5 15.5H58.125L42.625 0V11.625C42.625 13.7563 44.3687 15.5 46.5 15.5Z" fill="#CC7220"/>
+<path d="M22 25H40V27H22V25ZM22 30H40V32H22V30ZM22 35H30V37H22V35Z" fill="white"/>
+<text x="24" y="48" font-family="Arial, sans-serif" font-size="8" fill="white" font-weight="bold">PPTX</text>
+</svg>

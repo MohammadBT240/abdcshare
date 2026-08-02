@@ -1,8 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { IconUpload, IconX } from '@tabler/icons-react';
+import { IconX } from '@tabler/icons-react';
 import { Button } from '@/components/ui/button';
+import { FileTypeIcon } from '@/components/data/file-type-icon';
 import { cn } from '@/lib/utils';
 import { DOCUMENT_MAX_BYTES, validateFile } from '@/components/forms/file-validation';
 
@@ -87,7 +88,7 @@ export function FileUpload({
           if (!disabled) addFiles(e.dataTransfer.files);
         }}
       >
-        <IconUpload className="mb-2 h-8 w-8 text-muted-foreground" />
+        <FileTypeIcon kind="upload" size={40} className="mb-2" alt="" />
         <p className="text-sm font-medium text-foreground">{label}</p>
         <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         <Button
@@ -121,10 +122,13 @@ export function FileUpload({
               key={`${file.name}-${i}`}
               className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-sm"
             >
-              <span className="min-w-0 truncate">
-                {file.name}{' '}
-                <span className="text-muted-foreground">
-                  ({Math.round(file.size / 1024)} KB)
+              <span className="flex min-w-0 items-center gap-2 truncate">
+                <FileTypeIcon fileName={file.name} mimeType={file.type} size={18} />
+                <span className="min-w-0 truncate">
+                  {file.name}{' '}
+                  <span className="text-muted-foreground">
+                    ({Math.round(file.size / 1024)} KB)
+                  </span>
                 </span>
               </span>
               <button

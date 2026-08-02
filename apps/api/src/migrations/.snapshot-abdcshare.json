@@ -3112,8 +3112,8 @@
           "enumItems": [],
           "mappedType": "uuid"
         },
-        "from_status": {
-          "name": "from_status",
+        "from_stage": {
+          "name": "from_stage",
           "type": "text",
           "unsigned": false,
           "autoincrement": false,
@@ -3134,8 +3134,8 @@
           ],
           "mappedType": "enum"
         },
-        "to_status": {
-          "name": "to_status",
+        "to_stage": {
+          "name": "to_stage",
           "type": "text",
           "unsigned": false,
           "autoincrement": false,
@@ -3299,9 +3299,8 @@
           "default": null,
           "comment": null,
           "enumItems": [
-            "Partner",
-            "Manager",
-            "Auditor"
+            "Lead",
+            "Member"
           ],
           "mappedType": "enum"
         },
@@ -3624,8 +3623,8 @@
           "enumItems": [],
           "mappedType": "string"
         },
-        "status": {
-          "name": "status",
+        "stage": {
+          "name": "stage",
           "type": "text",
           "unsigned": false,
           "autoincrement": false,
