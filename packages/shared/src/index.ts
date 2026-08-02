@@ -4,3 +4,4 @@ export * from './permissions';
 export * from './queues';
 export * from './events';
 export * from './errors';
+export * from './notification-types';
