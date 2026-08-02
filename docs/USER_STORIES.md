@@ -78,7 +78,7 @@
 
 - **E-1 (M, PA)** Manage **request classes** (name, code, description, active). `catalogue:manage`.
 - **E-2 (M, PA)** Manage **request types grouped under a request class** (name, expected documents, active; unique per request class). `catalogue:manage`. _(parity: add/update-request-type)_
-- **E-3 (S, PA)** Scope which request classes apply to which **engagement type**. `catalogue:manage`.
+- **E-3 (S, PA)** Configure **suggested** request classes per **engagement type** (soft defaults on create; not a hard bind). `catalogue:manage`.
 - **E-4 (M, PA)** Manage **request stages** and **statuses** (ordering; deactivate in-use). `catalogue:manage`.
 - **E-5 (M, PA)** Manage **engagement types**. `catalogue:manage`.
 - **E-6 (M, SA)** Read-only view of all catalogues. `catalogue:view`.
@@ -96,12 +96,12 @@
 ## Epic H — Engagements
 
 - **H-1 (M, SA)** Open an engagement for a client (client, engagement type, department, optional period, dates). AC: unique reference code; logged. `engagement:create`.
-- **H-2 (M, SA)** Stage lifecycle **Planning→Execution→Reporting→Completed→Archived**, with history + owners. AC: allowed transitions only; **completion requires every in-scope request class to be signed off** (or an engagement-wide sign-off). `engagement:transition`.
-- **H-6 (M, team)** **Stage-tagged work items:** requests and documents carry the engagement stage they belong to (Planning/Execution/Reporting, default = current stage) — so *planning preliminaries* (client requests + team uploads with `phase=Planning`) group together. 🆕
-- **H-7 (M, team)** **General supporting documents** — engagement-level reference material with no request class (`category=Supporting`), uploadable by any team member for future reference. `working-paper:upload`. 🆕
-- **H-3 (M, SA)** Assign engagement team (Partner/Manager/Auditor roles). AC: only team + admins can act on its requests. `engagement:update`.
+- **H-2 (M, SA)** **Stage** lifecycle **Planning→Execution→Reporting→Completed→Archived**, with history + owners. AC: allowed transitions only; **completion requires every in-scope request class to be signed off** (or an engagement-wide sign-off). `engagement:transition`.
+- **H-6 (M, team)** **Phase-tagged work items:** requests and documents carry the **phase** of the engagement stage they were created in (Planning/Execution/Reporting) — so planning preliminaries group together. 🆕
+- **H-7 (M, SA/ST)** **Planning / engagement documents** — engagement-level preliminaries (`category=Supporting`, no request class): engagement letter, appointment letter, packs. Uploadable before or after requests exist. `engagement:update` (not working-paper). 🆕
+- **H-3 (M, SA / Lead)** Assign engagement team (Lead/Member). Creator is Lead; Lead can elevate another. AC: only team + admins can act on its requests. Manage via `engagement:update` or Lead on that engagement.
 - **H-4 (M, team)** Engagement workspace: request classes with grouped requests, progress %, documents. `engagement:view`.
-- **H-5 (S, SA)** Add request classes to an engagement (from allowed set). `engagement:update`.
+- **H-5 (S, SA)** Add request classes to an engagement (any active class; type suggestions optional). `engagement:update`.
 - **H-6 (C, SA)** Create from **template** / **clone last period** (structure only). `engagement:create`. 🆕
 - **H-7 (M, CL)** Client sees only their own engagements. `engagement:view`.
 
@@ -125,8 +125,8 @@
 
 ## Epic K — Documents (working papers & final reports, unified)
 
-- **K-1 (M, ST/SA)** Upload **working papers** to an engagement/request class — presigned direct-to-R2 → confirm → async processing; multiple files; versioned; attach participants (auditor/advisor/staff). `working-paper:upload`. _(parity: 6× *-working-paper)_
-- **K-2 (M, SA only)** Upload **final reports** by request class — same flow, **Super Admin only**. `final-report:upload`. _(parity: 6× *-final-report)_
+- **K-1 (M, ST/SA)** Upload **working papers** on an engagement — presigned direct-to-R2 → confirm → async processing; multiple files; versioned; attach participants (auditor/advisor/staff). **Optional** request-class (and optional request) link. `working-paper:upload`. _(parity: 6× *-working-paper)_
+- **K-2 (M, SA only)** Upload **final reports** on an engagement (not class-scoped) — same flow, **Super Admin only**; then client review cycles (K-8…K-11). `final-report:upload`. _(parity: 6× *-final-report)_
 - **K-3 (M, authorised)** Secure download/inline preview (presigned GET; authorised vs engagement membership + `document:view`). `document:view`. _(parity: storage/download, viewer)_
 - **K-4 (S, ST/SA)** Document **versioning** (re-upload = new version; history kept). 🆕
 - **K-5 (M, ST/SA)** **Export** an engagement's / request class's documents as a zip (worker). `document:export`. _(parity: 13× export_*)_
@@ -160,6 +160,8 @@
 - **N-2 (M)** Per-event notification preferences (email on/off, in-app on/off). _(notification_preferences incl. in_app_enabled)_
 - **N-3 (M, system)** Transactional emails via Resend (worker): credentials, reset/changed, request created/updated, document accepted/returned, discussion posted, partner-report reminder/submitted. _(parity: email_queue + templates)_
 - **N-4 (S)** Deadline reminders for due/overdue requests. 🆕
+
+Recipient rules (who gets which event): see **[NOTIFICATIONS.md](./NOTIFICATIONS.md)**. Type catalog: `@abdcshare/shared` `NOTIFICATION_TYPE_CATALOG`.
 
 ## Epic O — Partner / Chairman reports 🆕 ✅
 
