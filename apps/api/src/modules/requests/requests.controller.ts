@@ -16,8 +16,10 @@ import type { AuthenticatedUser } from '../../common/interfaces/authenticated-us
 import { RequestsService } from './requests.service';
 import {
   AssignRequestDto,
+  BulkUpdateRequestsDto,
   CreateRequestDto,
   RequestDetailResponseDto,
+  RequestHistoryItemDto,
   RequestListQueryDto,
   RequestListResponseDto,
   SetStageDto,
@@ -49,6 +51,24 @@ export class RequestsController {
     return this.requests.list(query, user);
   }
 
+  @Post('bulk')
+  @RequirePermission('request:update')
+  bulkUpdate(
+    @Body() dto: BulkUpdateRequestsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ updated: number }> {
+    return this.requests.bulkUpdate(dto, user);
+  }
+
+  @Get(':id/history')
+  @RequirePermission('request:view')
+  getHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RequestHistoryItemDto[]> {
+    return this.requests.getHistory(id, user);
+  }
+
   @Get(':id')
   @RequirePermission('request:view')
   getOne(
@@ -66,6 +86,15 @@ export class RequestsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<RequestDetailResponseDto> {
     return this.requests.update(id, dto, user);
+  }
+
+  @Delete(':id')
+  @RequirePermission('request:update')
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ ok: true }> {
+    return this.requests.remove(id, user);
   }
 
   @Post(':id/stage')
