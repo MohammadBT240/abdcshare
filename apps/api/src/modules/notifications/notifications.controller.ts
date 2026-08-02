@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiProperty, ApiTags } from '@nestjs/swagger';
+import { NOTIFICATION_TYPE_CATALOG } from '@abdcshare/shared';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { NotificationsService } from './notifications.service';
@@ -7,6 +8,7 @@ import {
   NotificationListQueryDto,
   NotificationListResponseDto,
   NotificationResponseDto,
+  NotificationTypeCatalogItemDto,
   PreferenceResponseDto,
   UpdatePreferenceDto,
 } from './presentation/dto/notification.dto';
@@ -24,6 +26,18 @@ class MarkAllReadDto {
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
+
+  @Get('catalog')
+  @RequirePermission('notification:receive')
+  @ApiOkResponse({ type: [NotificationTypeCatalogItemDto] })
+  catalog(): NotificationTypeCatalogItemDto[] {
+    return NOTIFICATION_TYPE_CATALOG.map((t) => ({
+      type: t.type,
+      label: t.label,
+      description: t.description,
+      category: t.category,
+    }));
+  }
 
   @Get()
   @RequirePermission('notification:receive')
