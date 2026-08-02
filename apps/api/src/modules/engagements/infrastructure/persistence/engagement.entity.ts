@@ -1,5 +1,5 @@
 import { Collection, Entity, Enum, ManyToOne, OneToMany, Property } from '@mikro-orm/core';
-import { EngagementStatus } from '@abdcshare/shared';
+import { EngagementStage } from '@abdcshare/shared';
 import { BaseEntity } from '../../../../database/base.entity';
 import { ClientEntity } from '../../../clients/infrastructure/persistence/client.entity';
 import { EngagementTypeEntity } from '../../../engagement-types/infrastructure/persistence/engagement-type.entity';
@@ -29,8 +29,8 @@ export class EngagementEntity extends BaseEntity {
   @Property({ nullable: true })
   periodLabel?: string | null;
 
-  @Enum({ items: () => EngagementStatus })
-  status: EngagementStatus = EngagementStatus.Planning;
+  @Enum({ items: () => EngagementStage, fieldName: 'stage' })
+  stage: EngagementStage = EngagementStage.Planning;
 
   @Property({ type: 'date', nullable: true })
   startDate?: Date | null;
