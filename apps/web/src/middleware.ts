@@ -1,12 +1,18 @@
-import { NextResponse, type NextRequest } from 'next/server';
-import { ACCESS_COOKIE } from '@/lib/auth/constants';
+import { NextResponse, type NextRequest } from "next/server";
+import { ACCESS_COOKIE } from "@/lib/auth/constants";
 
 function isProtectedAppRoute(pathname: string): boolean {
-  return (
-    pathname === '/dashboard' ||
-    pathname.startsWith('/dashboard/') ||
-    pathname === '/admin' ||
-    pathname.startsWith('/admin/')
+  const protectedRoots = [
+    "/dashboard",
+    "/admin",
+    "/engagements",
+    "/requests",
+    "/reviews",
+    "/final-reports",
+    "/settings",
+  ];
+  return protectedRoots.some(
+    (root) => pathname === root || pathname.startsWith(`${root}/`),
   );
 }
 
@@ -15,18 +21,18 @@ export function middleware(req: NextRequest) {
   const hasAccess = Boolean(req.cookies.get(ACCESS_COOKIE)?.value);
 
   if (isProtectedAppRoute(pathname) && !hasAccess) {
-    const login = new URL('/login', req.url);
-    login.searchParams.set('redirect', pathname);
+    const login = new URL("/login", req.url);
+    login.searchParams.set("redirect", pathname);
     return NextResponse.redirect(login);
   }
 
-  if (hasAccess && pathname === '/login') {
-    return NextResponse.redirect(new URL('/dashboard', req.url));
+  if (hasAccess && pathname === "/login") {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  if (pathname === '/change-password' && !hasAccess) {
-    const login = new URL('/login', req.url);
-    login.searchParams.set('redirect', '/change-password');
+  if (pathname === "/change-password" && !hasAccess) {
+    const login = new URL("/login", req.url);
+    login.searchParams.set("redirect", "/change-password");
     return NextResponse.redirect(login);
   }
 
@@ -35,13 +41,23 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/dashboard',
-    '/dashboard/:path*',
-    '/admin',
-    '/admin/:path*',
-    '/login',
-    '/change-password',
-    '/forgot-password',
-    '/reset-password',
+    "/dashboard",
+    "/dashboard/:path*",
+    "/admin",
+    "/admin/:path*",
+    "/engagements",
+    "/engagements/:path*",
+    "/requests",
+    "/requests/:path*",
+    "/reviews",
+    "/reviews/:path*",
+    "/final-reports",
+    "/final-reports/:path*",
+    "/settings",
+    "/settings/:path*",
+    "/login",
+    "/change-password",
+    "/forgot-password",
+    "/reset-password",
   ],
 };

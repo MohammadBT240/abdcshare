@@ -16,6 +16,14 @@ const ALLOWED_PREFIXES = [
   'company-profiles',
   'dashboard',
   'search',
+  'engagements',
+  'requests',
+  'submissions',
+  'messages',
+  'documents',
+  'reviews',
+  'final-reports',
+  'notifications',
 ] as const;
 
 function isAllowed(segments: string[]): boolean {

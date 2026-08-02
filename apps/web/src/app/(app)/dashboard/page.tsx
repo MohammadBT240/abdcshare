@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { bffApi } from '@/lib/bff/client';
 
 interface DashboardSummary {
-  engagements: { total: number; byStatus: Record<string, number> };
+  engagements: { total: number; byStage?: Record<string, number>; byStatus?: Record<string, number> };
   requests: { inScope: number; overdue: number; assignedToMe: number };
   finalReports: { awaitingClientReview: number };
   notifications: { unread: number };
@@ -73,16 +73,16 @@ export default function DashboardPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Engagements by status</CardTitle>
+                <CardTitle className="text-base">Engagements by stage</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {Object.entries(data?.engagements.byStatus ?? {}).map(([status, count]) => (
-                  <div key={status} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{status}</span>
+                {Object.entries(data?.engagements.byStage ?? data?.engagements.byStatus ?? {}).map(([stage, count]) => (
+                  <div key={stage} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{stage}</span>
                     <span className="font-semibold">{count}</span>
                   </div>
                 ))}
-                {Object.keys(data?.engagements.byStatus ?? {}).length === 0 ? (
+                {Object.keys(data?.engagements.byStage ?? data?.engagements.byStatus ?? {}).length === 0 ? (
                   <p className="text-sm text-muted-foreground">No engagement data yet</p>
                 ) : null}
               </CardContent>

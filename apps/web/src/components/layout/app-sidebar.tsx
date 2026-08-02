@@ -9,7 +9,9 @@ import {
   IconBriefcase,
   IconBuilding,
   IconChartBar,
+  IconChecklist,
   IconFolderOpen,
+  IconBell,
   IconInbox,
   IconLayoutDashboard,
   IconUser,
@@ -49,21 +51,27 @@ const SECTIONS: NavSection[] = [
     items: [
       {
         label: "Engagements",
-        href: "#",
+        href: "/engagements",
         icon: IconBriefcase,
         permission: "engagement:view",
       },
       {
         label: "Requests",
-        href: "#",
+        href: "/requests",
         icon: IconInbox,
         permission: "request:view",
       },
       {
         label: "Documents",
-        href: "#",
+        href: "/engagements",
         icon: IconFolderOpen,
         permission: "document:view",
+      },
+      {
+        label: "Reviews",
+        href: "/reviews",
+        icon: IconChecklist,
+        permission: "review:decide",
       },
     ],
   },
@@ -94,6 +102,12 @@ const SECTIONS: NavSection[] = [
     heading: "Settings",
     items: [
       {
+        label: "Notifications",
+        href: "/settings/notifications",
+        icon: IconBell,
+        permission: "notification:receive",
+      },
+      {
         label: "Company Profiles",
         href: "/admin/company-profile",
         icon: IconBuilding,
@@ -104,6 +118,12 @@ const SECTIONS: NavSection[] = [
   {
     heading: "Reports",
     items: [
+      {
+        label: "Final Reports",
+        href: "/final-reports",
+        icon: IconFolderOpen,
+        permission: "report-review:respond",
+      },
       {
         label: "Partner Reports",
         href: "#",
