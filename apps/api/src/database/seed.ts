@@ -42,7 +42,7 @@ export async function runSeed(orm: MikroORM): Promise<void> {
   for (const name of ROLE_NAMES) await ensure(em, RoleEntity, { roleName: name }, { roleName: name });
   await em.flush();
 
-  // Migrate legacy Auditor role → Staff (Auditor is an engagement team tag, not a login role).
+  // Migrate legacy Auditor role → Staff (Auditor is no longer a login role).
   const auditorRole = await em.findOne(RoleEntity, { roleName: 'Auditor' as never });
   if (auditorRole) {
     const staffRole = await em.findOneOrFail(RoleEntity, { roleName: 'Staff' });
