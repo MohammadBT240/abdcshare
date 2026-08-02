@@ -6,6 +6,7 @@ import IORedis from 'ioredis';
 import { EVENT, OutboxStatus, QUEUE, type NotificationJob } from '@abdcshare/shared';
 import { OutboxEntity } from '../database/outbox.entity';
 import { EmailDispatchService } from '../email/email-dispatch.service';
+import { DocumentExportService } from '../documents/document-export.service';
 import {
   AccountCreatedEmail,
   GenericNotificationEmail,
@@ -26,6 +27,7 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly orm: MikroORM,
     private readonly email: EmailDispatchService,
+    private readonly documentExports: DocumentExportService,
   ) {}
 
   onModuleInit(): void {
@@ -139,6 +141,9 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
         }
         break;
       }
+      case EVENT.DocumentExportRequested:
+        await this.documentExports.export(payload, em);
+        break;
       default:
         // No email side effect for this event type — just sealed as Sent.
         break;
