@@ -109,18 +109,41 @@ export function emptySubmissionCounts(): SubmissionMetricCounts {
   };
 }
 
-/** Derive counts from a request's submissions list (+ optional under-review count). */
+type MetricFile = {
+  status: string;
+  superseded?: boolean;
+  replacesFileId?: string | null;
+};
+
+type MetricSubmission = {
+  status: string;
+  files?: MetricFile[];
+};
+
+/** Current files = not superseded (API sets `superseded` when a replacement exists). */
+function currentFiles(files: MetricFile[]): MetricFile[] {
+  return files.filter((f) => !f.superseded);
+}
+
+/**
+ * Derive counts from a request's submissions list (+ optional under-review count).
+ * All tiles count **current files** by file status (not response count).
+ */
 export function countsFromSubmissions(
-  submissions: { status: string; files?: unknown[] }[],
+  submissions: MetricSubmission[],
   underReview = 0,
 ): SubmissionMetricCounts {
   const counts = emptySubmissionCounts();
   counts.underReview = underReview;
   for (const s of submissions) {
-    counts.uploaded += s.files?.length ?? 0;
-    if (s.status === 'Pending') counts.awaitingReview += 1;
-    else if (s.status === 'Returned') counts.returned += 1;
-    else if (s.status === 'Accepted') counts.accepted += 1;
+    if (s.status === 'Draft') continue;
+    const files = currentFiles(s.files ?? []);
+    for (const f of files) {
+      counts.uploaded += 1;
+      if (f.status === 'Pending') counts.awaitingReview += 1;
+      else if (f.status === 'Returned') counts.returned += 1;
+      else if (f.status === 'Accepted') counts.accepted += 1;
+    }
   }
   return counts;
 }
