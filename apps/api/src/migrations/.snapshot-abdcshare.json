@@ -667,9 +667,10 @@
           "length": null,
           "precision": null,
           "scale": null,
-          "default": "'Pending'",
+          "default": "'Draft'",
           "comment": null,
           "enumItems": [
+            "Draft",
             "Pending",
             "Accepted",
             "Returned"
@@ -2141,6 +2142,59 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
+        },
+        "preview_storage_key": {
+          "name": "preview_storage_key",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "preview_status": {
+          "name": "preview_status",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'None'",
+          "comment": null,
+          "enumItems": [
+            "None",
+            "Pending",
+            "Ready",
+            "Failed"
+          ],
+          "mappedType": "enum"
+        },
+        "preview_error": {
+          "name": "preview_error",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
         }
       },
       "name": "document_files",
@@ -7887,6 +7941,7 @@
           "default": "'Pending'",
           "comment": null,
           "enumItems": [
+            "Draft",
             "Pending",
             "Accepted",
             "Returned"
@@ -7908,6 +7963,123 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
+        },
+        "review_reason": {
+          "name": "review_reason",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
+        "reviewed_by_id": {
+          "name": "reviewed_by_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
+        "replaces_file_id": {
+          "name": "replaces_file_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "preview_storage_key": {
+          "name": "preview_storage_key",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "preview_status": {
+          "name": "preview_status",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'None'",
+          "comment": null,
+          "enumItems": [
+            "None",
+            "Pending",
+            "Ready",
+            "Failed"
+          ],
+          "mappedType": "enum"
+        },
+        "preview_error": {
+          "name": "preview_error",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
         }
       },
       "name": "submission_files",
@@ -7926,6 +8098,32 @@
       ],
       "checks": [],
       "foreignKeys": {
+        "submission_files_replaces_file_id_foreign": {
+          "columnNames": [
+            "replaces_file_id"
+          ],
+          "constraintName": "submission_files_replaces_file_id_foreign",
+          "localTableName": "public.submission_files",
+          "referencedTableName": "public.submission_files",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "cascade",
+          "deleteRule": "cascade"
+        },
+        "submission_files_reviewed_by_id_foreign": {
+          "columnNames": [
+            "reviewed_by_id"
+          ],
+          "constraintName": "submission_files_reviewed_by_id_foreign",
+          "localTableName": "public.submission_files",
+          "referencedTableName": "public.users",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "cascade",
+          "deleteRule": "set null"
+        },
         "submission_files_submission_id_foreign": {
           "columnNames": [
             "submission_id"
