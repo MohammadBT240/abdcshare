@@ -3,6 +3,7 @@
 import { Suspense, use, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
+  IconFolder,
   IconLayoutDashboard,
   IconListDetails,
   IconSettings,
@@ -17,6 +18,7 @@ import { EngagementHeader } from '@/features/engagements/components/workspace/en
 import { buildNextActions } from '@/features/engagements/components/workspace/next-actions';
 import { OverviewTab } from '@/features/engagements/components/workspace/overview-tab';
 import { WorkTab } from '@/features/engagements/components/workspace/work-tab';
+import { DocumentsTab } from '@/features/engagements/components/workspace/documents-tab';
 import { AdminTab } from '@/features/engagements/components/workspace/admin-tab';
 import { TransitionEngagementDialog } from '@/features/engagements/components/transition-engagement-dialog';
 import { CloneEngagementDialog } from '@/features/engagements/components/clone-engagement-dialog';
@@ -31,6 +33,7 @@ import {
 const WORKSPACE_TAB_ICONS: Record<WorkspaceTab, ReactNode> = {
   overview: <IconLayoutDashboard />,
   requests: <IconListDetails />,
+  documents: <IconFolder />,
   settings: <IconSettings />,
 };
 
@@ -71,7 +74,11 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
     ? defaultTabForStage(workspace.data.stage)
     : 'overview';
   const activeTab: WorkspaceTab =
-    tabFromUrl && (tabFromUrl !== 'settings' || showAdmin) ? tabFromUrl : defaultTab;
+    tabFromUrl &&
+    (tabFromUrl !== 'settings' || showAdmin) &&
+    (tabFromUrl !== 'documents' || canViewDocuments)
+      ? tabFromUrl
+      : defaultTab;
 
   function setQuery(patch: { tab?: WorkspaceTab; classId?: number | 'all' }) {
     const next = new URLSearchParams(searchParams.toString());
@@ -79,6 +86,12 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
     if (patch.classId !== undefined) {
       if (patch.classId === 'all') next.delete('classId');
       else next.set('classId', String(patch.classId));
+    }
+    // Documents-only filters should not bleed onto other tabs.
+    if (patch.tab && patch.tab !== 'documents') {
+      next.delete('category');
+      next.delete('requestId');
+      next.delete('page');
     }
     const qs = next.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -135,7 +148,11 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
   }
 
   const ws = workspace.data;
-  const visibleTabs = WORKSPACE_TABS.filter((t) => t.id !== 'settings' || showAdmin);
+  const visibleTabs = WORKSPACE_TABS.filter((t) => {
+    if (t.id === 'settings') return showAdmin;
+    if (t.id === 'documents') return canViewDocuments;
+    return true;
+  });
 
   return (
     <div className="space-y-3">
@@ -159,7 +176,6 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
         workspace={ws}
         onTransition={() => setTransitionOpen(true)}
         canTransition={canTransition}
-        canViewDocuments={canViewDocuments}
         nextActions={nextActions}
         onSelectTab={(tab) => setQuery({ tab })}
       />
@@ -194,6 +210,12 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
             onGoAdmin={() => setQuery({ tab: 'settings' })}
           />
         </TabsContent>
+
+        {canViewDocuments ? (
+          <TabsContent value="documents" className="mt-0 outline-none">
+            <DocumentsTab engagementId={id} workspace={ws} />
+          </TabsContent>
+        ) : null}
 
         {showAdmin ? (
           <TabsContent value="settings" className="mt-0 outline-none">

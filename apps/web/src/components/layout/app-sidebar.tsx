@@ -62,12 +62,6 @@ const SECTIONS: NavSection[] = [
         permission: "request:view",
       },
       {
-        label: "Documents",
-        href: "/engagements",
-        icon: IconFolderOpen,
-        permission: "document:view",
-      },
-      {
         label: "Reviews",
         href: "/reviews",
         icon: IconChecklist,

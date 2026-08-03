@@ -1,12 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import {
   IconArrowRight,
   IconCalendar,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
-import { FileTypeIcon } from "@/components/data/file-type-icon";
 import { Progress } from "@/components/ui/progress";
 import { EngagementStageBadge } from "@/features/engagements/components/engagement-stage-badge";
 import {
@@ -21,7 +19,6 @@ interface EngagementHeaderProps {
   workspace: EngagementWorkspace;
   onTransition?: () => void;
   canTransition: boolean;
-  canViewDocuments: boolean;
   nextActions?: NextAction[];
   onSelectTab?: (tab: WorkspaceTab) => void;
 }
@@ -47,7 +44,6 @@ export function EngagementHeader({
   workspace,
   onTransition,
   canTransition,
-  canViewDocuments,
   nextActions = [],
   onSelectTab,
 }: EngagementHeaderProps) {
@@ -111,14 +107,6 @@ export function EngagementHeader({
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
           <EngagementStageBadge stage={workspace.stage} />
-          {canViewDocuments ? (
-            <Button type="button" variant="outline" size="sm" asChild>
-              <Link href={`/engagements/${workspace.id}/documents`}>
-                <FileTypeIcon kind="folder" size={16} className="mr-1.5" />
-                Documents
-              </Link>
-            </Button>
-          ) : null}
           {showPrimary ? (
             <Button onClick={onTransition} size="sm">
               <IconArrowRight className="mr-1.5 h-4 w-4" />

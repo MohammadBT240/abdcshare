@@ -117,7 +117,7 @@ function EngagementsListInner() {
           const items: RowActionItem[] = [
             {
               label: 'View workspace',
-              icon: IconEye as any,
+              icon: <IconEye className="h-4 w-4" />,
               onClick: () => router.push(`/engagements/${record.id}`),
             },
           ];

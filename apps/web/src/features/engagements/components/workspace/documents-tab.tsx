@@ -1,7 +1,6 @@
 "use client";
 
-import { Suspense, use, useMemo, useState } from "react";
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -15,13 +14,14 @@ import { DataTable } from "@/components/data/data-table";
 import { FileTypeIcon } from "@/components/data/file-type-icon";
 import {
   AppSelect,
+  ATTACHMENT_ACCEPT,
   ConfirmDialog,
   FileUpload,
   FormDialog,
   FormField,
   LoadingButton,
 } from "@/components/forms";
-import { PageToolbar } from "@/components/layout/page-toolbar";
+import { FileViewerDialog } from "@/components/files/file-viewer-dialog";
 import { useAuthContext } from "@/components/providers/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,11 +39,14 @@ import {
   useDocumentsList,
   useDownloadDocument,
   useExportDocuments,
-  useDocumentPreview,
+  fetchDocumentFilePreview,
+  fetchDocumentZipEntries,
+  fetchDocumentZipEntry,
+  openDocumentFileDownload,
   useSetDocumentStatus,
   useUploadDocumentFile,
 } from "@/features/documents/hooks/use-documents";
-import { useEngagementWorkspace } from "@/features/engagements/hooks/use-engagements";
+import type { EngagementWorkspace } from "@/features/engagements/hooks/use-engagements";
 import {
   useFirmReportReview,
   useOverrideFinalReport,
@@ -57,10 +60,6 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-interface EngagementDocumentsPageProps {
-  params: Promise<{ id: string }>;
-}
 
 const CATEGORY_LABELS: Record<
   Extract<DocumentCategory, "WorkingPaper" | "FinalReport">,
@@ -86,12 +85,16 @@ function formatStatus(status: DocumentStatus): string {
   return status.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
-function DocumentsPageInner({ engagementId }: { engagementId: string }) {
+interface DocumentsTabProps {
+  engagementId: string;
+  workspace: EngagementWorkspace;
+}
+
+export function DocumentsTab({ engagementId, workspace }: DocumentsTabProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { can } = useAuthContext();
-  const workspace = useEngagementWorkspace(engagementId);
   const category = parseCategory(searchParams.get("category"));
   const classId = searchParams.get("classId") ?? "";
   const requestId = searchParams.get("requestId") ?? "";
@@ -134,20 +137,28 @@ function DocumentsPageInner({ engagementId }: { engagementId: string }) {
       });
       toast.success("Export queued. You will be notified when the ZIP is ready.");
     } catch (error) {
-      toast.error(error instanceof BffClientError ? error.message : "Failed to queue export");
+      toast.error(
+        error instanceof BffClientError ? error.message : "Failed to queue export",
+      );
     }
   }
 
   function setQuery(patch: {
     category?: Extract<DocumentCategory, "WorkingPaper" | "FinalReport">;
     classId?: string;
+    requestId?: string | null;
     page?: number;
   }) {
     const next = new URLSearchParams(searchParams.toString());
+    next.set("tab", "documents");
     if (patch.category) next.set("category", patch.category);
     if (patch.classId !== undefined) {
-      if (patch.classId) next.set("classId", patch.classId);
+      if (patch.classId && patch.classId !== "all") next.set("classId", patch.classId);
       else next.delete("classId");
+    }
+    if (patch.requestId !== undefined) {
+      if (patch.requestId) next.set("requestId", patch.requestId);
+      else next.delete("requestId");
     }
     if (patch.page !== undefined && patch.page > 1)
       next.set("page", String(patch.page));
@@ -203,90 +214,20 @@ function DocumentsPageInner({ engagementId }: { engagementId: string }) {
     [category],
   );
 
-  if (workspace.isPending) {
-    return (
-      <div className="space-y-5">
-        <PageToolbar
-          title="Documents"
-          breadcrumbs={[
-            { label: "Home", href: "/dashboard" },
-            { label: "Engagements", href: "/engagements" },
-          ]}
-        />
-        <p className="text-sm text-muted-foreground">Loading documents…</p>
-      </div>
-    );
-  }
-
-  if (workspace.isError || !workspace.data) {
-    return (
-      <div className="space-y-5">
-        <PageToolbar
-          title="Documents"
-          breadcrumbs={[
-            { label: "Home", href: "/dashboard" },
-            { label: "Engagements", href: "/engagements" },
-          ]}
-        />
-        <p className="text-sm text-destructive">Failed to load engagement</p>
-      </div>
-    );
-  }
-
-  const ws = workspace.data;
-  const classOptions = ws.classRollups.map((item) => ({
+  const classOptions = workspace.classRollups.map((item) => ({
     value: String(item.requestClassId),
     label: item.name,
   }));
+
   return (
     <div className="space-y-3">
-      <PageToolbar
-        title="Documents"
-        className="mb-2 sm:mb-3"
-        description={`${ws.referenceCode} · ${ws.title}`}
-        breadcrumbs={[
-          { label: "Home", href: "/dashboard" },
-          { label: "Engagements", href: "/engagements" },
-          { label: ws.referenceCode, href: `/engagements/${engagementId}` },
-          { label: "Documents" },
-        ]}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={exportDocuments.isPending}
-              onClick={requestExport}
-            >
-              <FileTypeIcon fileName="export.zip" size={16} className="mr-1.5" />
-              {exportDocuments.isPending ? "Queueing…" : "Export ZIP"}
-            </Button>
-            <Button type="button" variant="outline" size="sm" asChild>
-              <Link href={`/engagements/${engagementId}`}>Workspace</Link>
-            </Button>
-            {canUpload ? (
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => setUploadOpen(true)}
-              >
-                <FileTypeIcon kind="upload" size={16} className="mr-1.5" />
-                Upload
-              </Button>
-            ) : null}
-          </div>
-        }
-      />
-
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs
           value={category}
           onValueChange={(value) => {
             const next = parseCategory(value);
             setQuery({
               category: next,
-              // Final reports are engagement-scoped — clear class filter.
               classId: next === "FinalReport" ? "" : undefined,
               page: 1,
             });
@@ -297,35 +238,55 @@ function DocumentsPageInner({ engagementId }: { engagementId: string }) {
             <TabsTrigger value="FinalReport">Final reports</TabsTrigger>
           </TabsList>
         </Tabs>
-        {category === "WorkingPaper" ? (
-          <div className="w-full lg:w-72">
-            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Request class
-            </p>
-            <AppSelect
-              value={classId}
-              onValueChange={(value) => setQuery({ classId: value, page: 1 })}
-              options={classOptions}
-              allowNone
-              noneLabel="All classes"
-              noneValue="all"
-              placeholder="All classes"
-            />
-          </div>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={exportDocuments.isPending}
+            onClick={requestExport}
+          >
+            <FileTypeIcon fileName="export.zip" size={16} className="mr-1.5" />
+            {exportDocuments.isPending ? "Queueing…" : "Export ZIP"}
+          </Button>
+          {canUpload ? (
+            <Button type="button" size="sm" onClick={() => setUploadOpen(true)}>
+              <FileTypeIcon kind="upload" size={16} className="mr-1.5" />
+              Upload
+            </Button>
+          ) : null}
+        </div>
       </div>
+
+      {category === "WorkingPaper" ? (
+        <div className="w-full sm:max-w-xs">
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Request class
+          </p>
+          <AppSelect
+            value={classId}
+            onValueChange={(value) => setQuery({ classId: value, page: 1 })}
+            options={classOptions}
+            allowNone
+            noneLabel="All classes"
+            noneValue="all"
+            placeholder="All classes"
+          />
+        </div>
+      ) : null}
 
       {requestId ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
           <p className="text-sm text-muted-foreground">
             Filtered to documents linked to one request.
           </p>
-          <Button type="button" variant="ghost" size="sm" asChild>
-            <Link
-              href={`/engagements/${engagementId}/documents?category=${category}${classId ? `&classId=${classId}` : ""}`}
-            >
-              Clear request filter
-            </Link>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setQuery({ requestId: null, page: 1 })}
+          >
+            Clear request filter
           </Button>
         </div>
       ) : null}
@@ -367,6 +328,7 @@ function DocumentsPageInner({ engagementId }: { engagementId: string }) {
   );
 }
 
+
 function UploadDocumentDialog({
   open,
   onOpenChange,
@@ -393,6 +355,7 @@ function UploadDocumentDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
 
   const requestOptions = useMemo(
     () =>
@@ -422,6 +385,7 @@ function UploadDocumentDialog({
     }
 
     try {
+      setUploadPercent(0);
       const created = await createDocument.mutateAsync({
         engagementId,
         category,
@@ -433,7 +397,11 @@ function UploadDocumentDialog({
         title: title.trim(),
         description: description.trim() || undefined,
       });
-      await uploadFile.mutateAsync({ documentId: created.id, file });
+      await uploadFile.mutateAsync({
+        documentId: created.id,
+        file,
+        onProgress: setUploadPercent,
+      });
       toast.success(
         isWorkingPaper ? "Working paper uploaded" : "Final report uploaded",
       );
@@ -444,6 +412,8 @@ function UploadDocumentDialog({
           ? error.message
           : "Failed to upload document",
       );
+    } finally {
+      setUploadPercent(null);
     }
   }
 
@@ -517,11 +487,26 @@ function UploadDocumentDialog({
                 setTitle(nextFiles[0].name.replace(/\.[^.]+$/, ""));
               }
             }}
+            accept={ATTACHMENT_ACCEPT}
             label="Choose document"
-            description="Upload one file, up to 100 MB."
+            description="Upload one file (including zip), up to 100 MB. Large files upload in chunks with retries."
             disabled={saving}
           />
         </FormField>
+        {uploadPercent != null && files[0] ? (
+          <div className="rounded-md border border-border bg-muted/20 px-3 py-2 space-y-1.5">
+            <div className="flex justify-between gap-2 text-xs">
+              <span className="min-w-0 truncate font-medium">{files[0].name}</span>
+              <span className="shrink-0 text-muted-foreground">{uploadPercent}%</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary transition-[width]"
+                style={{ width: `${uploadPercent}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
     </FormDialog>
   );
@@ -546,7 +531,6 @@ function DocumentDetailPanel({
 }) {
   const document = useDocument(id);
   const download = useDownloadDocument();
-  const preview = useDocumentPreview();
   const setStatus = useSetDocumentStatus(id);
   const remove = useDeleteDocument();
   const reportReview = useFirmReportReview(
@@ -556,7 +540,7 @@ function DocumentDetailPanel({
   const sendReport = useSendFinalReport(id);
   const overrideReport = useOverrideFinalReport(id);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [viewerOpen, setViewerOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
 
@@ -585,30 +569,10 @@ function DocumentDetailPanel({
     nextStatus && canManage && (nextStatus !== "SignedOff" || canSignOff),
   );
   const latestFile = detail.files[0];
-  const canPreview = Boolean(
-    latestFile &&
-    (latestFile.mimeType?.startsWith("image/") ||
-      latestFile.mimeType?.startsWith("text/") ||
-      latestFile.mimeType === "application/pdf" ||
-      latestFile.mimeType === "application/json"),
-  );
-
-  async function previewDocument() {
-    if (!latestFile) return;
-    try {
-      const result = await preview.mutateAsync({
-        documentId: detail.id,
-        fileId: latestFile.id,
-      });
-      setPreviewUrl(result.url);
-    } catch (error) {
-      toast.error(
-        error instanceof BffClientError
-          ? error.message
-          : "Failed to preview document",
-      );
-    }
-  }
+  const isZip =
+    latestFile?.mimeType === "application/zip" ||
+    latestFile?.mimeType === "application/x-zip-compressed" ||
+    Boolean(latestFile?.fileName?.toLowerCase().endsWith(".zip"));
 
   async function transitionStatus() {
     if (!nextStatus) return;
@@ -716,17 +680,16 @@ function DocumentDetailPanel({
                 <IconDownload className="mr-2 h-4 w-4" />
                 Download
               </Button>
-              {canPreview ? (
-                <LoadingButton
+              {latestFile ? (
+                <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  loading={preview.isPending}
-                  onClick={previewDocument}
+                  onClick={() => setViewerOpen(true)}
                 >
                   <IconEye className="mr-2 h-4 w-4" />
                   Preview
-                </LoadingButton>
+                </Button>
               ) : null}
               {canTransition && nextStatus ? (
                 <LoadingButton
@@ -801,20 +764,31 @@ function DocumentDetailPanel({
             </p>
           ) : null}
 
-          {previewUrl ? (
-            <div className="mt-5 overflow-hidden rounded-md border border-border bg-muted/20">
-              <iframe
-                src={previewUrl}
-                title={`Preview ${latestFile?.fileName ?? detail.title}`}
-                className="h-[65vh] w-full bg-white"
-              />
-            </div>
-          ) : latestFile && !canPreview ? (
-            <p className="mt-5 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-              Preview is unavailable for{" "}
-              {latestFile.mimeType || "this file type"}. Download the file to
-              view it.
-            </p>
+          {latestFile ? (
+            <FileViewerDialog
+              open={viewerOpen}
+              onOpenChange={setViewerOpen}
+              fileName={latestFile.fileName}
+              mimeType={latestFile.mimeType}
+              sizeBytes={latestFile.sizeBytes}
+              getPreview={(opts) =>
+                fetchDocumentFilePreview(detail.id, latestFile.id, opts)
+              }
+              getZipEntries={
+                isZip
+                  ? () => fetchDocumentZipEntries(detail.id, latestFile.id)
+                  : undefined
+              }
+              getZipEntry={
+                isZip
+                  ? (entryPath) =>
+                      fetchDocumentZipEntry(detail.id, latestFile.id, entryPath)
+                  : undefined
+              }
+              onDownload={() =>
+                openDocumentFileDownload(detail.id, latestFile.id)
+              }
+            />
           ) : null}
 
           {detail.category === "FinalReport" && canManageReportReview ? (
@@ -893,20 +867,5 @@ function DetailField({ label, value }: { label: string; value: string }) {
       </p>
       <p className="text-sm">{value}</p>
     </div>
-  );
-}
-
-export default function EngagementDocumentsPage({
-  params,
-}: EngagementDocumentsPageProps) {
-  const { id } = use(params);
-  return (
-    <Suspense
-      fallback={
-        <p className="text-sm text-muted-foreground">Loading documents…</p>
-      }
-    >
-      <DocumentsPageInner engagementId={id} />
-    </Suspense>
   );
 }
