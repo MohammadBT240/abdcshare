@@ -35,6 +35,8 @@ import { BffClientError } from '@/lib/bff/client';
 function RequestsListInner() {
   const router = useRouter();
   const { can } = useAuthContext();
+  const canManageLifecycle = can('request:update') && can('catalogue:view');
+  const canBulkAssign = can('request:assign') && can('catalogue:view');
   const { params, setParams, setSearchQueryDebounced, queryString } = useListParams();
   const [searchDraft, setSearchDraft] = useState(params.q);
   const [historyRequest, setHistoryRequest] = useState<{ id: string; refCode: string } | null>(null);
@@ -71,9 +73,11 @@ function RequestsListInner() {
     try {
       const result = await bulkUpdate.mutateAsync({
         ids: selectedIds,
-        stageId: bulkStageId ? Number(bulkStageId) : undefined,
-        statusId: bulkStatusId ? Number(bulkStatusId) : undefined,
-        assigneeUserId: bulkAssigneeId || undefined,
+        stageId:
+          canManageLifecycle && bulkStageId ? Number(bulkStageId) : undefined,
+        statusId:
+          canManageLifecycle && bulkStatusId ? Number(bulkStatusId) : undefined,
+        assigneeUserId: canBulkAssign ? bulkAssigneeId || undefined : undefined,
       });
       toast.success(`${result.updated} request(s) updated`);
       setSelectedIds([]);
@@ -167,12 +171,12 @@ function RequestsListInner() {
           const items: RowActionItem[] = [
             {
               label: 'Open',
-              icon: IconExternalLink as any,
+              icon: <IconExternalLink className="h-4 w-4" />,
               onClick: () => router.push(`/requests/${record.id}`),
             },
             {
               label: 'View history',
-              icon: IconHistory as any,
+              icon: <IconHistory className="h-4 w-4" />,
               onClick: () => setHistoryRequest({ id: record.id, refCode: record.referenceCode }),
             },
           ];
@@ -226,16 +230,44 @@ function RequestsListInner() {
         />
       </FilterBar>
 
-      {selectedIds.length > 0 ? (
+      {selectedIds.length > 0 && (canManageLifecycle || canBulkAssign) ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
           <span className="mr-2 text-sm font-medium">{selectedIds.length} selected</span>
-          <AppSelect value={bulkStageId} onValueChange={setBulkStageId} options={stageOptions} placeholder="Set stage" className="w-44" />
-          <AppSelect value={bulkStatusId} onValueChange={setBulkStatusId} options={statusOptions} placeholder="Set status" className="w-44" />
-          <AppSelect value={bulkAssigneeId} onValueChange={setBulkAssigneeId} options={userOptions} placeholder="Set assignee" className="w-48" />
+          {canManageLifecycle ? (
+            <>
+              <AppSelect
+                value={bulkStageId}
+                onValueChange={setBulkStageId}
+                options={stageOptions}
+                placeholder="Set stage"
+                className="w-44"
+              />
+              <AppSelect
+                value={bulkStatusId}
+                onValueChange={setBulkStatusId}
+                options={statusOptions}
+                placeholder="Set status"
+                className="w-44"
+              />
+            </>
+          ) : null}
+          {canBulkAssign ? (
+            <AppSelect
+              value={bulkAssigneeId}
+              onValueChange={setBulkAssigneeId}
+              options={userOptions}
+              placeholder="Set assignee"
+              className="w-48"
+            />
+          ) : null}
           <Button
             type="button"
             size="sm"
-            disabled={bulkUpdate.isPending || (!bulkStageId && !bulkStatusId && !bulkAssigneeId)}
+            disabled={
+              bulkUpdate.isPending ||
+              (!bulkStageId && !bulkStatusId && !bulkAssigneeId) ||
+              (!canManageLifecycle && Boolean(bulkStageId || bulkStatusId))
+            }
             onClick={applyBulkUpdate}
           >
             {bulkUpdate.isPending ? 'Updating…' : 'Apply'}
@@ -255,7 +287,7 @@ function RequestsListInner() {
         onPageChange={(page) => setParams({ page })}
         onRowClick={(row) => router.push(`/requests/${row.id}`)}
         emptyMessage="No requests found"
-        selectable={can('request:update')}
+        selectable={canManageLifecycle || canBulkAssign}
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
         getRowId={(row) => row.id}
