@@ -144,20 +144,8 @@ export function confirmMessageAttachment(
   });
 }
 
-export async function uploadMessageAttachment(messageId: string, file: File) {
-  const presigned = await presignMessageAttachment(messageId, file);
-  const upload = await fetch(presigned.uploadUrl, {
-    method: presigned.method,
-    headers: presigned.headers,
-    body: file,
-  });
-  if (!upload.ok) {
-    throw new Error(`Failed to upload ${file.name}`);
-  }
-  return confirmMessageAttachment(messageId, {
-    storageKey: presigned.storageKey,
-    fileName: file.name,
-    mimeType: file.type || undefined,
-    sizeBytes: file.size,
-  });
+/** Upload attachment via Uppy (multipart for large files). Confirms into the message. */
+export async function uploadMessageAttachment(messageId: string, file: File): Promise<void> {
+  const { uploadFilesWithUppy } = await import('@/lib/uploads/uppy-client');
+  await uploadFilesWithUppy({ kind: 'message', parentId: messageId }, [file]);
 }

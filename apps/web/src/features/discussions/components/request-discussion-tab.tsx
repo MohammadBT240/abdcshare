@@ -40,6 +40,7 @@ import {
   usePostMessage,
 } from '@/features/discussions/hooks/use-discussions';
 import { BffClientError } from '@/lib/bff/client';
+import { cn } from '@/lib/utils';
 
 interface RequestDiscussionTabProps {
   requestId: string;
@@ -89,15 +90,17 @@ export function RequestDiscussionTab({
   const [mentionOpen, setMentionOpen] = useState(false);
   const [editing, setEditing] = useState<DiscussionMessage | null>(null);
   const [editBody, setEditBody] = useState('');
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef(new Map<string, HTMLElement>());
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const thread = useMemo(
     () =>
       [...(messages.data?.data ?? [])].sort(
         (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() ||
-          a.id.localeCompare(b.id),
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+          b.id.localeCompare(a.id),
       ),
     [messages.data?.data],
   );
@@ -105,7 +108,7 @@ export function RequestDiscussionTab({
     () => new Map(thread.map((message) => [message.id, message])),
     [thread],
   );
-  const latestMessageId = thread.at(-1)?.id;
+  const latestMessageId = thread[0]?.id;
 
   const mentionCandidates = useMemo(() => {
     const candidates = new Map<string, MentionCandidate>();
@@ -128,10 +131,25 @@ export function RequestDiscussionTab({
   }, [assignees, teamMembers]);
 
   useEffect(() => {
-    if (active && thread.length > 0) {
-      endRef.current?.scrollIntoView({ block: 'end' });
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
+
+  function scrollToMessage(messageId: string) {
+    const target = messageRefs.current.get(messageId);
+    if (!target) {
+      toast.error('Original message is not available in this view');
+      return;
     }
-  }, [active, thread.length]);
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightedId(messageId);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedId(null);
+      highlightTimerRef.current = null;
+    }, 1800);
+  }
 
   useEffect(() => {
     if (!active || !canParticipate) return;
@@ -238,57 +256,21 @@ export function RequestDiscussionTab({
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <div className="max-h-[34rem] min-h-64 overflow-y-auto px-4 py-2 sm:px-5">
-          {messages.isPending ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              Loading discussion…
-            </p>
-          ) : messages.isError ? (
-            <p className="py-10 text-center text-sm text-destructive">
-              {errorMessage(messages.error, 'Failed to load discussion')}
-            </p>
-          ) : thread.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-sm font-medium">Start the discussion</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Post the first message or mention someone who can help.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {thread.map((message) => (
-                <MessageRow
-                  key={message.id}
-                  message={message}
-                  parent={
-                    message.parentMessageId
-                      ? byId.get(message.parentMessageId)
-                      : undefined
-                  }
-                  ownMessage={message.authorId === currentUserId}
-                  onReply={() => setReplyTo(message)}
-                  onEdit={() => {
-                    setEditing(message);
-                    setEditBody(message.body);
-                  }}
-                />
-              ))}
-              <div ref={endRef} />
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-border bg-muted/30 p-3 sm:p-4">
+        <div className="border-b border-border bg-muted/30 p-3 sm:p-4">
           {replyTo ? (
             <div className="mb-3 flex items-start justify-between gap-3 rounded-md border border-border bg-card px-3 py-2">
-              <div className="min-w-0">
+              <button
+                type="button"
+                className="min-w-0 flex-1 rounded-sm text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => scrollToMessage(replyTo.id)}
+              >
                 <p className="text-xs font-medium">
                   Replying to {replyTo.authorName || 'Unknown user'}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {replyTo.body}
                 </p>
-              </div>
+              </button>
               <Button
                 type="button"
                 variant="ghost"
@@ -420,6 +402,7 @@ export function RequestDiscussionTab({
                 ref={fileInputRef}
                 type="file"
                 multiple
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.zip,.mp4,.mov,application/pdf,application/zip,application/x-zip-compressed,image/*,video/*,text/*"
                 className="hidden"
                 onChange={(event) => {
                   setFiles((items) => [
@@ -450,6 +433,55 @@ export function RequestDiscussionTab({
               Post
             </LoadingButton>
           </div>
+        </div>
+
+        <div className="max-h-[34rem] min-h-64 overflow-y-auto px-4 py-2 sm:px-5">
+          {messages.isPending ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              Loading discussion…
+            </p>
+          ) : messages.isError ? (
+            <p className="py-10 text-center text-sm text-destructive">
+              {errorMessage(messages.error, 'Failed to load discussion')}
+            </p>
+          ) : thread.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-sm font-medium">Start the discussion</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Post the first message or mention someone who can help.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {thread.map((message) => (
+                <MessageRow
+                  key={message.id}
+                  message={message}
+                  parent={
+                    message.parentMessageId
+                      ? byId.get(message.parentMessageId)
+                      : undefined
+                  }
+                  ownMessage={message.authorId === currentUserId}
+                  highlighted={highlightedId === message.id}
+                  registerRef={(node) => {
+                    if (node) messageRefs.current.set(message.id, node);
+                    else messageRefs.current.delete(message.id);
+                  }}
+                  onReply={() => setReplyTo(message)}
+                  onEdit={() => {
+                    setEditing(message);
+                    setEditBody(message.body);
+                  }}
+                  onJumpToParent={
+                    message.parentMessageId
+                      ? () => scrollToMessage(message.parentMessageId!)
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -483,18 +515,31 @@ function MessageRow({
   message,
   parent,
   ownMessage,
+  highlighted,
+  registerRef,
   onReply,
   onEdit,
+  onJumpToParent,
 }: {
   message: DiscussionMessage;
   parent?: DiscussionMessage;
   ownMessage: boolean;
+  highlighted: boolean;
+  registerRef: (node: HTMLElement | null) => void;
   onReply: () => void;
   onEdit: () => void;
+  onJumpToParent?: () => void;
 }) {
   const authorName = message.authorName || 'Unknown user';
   return (
-    <article className="group flex gap-3 py-4">
+    <article
+      ref={registerRef}
+      data-message-id={message.id}
+      className={cn(
+        'group flex gap-3 rounded-md px-1 py-4 transition-colors duration-500',
+        highlighted && 'bg-primary/10 ring-1 ring-primary/25',
+      )}
+    >
       <UserAvatar
         initials={authorName.slice(0, 2)}
         size="sm"
@@ -513,17 +558,22 @@ function MessageRow({
             <span className="text-xs text-muted-foreground">(edited)</span>
           ) : null}
         </div>
-        {parent ? (
-          <div className="mt-2 border-l-2 border-border pl-3 text-xs text-muted-foreground">
-            <span className="font-medium">
+        {parent && onJumpToParent ? (
+          <button
+            type="button"
+            onClick={onJumpToParent}
+            className="mt-2 w-full rounded-md border border-border bg-muted/40 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Jump to message from ${parent.authorName || 'Unknown user'}`}
+          >
+            <span className="font-medium text-foreground/80">
               {parent.authorName || 'Unknown user'}:{' '}
             </span>
             <span className="line-clamp-2 whitespace-pre-wrap">
               {parent.body}
             </span>
-          </div>
+          </button>
         ) : message.parentMessageId ? (
-          <p className="mt-2 border-l-2 border-border pl-3 text-xs text-muted-foreground">
+          <p className="mt-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             Reply to an earlier message
           </p>
         ) : null}
