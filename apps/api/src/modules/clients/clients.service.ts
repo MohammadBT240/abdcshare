@@ -12,6 +12,7 @@ import { EVENT, type Paginated } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
 import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { OutboxService } from '../outbox/outbox.service';
+import { UsersService } from '../users/users.service';
 import { ClientEntity } from './infrastructure/persistence/client.entity';
 import { ClientTypeEntity } from '../reference/infrastructure/persistence/client-types.entity';
 import { UserEntity } from '../users/infrastructure/persistence/user.entity';
@@ -33,6 +34,7 @@ export class ClientsService {
   constructor(
     private readonly em: EntityManager,
     private readonly outbox: OutboxService,
+    private readonly users: UsersService,
     @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
 
@@ -203,5 +205,19 @@ export class ClientsService {
 
   async deactivate(id: string): Promise<ClientResponseDto> {
     return this.update(id, { isActive: false });
+  }
+
+  /** Reset primary contact login: new temp password emailed; forces change on next login. */
+  async resetContactPassword(id: string): Promise<ClientResponseDto> {
+    const client = await this.em.findOne(
+      ClientEntity,
+      { id },
+      { populate: ['clientType', 'primaryContact'] },
+    );
+    if (!client) throw new NotFoundException('Client not found');
+    const contact = client.primaryContact;
+    if (!contact) throw new BadRequestException('Client has no primary contact login');
+    await this.users.resetPassword(contact.id);
+    return this.toDto(client);
   }
 }

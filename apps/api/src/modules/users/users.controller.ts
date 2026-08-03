@@ -120,6 +120,13 @@ export class UsersController {
     return this.users.deactivate(id);
   }
 
+  /** Mint a new temp password, force change-on-login, and email credentials. */
+  @Post(':id/reset-password')
+  @RequirePermission('user:manage')
+  resetPassword(@Param('id') id: string): Promise<UserResponseDto> {
+    return this.users.resetPassword(id);
+  }
+
   @Patch(':id/designation')
   @RequirePermission('user:manage')
   assignDesignation(

@@ -42,8 +42,9 @@ describe('ClientsService.create', () => {
   it('creates the client + a Client-role contact user and emails credentials', async () => {
     const { em, created } = buildEm();
     const outbox = { enqueue: jest.fn() };
+    const users = { resetPassword: jest.fn() };
     const storage = { presignDownload: jest.fn().mockResolvedValue(null), upload: jest.fn() };
-    const service = new ClientsService(em as never, outbox as never, storage as never);
+    const service = new ClientsService(em as never, outbox as never, users as never, storage as never);
 
     const dto = makeDto();
     const result = await service.create(dto);
@@ -73,7 +74,8 @@ describe('ClientsService.create', () => {
       ),
     });
     const storage = { presignDownload: jest.fn(), upload: jest.fn() };
-    const service = new ClientsService(em as never, { enqueue: jest.fn() } as never, storage as never);
+    const users = { resetPassword: jest.fn() };
+    const service = new ClientsService(em as never, { enqueue: jest.fn() } as never, users as never, storage as never);
     await expect(service.create(makeDto())).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -86,14 +88,16 @@ describe('ClientsService.create', () => {
       }),
     });
     const storage = { presignDownload: jest.fn(), upload: jest.fn() };
-    const service = new ClientsService(em as never, { enqueue: jest.fn() } as never, storage as never);
+    const users = { resetPassword: jest.fn() };
+    const service = new ClientsService(em as never, { enqueue: jest.fn() } as never, users as never, storage as never);
     await expect(service.create(makeDto())).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('fails clearly if the Client role is not seeded', async () => {
     const { em } = buildEm({ findOne: jest.fn(async () => null) });
     const storage = { presignDownload: jest.fn(), upload: jest.fn() };
-    const service = new ClientsService(em as never, { enqueue: jest.fn() } as never, storage as never);
+    const users = { resetPassword: jest.fn() };
+    const service = new ClientsService(em as never, { enqueue: jest.fn() } as never, users as never, storage as never);
     await expect(service.create(makeDto())).rejects.toBeInstanceOf(NotFoundException);
   });
 });

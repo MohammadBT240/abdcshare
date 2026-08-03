@@ -42,4 +42,11 @@ export class ClientsController {
   deactivate(@Param('id') id: string): Promise<ClientResponseDto> {
     return this.clients.deactivate(id);
   }
+
+  /** Reset primary contact credentials and email a new temporary password. */
+  @Post(':id/reset-contact-password')
+  @RequirePermission('client:manage')
+  resetContactPassword(@Param('id') id: string): Promise<ClientResponseDto> {
+    return this.clients.resetContactPassword(id);
+  }
 }
