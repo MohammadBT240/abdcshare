@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { type ColumnDef } from '@tanstack/react-table';
-import { IconEye, IconPlus, IconUserOff } from '@tabler/icons-react';
+import { IconEye, IconKey, IconPlus, IconUserOff } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import {
   DataTable,
@@ -22,7 +22,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { AddUserDialog } from '@/features/users/components/add-user-dialog';
-import { useDeactivateUser, useRoles, useUsersList } from '@/features/users/hooks/use-users';
+import {
+  useDeactivateUser,
+  useResetUserPassword,
+  useRoles,
+  useUsersList,
+} from '@/features/users/hooks/use-users';
 import { FILTERABLE_ROLE_NAMES } from '@/features/users/schemas/user.schema';
 import type { UserRecord } from '@/features/users/types';
 import { BffClientError } from '@/lib/bff/client';
@@ -35,9 +40,11 @@ function UsersListInner() {
   const [searchDraft, setSearchDraft] = useState(params.q);
   const [addOpen, setAddOpen] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<UserRecord | null>(null);
+  const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
   const list = useUsersList(queryString);
   const roles = useRoles();
   const deactivate = useDeactivateUser();
+  const resetPassword = useResetUserPassword();
 
   useEffect(() => {
     setSearchDraft(params.q);
@@ -113,6 +120,12 @@ function UsersListInner() {
           ];
           if (canManage && record.isActive) {
             items.push({
+              label: 'Reset & email password',
+              icon: <IconKey className="h-4 w-4" />,
+              onClick: () => setResetTarget(record),
+              separatorBefore: true,
+            });
+            items.push({
               label: 'Deactivate',
               icon: <IconUserOff className="h-4 w-4" />,
               onClick: () => setDeactivateTarget(record),
@@ -134,6 +147,17 @@ function UsersListInner() {
       setDeactivateTarget(null);
     } catch (err) {
       toast.error(err instanceof BffClientError ? err.message : 'Deactivate failed');
+    }
+  }
+
+  async function confirmReset() {
+    if (!resetTarget) return;
+    try {
+      await resetPassword.mutateAsync(resetTarget.id);
+      toast.success(`New temporary password emailed to ${resetTarget.email}`);
+      setResetTarget(null);
+    } catch (err) {
+      toast.error(err instanceof BffClientError ? err.message : 'Password reset failed');
     }
   }
 
@@ -216,6 +240,18 @@ function UsersListInner() {
         variant="destructive"
         confirming={deactivate.isPending}
         onConfirm={() => void confirmDeactivate()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(resetTarget)}
+        onOpenChange={(open) => {
+          if (!open) setResetTarget(null);
+        }}
+        title="Reset password and email credentials?"
+        description={`A new temporary password will be emailed to ${resetTarget?.email ?? 'this user'}. They must change it on next login. Active sessions will be signed out.`}
+        confirmLabel="Reset & email"
+        confirming={resetPassword.isPending}
+        onConfirm={() => void confirmReset()}
       />
     </div>
   );

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { type ColumnDef } from '@tanstack/react-table';
-import { IconEye, IconPlus, IconUserOff } from '@tabler/icons-react';
+import { IconEye, IconKey, IconPlus, IconUserOff } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import {
   DataTable,
@@ -25,6 +25,7 @@ import { AddClientDialog } from '@/features/clients/components/add-client-dialog
 import {
   useClientsList,
   useDeactivateClient,
+  useResetClientContactPassword,
   type ClientRecord,
 } from '@/features/clients/hooks/use-clients';
 import { useLookup } from '@/features/users/hooks/use-users';
@@ -38,9 +39,11 @@ function ClientsListInner() {
   const [searchDraft, setSearchDraft] = useState(params.q);
   const [addOpen, setAddOpen] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<ClientRecord | null>(null);
+  const [resetTarget, setResetTarget] = useState<ClientRecord | null>(null);
   const list = useClientsList(queryString);
   const clientTypes = useLookup('client-types');
   const deactivate = useDeactivateClient();
+  const resetContactPassword = useResetClientContactPassword();
 
   useEffect(() => {
     setSearchDraft(params.q);
@@ -104,6 +107,12 @@ function ClientsListInner() {
           ];
           if (canManage && record.isActive) {
             items.push({
+              label: 'Reset & email password',
+              icon: <IconKey className="h-4 w-4" />,
+              onClick: () => setResetTarget(record),
+              separatorBefore: true,
+            });
+            items.push({
               label: 'Deactivate',
               icon: <IconUserOff className="h-4 w-4" />,
               onClick: () => setDeactivateTarget(record),
@@ -125,6 +134,18 @@ function ClientsListInner() {
       setDeactivateTarget(null);
     } catch (err) {
       toast.error(err instanceof BffClientError ? err.message : 'Deactivate failed');
+    }
+  }
+
+  async function confirmReset() {
+    if (!resetTarget) return;
+    try {
+      await resetContactPassword.mutateAsync(resetTarget.id);
+      const email = resetTarget.primaryContactEmail ?? resetTarget.email ?? 'the contact';
+      toast.success(`New temporary password emailed to ${email}`);
+      setResetTarget(null);
+    } catch (err) {
+      toast.error(err instanceof BffClientError ? err.message : 'Password reset failed');
     }
   }
 
@@ -207,6 +228,18 @@ function ClientsListInner() {
         variant="destructive"
         confirming={deactivate.isPending}
         onConfirm={() => void confirmDeactivate()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(resetTarget)}
+        onOpenChange={(open) => {
+          if (!open) setResetTarget(null);
+        }}
+        title="Reset contact password and email credentials?"
+        description={`A new temporary password will be emailed to ${resetTarget?.primaryContactEmail ?? resetTarget?.email ?? 'the primary contact'}. They must change it on next login.`}
+        confirmLabel="Reset & email"
+        confirming={resetContactPassword.isPending}
+        onConfirm={() => void confirmReset()}
       />
     </div>
   );

@@ -84,3 +84,17 @@ export function useDeactivateClient() {
     },
   });
 }
+
+export function useResetClientContactPassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      bffApi<ClientRecord>(`/api/clients/${id}/reset-contact-password`, { method: 'POST' }),
+    onSuccess: async (_data, id) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['clients'] }),
+        qc.invalidateQueries({ queryKey: ['clients', id] }),
+      ]);
+    },
+  });
+}

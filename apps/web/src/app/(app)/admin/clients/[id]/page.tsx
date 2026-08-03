@@ -29,6 +29,7 @@ import { clientTypeKind } from '@/features/clients/constants';
 import {
   useClient,
   useDeactivateClient,
+  useResetClientContactPassword,
   useUpdateClient,
 } from '@/features/clients/hooks/use-clients';
 import { uploadUserAvatar } from '@/features/users/lib/upload-user-avatar';
@@ -66,6 +67,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const client = useClient(id);
   const update = useUpdateClient(id);
   const deactivate = useDeactivateClient();
+  const resetContactPassword = useResetClientContactPassword();
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [hydratedFor, setHydratedFor] = useState<string | null>(null);
 
@@ -201,6 +203,19 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       await client.refetch();
     } catch (err) {
       toast.error(err instanceof BffClientError ? err.message : 'Deactivate failed');
+    }
+  }
+
+  async function onResetContactPassword() {
+    try {
+      await resetContactPassword.mutateAsync(id);
+      toast.success(
+        `New temporary password emailed to ${
+          client.data?.primaryContactEmail ?? client.data?.email ?? 'the contact'
+        }`,
+      );
+    } catch (err) {
+      toast.error(err instanceof BffClientError ? err.message : 'Password reset failed');
     }
   }
 
@@ -388,27 +403,54 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 Save changes
               </LoadingButton>
               {record.isActive ? (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button type="button" variant="outline">
-                      Deactivate
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Deactivate client?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        {record.name} will be marked inactive.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => void onDeactivate()}>
+                <>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button type="button" variant="outline">
+                        Reset & email password
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          Reset contact password and email credentials?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          A new temporary password will be emailed to{' '}
+                          {record.primaryContactEmail ?? record.email ?? 'the primary contact'}.
+                          They must change it on next login.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => void onResetContactPassword()}>
+                          Reset & email
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button type="button" variant="outline">
                         Deactivate
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Deactivate client?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {record.name} will be marked inactive.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => void onDeactivate()}>
+                          Deactivate
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
               ) : null}
             </>
           ) : null}
