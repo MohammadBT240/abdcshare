@@ -1,10 +1,23 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
 import { type Paginated } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
 import { engagementScopeWhere, resolveScope } from '../../common/security/access-scope';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
+import { UPLOAD_MAX_BYTES } from '../../common/storage/upload.constants';
+import type {
+  MultipartAbortDto,
+  MultipartCompleteDto,
+  MultipartCreateDto,
+  MultipartSignPartsDto,
+} from '../../common/storage/multipart.dto';
 import {
   NotificationsService,
   type NotifyRecipient,
@@ -211,5 +224,84 @@ export class DiscussionsService {
     });
     await this.em.flush();
     return this.getMessage(messageId);
+  }
+
+  async createMultipart(messageId: string, dto: MultipartCreateDto, user: AuthenticatedUser) {
+    const message = await this.loadMessageScoped(messageId, user);
+    if (dto.sizeBytes != null && dto.sizeBytes > UPLOAD_MAX_BYTES) {
+      throw new BadRequestException(
+        `File exceeds maximum size of ${Math.floor(UPLOAD_MAX_BYTES / (1024 * 1024))} MB`,
+      );
+    }
+    return this.storage.createMultipart({
+      keyPrefix: `discussions/${message.request.id}`,
+      fileName: dto.fileName,
+      contentType: dto.contentType,
+    });
+  }
+
+  async signMultipartParts(
+    messageId: string,
+    uploadId: string,
+    dto: MultipartSignPartsDto,
+    user: AuthenticatedUser,
+  ) {
+    const message = await this.loadMessageScoped(messageId, user);
+    if (!dto.storageKey.includes(`discussions/${message.request.id}`)) {
+      throw new BadRequestException('Invalid storage key for this message');
+    }
+    const parts = await Promise.all(
+      dto.partNumbers.map(async (partNumber) => {
+        const { url } = await this.storage.presignPart(dto.storageKey, uploadId, partNumber);
+        return { partNumber, url };
+      }),
+    );
+    return { parts };
+  }
+
+  async completeMultipart(
+    messageId: string,
+    uploadId: string,
+    dto: MultipartCompleteDto,
+    user: AuthenticatedUser,
+  ): Promise<MessageResponseDto> {
+    const message = await this.loadMessageScoped(messageId, user);
+    if (dto.sizeBytes > UPLOAD_MAX_BYTES) {
+      throw new BadRequestException(
+        `File exceeds maximum size of ${Math.floor(UPLOAD_MAX_BYTES / (1024 * 1024))} MB`,
+      );
+    }
+    if (!dto.storageKey.includes(`discussions/${message.request.id}`)) {
+      throw new BadRequestException('Invalid storage key for this message');
+    }
+    await this.storage.completeMultipart(dto.storageKey, uploadId, dto.parts);
+    const head = await this.storage.head(dto.storageKey);
+    if (!head) throw new BadRequestException('Uploaded object not found');
+    if (dto.sizeBytes > 0 && head.sizeBytes !== dto.sizeBytes) {
+      throw new BadRequestException(
+        `Uploaded size mismatch (expected ${dto.sizeBytes}, got ${head.sizeBytes})`,
+      );
+    }
+    return this.confirmAttachment(
+      messageId,
+      {
+        storageKey: dto.storageKey,
+        fileName: dto.fileName,
+        mimeType: dto.mimeType,
+        sizeBytes: head.sizeBytes,
+      },
+      user,
+    );
+  }
+
+  async abortMultipart(
+    messageId: string,
+    uploadId: string,
+    dto: MultipartAbortDto,
+    user: AuthenticatedUser,
+  ): Promise<{ ok: true }> {
+    await this.loadMessageScoped(messageId, user);
+    await this.storage.abortMultipart(dto.storageKey, uploadId);
+    return { ok: true };
   }
 }

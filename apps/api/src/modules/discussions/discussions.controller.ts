@@ -5,6 +5,12 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { DiscussionsService } from './discussions.service';
 import {
+  MultipartAbortDto,
+  MultipartCompleteDto,
+  MultipartCreateDto,
+  MultipartSignPartsDto,
+} from '../../common/storage/multipart.dto';
+import {
   AttachmentConfirmDto,
   AttachmentPresignDto,
   EditMessageDto,
@@ -79,5 +85,48 @@ export class DiscussionsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<MessageResponseDto> {
     return this.discussions.confirmAttachment(id, dto, user);
+  }
+
+  @Post('messages/:id/attachments/multipart')
+  @RequirePermission('discussion:participate')
+  createMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MultipartCreateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.discussions.createMultipart(id, dto, user);
+  }
+
+  @Post('messages/:id/attachments/multipart/:uploadId/parts')
+  @RequirePermission('discussion:participate')
+  signMultipartParts(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartSignPartsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.discussions.signMultipartParts(id, uploadId, dto, user);
+  }
+
+  @Post('messages/:id/attachments/multipart/:uploadId/complete')
+  @RequirePermission('discussion:participate')
+  completeMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartCompleteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<MessageResponseDto> {
+    return this.discussions.completeMultipart(id, uploadId, dto, user);
+  }
+
+  @Post('messages/:id/attachments/multipart/:uploadId/abort')
+  @RequirePermission('discussion:participate')
+  abortMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartAbortDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.discussions.abortMultipart(id, uploadId, dto, user);
   }
 }
