@@ -3,9 +3,16 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { R2StorageAdapter } from './r2-storage.adapter';
 
 jest.mock('@aws-sdk/client-s3', () => ({
-  S3Client: jest.fn().mockImplementation(() => ({})),
+  S3Client: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockResolvedValue({ UploadId: 'upload-1', ContentLength: 42 }),
+  })),
   PutObjectCommand: jest.fn().mockImplementation((input) => input),
   GetObjectCommand: jest.fn().mockImplementation((input) => input),
+  CreateMultipartUploadCommand: jest.fn().mockImplementation((input) => input),
+  UploadPartCommand: jest.fn().mockImplementation((input) => input),
+  CompleteMultipartUploadCommand: jest.fn().mockImplementation((input) => input),
+  AbortMultipartUploadCommand: jest.fn().mockImplementation((input) => input),
+  HeadObjectCommand: jest.fn().mockImplementation((input) => input),
 }));
 
 jest.mock('@aws-sdk/s3-request-presigner', () => ({
@@ -76,6 +83,28 @@ describe('R2StorageAdapter', () => {
         Bucket: 'abdcshare-uploads',
         Key: 'abdcshare/docs/file.pdf',
         ResponseContentDisposition: 'attachment; filename="export.pdf"',
+      }),
+    );
+  });
+
+  it('presignDownload passes inline disposition when requested', async () => {
+    const adapter = new R2StorageAdapter(
+      config({
+        R2_ENDPOINT: 'https://acct.r2.cloudflarestorage.com',
+        R2_BUCKET: 'abdcshare-uploads',
+        R2_ACCESS_KEY_ID: 'key',
+        R2_SECRET_ACCESS_KEY: 'secret',
+        STORAGE_UPLOAD_TTL: 900,
+      }) as never,
+    );
+
+    await adapter.presignDownload('abdcshare/docs/file.pdf', 'view.pdf', {
+      disposition: 'inline',
+    });
+
+    expect(GetObjectCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ResponseContentDisposition: 'inline; filename="view.pdf"',
       }),
     );
   });
