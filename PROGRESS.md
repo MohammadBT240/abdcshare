@@ -455,7 +455,9 @@ Client-facing draft-review loop for **final reports**, on top of document versio
 
 ## Bucket 2 + 3 + 4 (this pass)
 **Bucket 2 (decided):**
-- **Company profile = singleton** (kept as-is; docs corrected in USER_STORIES G + ERD §12).
+- **Company profile = singleton** (kept as-is at the time; docs corrected in USER_STORIES G + ERD §12).
+  **Later superseded** by the company-profiles document library (`Migration20260801114012`) — see
+  “UI kit polish + company profiles library” below.
 - **Submission file attachments** — `submission_files` entity + `POST /api/submissions/:id/files/presign`
   + `.../files` (client, only while Pending), included in the submission response. ⚠️ migration
   `Migration…101650`.
@@ -566,8 +568,8 @@ Structured periodic reports to the Chairman (Principal Partner), modelled on `ch
   departments/clients selects on create.
 - **Catalogues admin** — engagement types (incl. allowed request-classes dialog), request
   classes/types/stages/statuses, departments — dialog CRUD + deactivate.
-- **Clients + company profile** — clients list/create (primary contact)/edit/deactivate; company
-  profile singleton form (`logoPath` upload deferred).
+- **Clients + company profile** — clients list/create (primary contact)/edit/deactivate; early
+  company-profile singleton form (later replaced by document library — see below).
 - **Nav / middleware / dashboard** — sidebar admin links permission-gated; `/admin/*` cookie-protected;
   dashboard cards from live `GET /api/dashboard`.
 - **Verify:** web typecheck + build green; BFF smoke (roles, users, engagement-types, company-profile,
@@ -575,19 +577,96 @@ Structured periodic reports to the Chairman (Principal Partner), modelled on `ch
 - **FE state (Ondoo-aligned):** TanStack Query for server data; Zustand `useUIStore` / `useAuthStore`
   for shell chrome + persisted session user metadata (no tokens). See DEVELOPMENT_GUIDELINES §6.5.
 - **Icons:** `@tabler/icons-react` sole icon system (Lucide removed). See DEVELOPMENT_GUIDELINES §6.6.
-- **Deferred (Slice 3+):** engagements/requests UI, document upload, notifications feed/preferences,
-  partner reports UI, bulk CSV import, avatar upload, audit viewer, search bar UI.
+
+## UI kit polish + company profiles library (complete, via `feature/UI-scaffold`)
+- **Shared composites** — form field/select/date/dialog kit; `FilterBar`; DataTable polish; catalogues
+  section shell + nav; users/clients admin migrated onto the shared kit.
+- **Company profiles** — settings singleton (`company_profile`) replaced by **document library**
+  `company_profiles` (upload/rename/replace/active). Migrations `Migration20260801114012` +
+  `Migration20260801114039`. Web: grid + upload/rename/replace dialogs under `/admin/company-profile`.
+- **Avatars** — server-side user avatar upload via StoragePort (`POST /api/users/me/avatar/…`); client
+  DTOs enriched with contact/avatar fields. Seed filters legacy `Auditor` role label → `Staff`.
+- **Assets** — file-type icons, illustration/pattern assets; Metronic public dump removed.
+
+## Engagement domain API upgrades (complete, branch `feature/engagement-UI`)
+Migrations: `Migration20260801143000` (status→**stage**), `Migration20260802223000` (team **Lead|Member**).
+
+- **Lifecycle** — engagement column + history use `stage` (`Planning|Execution|Reporting|Completed|Archived`);
+  dashboard + deadline reminders aligned.
+- **Team roles** — Partner/Manager/Auditor → **Lead | Member**. Creator auto-Lead on create/clone;
+  `POST /engagements/:id/team/:userId/elevate`; cannot remove the sole Lead. Spec:
+  `engagement-lead.spec.ts`.
+- **Workspace DTO** — `GET` workspace returns progress, classes, team, sign-offs, and capability flags
+  (`viewerIsLead`, `canManageEngagement`, `canTransitionEngagement`, `canSignOffEngagement`). Controllers
+  use `engagement:view`; real authz in the service via Lead-or-SA capabilities.
+- **Sign-off mental model** — sign-off is a **completion checklist only** (blocks → Completed via
+  `assertFullySignedOff` / missing request-class coverage). Hard edit freezes / `sign-off-lock` removed;
+  request create/update/stage and WP uploads stay available after class sign-off.
+- **Requests** — richer DTOs, history, bulk updates; engagement-type ↔ request-class mapping tightened.
+- **Documents** — expanded upload/batch/working-paper flows; worker **ZIP export** consumer + env wiring.
+- **Notifications** — shared type catalog for prefs/delivery; recipient helpers + preference endpoints;
+  in-app event catalog documented.
+- **api-client** — OpenAPI regenerated for Lead/workspace APIs. Domain docs updated (stages, Lead/Member).
+
+## Web Slice 3 — Engagements / requests / collaboration UI (complete, branch `feature/engagement-UI`)
+Staff/client product surfaces on top of Phase 3–4 APIs (plus upgrades above).
+
+- **Engagements** — list + create/clone dialogs; workspace tabs **Overview | Requests | Documents | Settings**
+  (Settings gated by manage/sign-off/transition; Documents by `document:view`). Stage header, next-action
+  chips, class rail, planning supporting docs, team panel (Make Lead), sign-off panel, transition dialog.
+- **Documents** — working papers + final reports live as the engagement **Documents** tab
+  (`?tab=documents&category=…`); standalone `/engagements/[id]/documents` removed (app still pre-prod,
+  no redirect). Sidebar global “Documents” nav item removed (docs are engagement-scoped).
+- **Requests** — global inbox + engagement Requests tab; detail with overview (details + client responses
+  feed), discussion tab (thread, @-mentions, attachments), history dialog, assignees, submit-for-review.
+- **Submissions** — client response list/create + staff accept/return; metric cards.
+- **Reviews** — `/reviews` decide queue (`review:decide`).
+- **Final reports (client)** — `/final-reports` list + detail (`report-review:respond`).
+- **Notifications** — header bell (unread + mark read) + `/settings/notifications` preferences UI.
+- **Shell / BFF** — middleware + allow-listed BFF prefixes for engagement workflows; Tabler + file-type
+  icons; accordion/alert/scroll-area/toggle-group primitives; metric cards + segmented `AppTabNav`.
+- **Known small fix in-tree:** RowActions icons must be JSX elements (not component refs) on list pages.
+
+**Still deferred from Slice 3+ (API often exists; web missing or stubbed):**
+- **Partner Reports UI** — API complete; sidebar item still `href: "#"`.
+- **Audit viewer UI** — `GET /api/audit` exists; no admin screen.
+- **Global search UI** — `GET /api/search` exists; no header search.
+- Bulk CSV user import; richer analytics dashboards (Phase 6).
+
+## Per-file review + upload retry (complete)
+- Reviews are per submission **file**; response status is derived (all Accepted → Accepted;
+  any Returned → Returned; else Pending). Bulk “Accept all” kept.
+- Returned files: append-only replacement via `replaces_file_id` (audit trail; supersedes old row).
+- Metrics count **current files** by file status (not response count).
+- Respond dialog: require ≥1 file; per-file Uppy progress + Retry; draft survives failures until cancel.
+- Migration `Migration20260803110226`.
+
+## Resilient large-file uploads (complete)
+- **Atomic submissions** — `SubmissionStatus.Draft`; create is silent; `POST /submissions/:id/finalize`
+  notifies staff; `DELETE` discards draft; hourly sweep removes Drafts older than 24h.
+  Migration `Migration20260803102358`.
+- **Multipart storage** — `StoragePort` create/sign/complete/abort/head; R2 + local adapters.
+  Domain endpoints under submissions / documents / messages (`…/files|attachments/multipart…`).
+  Complete verifies object size via HEAD.
+- **Web** — Uppy (`@uppy/core` + `@uppy/aws-s3`) headless client; >50MB multipart with retries;
+  wired into client responses, discussion attachments, engagement documents. Progress bars on submit.
+- **Ops** — R2 CORS must include `PUT` + expose `ETag`; set bucket lifecycle to abort incomplete
+  multipart uploads after 7 days (see `apps/api/.env.example`).
 
 ## Pending / next
-1. **Web Slice 3** — engagements/requests screens + document upload UI.
-2. **Extract shared persistence** — worker duplicates `outbox.entity.ts`; notifications email_sent update
-   uses raw SQL to avoid duplicating the entity. A shared persistence package would clean this up.
-3. **API e2e (Supertest)** — needs `supertest` + a live DB; unit specs in place (~19 files).
-4. **Data note (Mac):** migrate any `role = 'Auditor'` users to `Staff` (likely none). Seed DB may still
-   show role id 3 as `"Auditor"` in `GET /api/roles` — shared enums use `Staff`.
-5. **Jest on the Mac:** sandbox can't run it (jest 30 vs ts-jest 29 + pnpm preset resolution).
+1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
+   replace sidebar `#` stub.
+2. **Audit viewer** — filter/browse activity log (`audit:view`).
+3. **Global search UI** — header/command search over scoped `GET /api/search`.
+4. **Land `feature/engagement-UI`** — commit remaining Documents-tab + sidebar cleanup; smoke staff↔client
+   loop; open PR when ready.
+5. **v1 hardening (Phase 5)** — authz matrix pass, empty/error/a11y polish, observability; API e2e
+   (Supertest + live DB) — unit specs ~22 files.
+6. **Extract shared persistence** — worker still duplicates `outbox.entity.ts`; notifications
+   `email_sent` update uses raw SQL to avoid duplicating the entity.
+7. **Data note:** legacy `Auditor` role label should already be filtered in seed; confirm roles API
+   returns `Staff`.
 
 ## Open decisions still outstanding
 - Hosting/runtime, realtime vs polling, legacy data migration scope.
-- Continuity/automation: remote/background agent (needs the GitHub remote — now in place — plus a
-  token/App + the gated feature enabled) vs. machine-awake sessions.
+- Continuity/automation: remote/background agent (GitHub remote in place) vs. machine-awake sessions.
