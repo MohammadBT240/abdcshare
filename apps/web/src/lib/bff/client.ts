@@ -12,7 +12,10 @@ async function parseBffResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const message = typeof body.message === 'string' ? body.message : 'Request failed';
+    const message =
+      (typeof body.message === 'string' && body.message) ||
+      (typeof body.error === 'string' && body.error) ||
+      'Request failed';
     throw new BffClientError(message, res.status);
   }
   return body as T;

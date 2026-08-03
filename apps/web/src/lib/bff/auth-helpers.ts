@@ -37,7 +37,7 @@ export async function fetchMeWithRefresh(): Promise<{ user: AuthUser } | null> {
     return null;
   }
 
-  const user = (res.data as AuthUser | undefined) ?? ((await res.response.clone().json().catch(() => null)) as AuthUser | null);
+  const user = res.data as AuthUser | undefined;
   if (!user) return null;
   return { user };
 }

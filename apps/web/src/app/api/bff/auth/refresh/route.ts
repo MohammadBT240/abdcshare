@@ -14,16 +14,10 @@ export async function POST(req: Request): Promise<NextResponse> {
     body: { refreshToken: token },
   });
 
-  const tokens =
-    (data as Pick<AuthTokens, 'accessToken' | 'refreshToken'> | undefined) ??
-    ((await response.clone().json().catch(() => null)) as Pick<
-      AuthTokens,
-      'accessToken' | 'refreshToken'
-    > | null);
-
+  const tokens = data as Pick<AuthTokens, 'accessToken' | 'refreshToken'> | undefined;
   if (!response.ok || !tokens?.accessToken || !tokens.refreshToken) {
     await clearAuthCookies();
-    return jsonError(response.status, error ?? tokens);
+    return jsonError(response.status || 500, error ?? { message: 'Session expired' });
   }
 
   await setAuthCookies(tokens.accessToken, tokens.refreshToken);
