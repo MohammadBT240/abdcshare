@@ -13,6 +13,10 @@ export const EVENT = {
   DocumentFileUploaded: 'document.file_uploaded',
   DocumentStatusChanged: 'document.status_changed',
   DocumentExportRequested: 'document.export_requested',
+  /** Zip all current files on a client submission for download. */
+  SubmissionExportRequested: 'submission.export_requested',
+  /** Convert Office (etc.) to PDF for in-app preview. */
+  FilePreviewRequested: 'file.preview_requested',
   ReportSentForReview: 'report.sent_for_review',
   ReportReviewDecided: 'report.review_decided',
   DocumentSubmitted: 'submission.created',
