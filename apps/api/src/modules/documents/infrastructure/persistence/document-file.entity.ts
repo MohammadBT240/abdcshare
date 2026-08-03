@@ -1,12 +1,13 @@
-import { Entity, ManyToOne, OptionalProps, PrimaryKey, Property } from '@mikro-orm/core';
+import { Entity, Enum, ManyToOne, OptionalProps, PrimaryKey, Property } from '@mikro-orm/core';
 import { randomUUID } from 'node:crypto';
+import { FilePreviewStatus } from '@abdcshare/shared';
 import { DocumentEntity } from './document.entity';
 import { UserEntity } from '../../../users/infrastructure/persistence/user.entity';
 
 /** One uploaded file version of a document. */
 @Entity({ tableName: 'document_files' })
 export class DocumentFileEntity {
-  [OptionalProps]?: 'id' | 'uploadedAt';
+  [OptionalProps]?: 'id' | 'uploadedAt' | 'previewStatus';
 
   @PrimaryKey({ type: 'uuid' })
   id: string = randomUUID();
@@ -31,6 +32,15 @@ export class DocumentFileEntity {
 
   @ManyToOne(() => UserEntity, { nullable: true })
   uploadedBy?: UserEntity | null;
+
+  @Property({ nullable: true })
+  previewStorageKey?: string | null;
+
+  @Enum({ items: () => FilePreviewStatus })
+  previewStatus: FilePreviewStatus = FilePreviewStatus.None;
+
+  @Property({ type: 'text', nullable: true })
+  previewError?: string | null;
 
   @Property({ type: 'timestamptz' })
   uploadedAt: Date = new Date();

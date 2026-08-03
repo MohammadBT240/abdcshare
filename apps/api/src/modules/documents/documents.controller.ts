@@ -19,6 +19,12 @@ import type { AuthenticatedUser } from '../../common/interfaces/authenticated-us
 import { DocumentsService } from './documents.service';
 import { DOCUMENT_MAX_BYTES } from './documents.constants';
 import {
+  MultipartAbortDto,
+  MultipartCompleteDto,
+  MultipartCreateDto,
+  MultipartSignPartsDto,
+} from '../../common/storage/multipart.dto';
+import {
   AddDocumentParticipantDto,
   ConfirmBatchDto,
   ConfirmUploadDto,
@@ -120,6 +126,45 @@ export class DocumentsController {
     return this.documents.confirmUpload(id, dto, user);
   }
 
+  @Post(':id/files/multipart')
+  createMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MultipartCreateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.createMultipart(id, dto, user);
+  }
+
+  @Post(':id/files/multipart/:uploadId/parts')
+  signMultipartParts(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartSignPartsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.signMultipartParts(id, uploadId, dto, user);
+  }
+
+  @Post(':id/files/multipart/:uploadId/complete')
+  completeMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartCompleteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<DocumentDetailResponseDto> {
+    return this.documents.completeMultipart(id, uploadId, dto, user);
+  }
+
+  @Post(':id/files/multipart/:uploadId/abort')
+  abortMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartAbortDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.abortMultipart(id, uploadId, dto, user);
+  }
+
   /** Server-side multipart upload (category permission enforced in service). */
   @Post(':id/files/upload')
   @ApiConsumes('multipart/form-data')
@@ -176,6 +221,40 @@ export class DocumentsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DownloadUrlResponseDto> {
     return this.documents.downloadUrl(id, fileId, user);
+  }
+
+  @Get(':id/files/:fileId/preview')
+  @RequirePermission('document:view')
+  preview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Query('retryFailed') retryFailed: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.previewUrl(id, fileId, user, {
+      retryFailed: retryFailed === '1' || retryFailed === 'true',
+    });
+  }
+
+  @Get(':id/files/:fileId/zip-entries')
+  @RequirePermission('document:view')
+  zipEntries(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.zipEntries(id, fileId, user);
+  }
+
+  @Get(':id/files/:fileId/zip-entry')
+  @RequirePermission('document:view')
+  zipEntry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Query('path') entryPath: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.zipEntryUrl(id, fileId, entryPath ?? '', user);
   }
 
   @Post(':id/participants')
