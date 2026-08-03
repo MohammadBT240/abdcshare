@@ -123,6 +123,24 @@ export function NotificationsBell() {
                 );
 
                 if (item.link) {
+                  const external = /^https?:\/\//i.test(item.link);
+                  if (external) {
+                    return (
+                      <a
+                        key={item.id}
+                        href={item.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block hover:bg-muted/50"
+                        onClick={() => {
+                          if (!item.isRead) void onMarkOne(item.id);
+                          setOpen(false);
+                        }}
+                      >
+                        {content}
+                      </a>
+                    );
+                  }
                   return (
                     <Link
                       key={item.id}
