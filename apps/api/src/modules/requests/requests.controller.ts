@@ -78,8 +78,9 @@ export class RequestsController {
     return this.requests.getOne(id, user);
   }
 
+  /** Edit / delete / stage / status — Super Admin (request:update + catalogue:view). */
   @Patch(':id')
-  @RequirePermission('request:update')
+  @RequirePermission('request:update', 'catalogue:view')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRequestDto,
@@ -89,7 +90,7 @@ export class RequestsController {
   }
 
   @Delete(':id')
-  @RequirePermission('request:update')
+  @RequirePermission('request:update', 'catalogue:view')
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -98,7 +99,7 @@ export class RequestsController {
   }
 
   @Post(':id/stage')
-  @RequirePermission('request:update')
+  @RequirePermission('request:update', 'catalogue:view')
   setStage(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetStageDto,
@@ -108,7 +109,7 @@ export class RequestsController {
   }
 
   @Post(':id/status')
-  @RequirePermission('request:update')
+  @RequirePermission('request:update', 'catalogue:view')
   setStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetStatusDto,
@@ -117,8 +118,9 @@ export class RequestsController {
     return this.requests.setStatus(id, dto, user);
   }
 
+  /** Assignees — Super Admin (request:assign + catalogue:view). */
   @Post(':id/assignees')
-  @RequirePermission('request:assign')
+  @RequirePermission('request:assign', 'catalogue:view')
   assign(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AssignRequestDto,
@@ -128,7 +130,7 @@ export class RequestsController {
   }
 
   @Delete(':id/assignees/:userId')
-  @RequirePermission('request:assign')
+  @RequirePermission('request:assign', 'catalogue:view')
   unassign(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) memberUserId: string,

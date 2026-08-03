@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { wrap, type FilterQuery } from "@mikro-orm/core";
 import { EntityManager } from "@mikro-orm/postgresql";
-import { phaseForStage, type Paginated } from "@abdcshare/shared";
+import { hasPermission, phaseForStage, type Paginated } from "@abdcshare/shared";
 import { pageParams, paginated } from "../../common/pagination/paginate";
 import {
   engagementScopeWhere,
@@ -437,6 +437,18 @@ export class RequestsService {
       dto.assigneeUserId == null
     ) {
       throw new BadRequestException("Provide at least one field to update");
+    }
+
+    // Stage / status / assignees bulk changes require catalogue:view (Super Admin).
+    if (
+      (dto.stageId != null ||
+        dto.statusId != null ||
+        dto.assigneeUserId != null) &&
+      !hasPermission(user.role, "catalogue:view", user.partnerDesignation)
+    ) {
+      throw new ForbiddenException(
+        "Only Super Admin can bulk-update stage, status, or assignees",
+      );
     }
 
     const scope = engagementScopeWhere(resolveScope(user));
