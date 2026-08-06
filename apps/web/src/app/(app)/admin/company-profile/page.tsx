@@ -8,6 +8,7 @@ import { FilterBar } from '@/components/data/filter-bar';
 import { EmptyState, ErrorState } from '@/components/data/empty-state';
 import { useListParams } from '@/components/data/use-list-params';
 import { ConfirmDialog } from '@/components/forms';
+import { FileViewerDialog } from '@/components/files/file-viewer-dialog';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,7 @@ import { RenameCompanyProfileDialog } from '@/features/company-profiles/componen
 import { ReplaceCompanyProfileFileDialog } from '@/features/company-profiles/components/replace-company-profile-file-dialog';
 import {
   downloadCompanyProfile,
+  fetchCompanyProfilePreview,
   useCompanyProfilesList,
   useDeleteCompanyProfile,
   type CompanyProfileRecord,
@@ -35,6 +37,7 @@ function CompanyProfilesPageInner() {
   const [renameTarget, setRenameTarget] = useState<CompanyProfileRecord | null>(null);
   const [replaceTarget, setReplaceTarget] = useState<CompanyProfileRecord | null>(null);
   const [removeTarget, setRemoveTarget] = useState<CompanyProfileRecord | null>(null);
+  const [viewerTarget, setViewerTarget] = useState<CompanyProfileRecord | null>(null);
   const [searchInput, setSearchInput] = useState(params.q);
 
   async function handleDownload(profile: CompanyProfileRecord) {
@@ -104,6 +107,7 @@ function CompanyProfilesPageInner() {
           <CompanyProfilesGrid
             profiles={list.data.data}
             canManage={canManage}
+            onOpen={setViewerTarget}
             onDownload={handleDownload}
             onRename={setRenameTarget}
             onReplace={setReplaceTarget}
@@ -127,6 +131,19 @@ function CompanyProfilesPageInner() {
         }}
         profile={replaceTarget}
       />
+      {viewerTarget ? (
+        <FileViewerDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setViewerTarget(null);
+          }}
+          fileName={viewerTarget.fileName}
+          mimeType={viewerTarget.mimeType}
+          sizeBytes={viewerTarget.sizeBytes}
+          getPreview={() => fetchCompanyProfilePreview(viewerTarget.id)}
+          onDownload={() => downloadCompanyProfile(viewerTarget.id)}
+        />
+      ) : null}
       <ConfirmDialog
         open={Boolean(removeTarget)}
         onOpenChange={(open) => {

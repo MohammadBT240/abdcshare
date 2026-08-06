@@ -6,6 +6,7 @@ import type { CompanyProfileRecord } from '@/features/company-profiles/hooks/use
 export function CompanyProfilesGrid({
   profiles,
   canManage,
+  onOpen,
   onDownload,
   onRename,
   onReplace,
@@ -13,6 +14,7 @@ export function CompanyProfilesGrid({
 }: {
   profiles: CompanyProfileRecord[];
   canManage: boolean;
+  onOpen: (profile: CompanyProfileRecord) => void;
   onDownload: (profile: CompanyProfileRecord) => void;
   onRename: (profile: CompanyProfileRecord) => void;
   onReplace: (profile: CompanyProfileRecord) => void;
@@ -25,6 +27,7 @@ export function CompanyProfilesGrid({
           key={profile.id}
           profile={profile}
           canManage={canManage}
+          onOpen={() => onOpen(profile)}
           onDownload={() => onDownload(profile)}
           onRename={() => onRename(profile)}
           onReplace={() => onReplace(profile)}

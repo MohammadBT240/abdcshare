@@ -53,7 +53,10 @@ function IconAction({
           variant="ghost"
           size="sm"
           aria-label={label}
-          onClick={onClick}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClick();
+          }}
           className={cn('h-8 w-8 p-0 text-muted-foreground hover:text-foreground', className)}
         >
           {children}
@@ -67,6 +70,7 @@ function IconAction({
 export function CompanyProfileCard({
   profile,
   canManage,
+  onOpen,
   onDownload,
   onRename,
   onReplace,
@@ -75,6 +79,7 @@ export function CompanyProfileCard({
 }: {
   profile: CompanyProfileRecord;
   canManage: boolean;
+  onOpen: () => void;
   onDownload: () => void;
   onRename: () => void;
   onReplace: () => void;
@@ -86,9 +91,20 @@ export function CompanyProfileCard({
   return (
     <TooltipProvider delayDuration={200}>
       <article
+        role="button"
+        tabIndex={0}
+        aria-label={`Open ${profile.name}`}
+        onClick={onOpen}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onOpen();
+          }
+        }}
         className={cn(
-          'group relative flex flex-col overflow-hidden rounded-xl border border-border/80 bg-card shadow-[var(--shadow-aca)] transition-all',
+          'group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-border/80 bg-card shadow-[var(--shadow-aca)] transition-all',
           'hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           className,
         )}
       >
@@ -115,7 +131,10 @@ export function CompanyProfileCard({
                     variant="ghost"
                     size="sm"
                     aria-label="Download"
-                    onClick={onDownload}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDownload();
+                    }}
                     className="h-8 w-8 shrink-0 p-0 text-primary hover:bg-primary/10 hover:text-primary"
                   >
                     <IconDownload className="h-[18px] w-[18px]" aria-hidden />

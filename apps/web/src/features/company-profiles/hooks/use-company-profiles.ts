@@ -88,3 +88,12 @@ export async function downloadCompanyProfile(id: string): Promise<void> {
   const { url } = await bffApi<{ url: string }>(`/api/company-profiles/${id}/download`);
   window.open(url, '_blank', 'noopener,noreferrer');
 }
+
+export async function fetchCompanyProfilePreview(id: string) {
+  return bffApi<{
+    url: string | null;
+    mode: 'native' | 'converted' | 'unavailable';
+    previewStatus: string;
+    reason?: 'pending' | 'failed' | 'unsupported';
+  }>(`/api/company-profiles/${id}/preview`);
+}
