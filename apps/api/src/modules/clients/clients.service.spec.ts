@@ -101,3 +101,55 @@ describe('ClientsService.create', () => {
     await expect(service.create(makeDto())).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+describe('ClientsService.addContact', () => {
+  const clientRole = { id: 1, roleName: 'Client' } as RoleEntity;
+  const client = {
+    id: 'client-1',
+    primaryContact: { id: 'primary-1' },
+    clientType: null,
+  } as ClientEntity;
+
+  it('provisions an additional Client-role user without changing primary', async () => {
+    const created: Array<{ entity: unknown; data: Record<string, unknown> }> = [];
+    const em = {
+      findOne: jest.fn(async (entity: unknown, where: Record<string, unknown>) => {
+        if (entity === ClientEntity) return client;
+        if (entity === RoleEntity) return clientRole;
+        if (entity === UserEntity && where.email) return null;
+        return null;
+      }),
+      getReference: jest.fn((entity: unknown, id: unknown) => ({ __ref: entity, id })),
+      create: jest.fn((entity: unknown, data: Record<string, unknown>) => {
+        const row = { id: 'user-2', createdAt: new Date(), ...data };
+        created.push({ entity, data: row });
+        return row;
+      }),
+      persistAndFlush: jest.fn(async () => undefined),
+      count: jest.fn(async () => 0),
+    };
+    const outbox = { enqueue: jest.fn() };
+    const storage = { presignDownload: jest.fn().mockResolvedValue(null) };
+    const service = new ClientsService(
+      em as never,
+      outbox as never,
+      { resetPassword: jest.fn() } as never,
+      storage as never,
+    );
+
+    const result = await service.addContact('client-1', {
+      firstName: 'Bob',
+      surname: 'Okoro',
+      email: 'bob@acme.com',
+    });
+
+    expect(created[0]?.entity).toBe(UserEntity);
+    expect(result.email).toBe('bob@acme.com');
+    expect(result.isPrimary).toBe(false);
+    expect(outbox.enqueue).toHaveBeenCalledWith(
+      EVENT.UserCreated,
+      expect.objectContaining({ email: 'bob@acme.com' }),
+    );
+    expect(client.primaryContact?.id).toBe('primary-1');
+  });
+});

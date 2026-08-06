@@ -21,7 +21,13 @@ import { TitleEntity } from '../reference/infrastructure/persistence/titles.enti
 import type { CreateClientDto } from './presentation/dto/create-client.dto';
 import type { UpdateClientDto } from './presentation/dto/update-client.dto';
 import type { ClientListQueryDto } from './presentation/dto/client-list-query.dto';
+import type {
+  CreateClientContactDto,
+  UpdateClientContactDto,
+} from './presentation/dto/client-contact.dto';
+import { ClientContactResponseDto } from './presentation/dto/client-contact.dto';
 import { ClientResponseDto } from './presentation/dto/client-response.dto';
+import { EngagementClientContactEntity } from '../engagements/infrastructure/persistence/engagement-client-contact.entity';
 
 const CLIENT_ROLE = 'Client';
 
@@ -219,5 +225,171 @@ export class ClientsService {
     if (!contact) throw new BadRequestException('Client has no primary contact login');
     await this.users.resetPassword(contact.id);
     return this.toDto(client);
+  }
+
+  // ---- Multi-contact management -------------------------------------------
+
+  private async toContactDto(
+    user: UserEntity,
+    primaryId: string | null | undefined,
+  ): Promise<ClientContactResponseDto> {
+    return {
+      id: user.id,
+      firstName: user.firstName,
+      middleName: user.middleName ?? null,
+      surname: user.surname,
+      fullName: user.fullName,
+      email: user.email,
+      phoneNumber: user.phoneNumber ?? null,
+      titleId: user.title ? user.title.id : null,
+      isPrimary: Boolean(primaryId && user.id === primaryId),
+      isActive: user.isActive,
+      avatarUrl: user.avatarPath ? await this.storage.presignDownload(user.avatarPath) : null,
+      createdAt: user.createdAt,
+    };
+  }
+
+  private async loadClientOrFail(id: string): Promise<ClientEntity> {
+    const client = await this.em.findOne(
+      ClientEntity,
+      { id },
+      { populate: ['clientType', 'primaryContact'] },
+    );
+    if (!client) throw new NotFoundException('Client not found');
+    return client;
+  }
+
+  private async loadContactOrFail(clientId: string, userId: string): Promise<UserEntity> {
+    const user = await this.em.findOne(
+      UserEntity,
+      { id: userId, client: clientId, role: { roleName: CLIENT_ROLE } },
+      { populate: ['title', 'role', 'client'] },
+    );
+    if (!user) throw new NotFoundException('Contact not found for this client');
+    return user;
+  }
+
+  async listContacts(clientId: string): Promise<ClientContactResponseDto[]> {
+    const client = await this.loadClientOrFail(clientId);
+    const rows = await this.em.find(
+      UserEntity,
+      { client: clientId, role: { roleName: CLIENT_ROLE } },
+      { populate: ['title'], orderBy: { fullName: 'asc', id: 'asc' } },
+    );
+    const primaryId = client.primaryContact?.id ?? null;
+    return Promise.all(rows.map((u) => this.toContactDto(u, primaryId)));
+  }
+
+  async addContact(
+    clientId: string,
+    dto: CreateClientContactDto,
+  ): Promise<ClientContactResponseDto> {
+    const client = await this.loadClientOrFail(clientId);
+    const email = dto.email.toLowerCase();
+    if (await this.em.findOne(UserEntity, { email })) {
+      throw new ConflictException('A user with the contact email already exists');
+    }
+    const clientRole = await this.em.findOne(RoleEntity, { roleName: CLIENT_ROLE });
+    if (!clientRole) throw new NotFoundException('Client role is not seeded');
+
+    const tempPassword = randomBytes(9).toString('base64url');
+    const contact = this.em.create(UserEntity, {
+      role: clientRole,
+      client,
+      title: dto.titleId ? this.em.getReference(TitleEntity, dto.titleId) : null,
+      firstName: dto.firstName,
+      middleName: dto.middleName ?? null,
+      surname: dto.surname,
+      fullName: buildFullName(dto.firstName, dto.middleName, dto.surname),
+      email,
+      phoneNumber: dto.phoneNumber ?? null,
+      passwordHash: await bcrypt.hash(tempPassword, 12),
+      mustChangePassword: true,
+      isActive: true,
+    });
+    this.outbox.enqueue(EVENT.UserCreated, { userId: contact.id, email, tempPassword });
+    await this.em.persistAndFlush(contact);
+    return this.toContactDto(contact, client.primaryContact?.id ?? null);
+  }
+
+  async updateContact(
+    clientId: string,
+    userId: string,
+    dto: UpdateClientContactDto,
+  ): Promise<ClientContactResponseDto> {
+    const client = await this.loadClientOrFail(clientId);
+    const contact = await this.loadContactOrFail(clientId, userId);
+
+    if (dto.email != null) {
+      const email = dto.email.toLowerCase();
+      const clash = await this.em.findOne(UserEntity, { email, id: { $ne: contact.id } });
+      if (clash) throw new ConflictException('A user with the contact email already exists');
+      contact.email = email;
+    }
+    if (dto.firstName != null) contact.firstName = dto.firstName;
+    if (dto.middleName !== undefined) contact.middleName = dto.middleName ?? null;
+    if (dto.surname != null) contact.surname = dto.surname;
+    if (dto.phoneNumber !== undefined) contact.phoneNumber = dto.phoneNumber ?? null;
+    if (dto.titleId !== undefined) {
+      contact.title =
+        dto.titleId == null ? null : this.em.getReference(TitleEntity, dto.titleId);
+    }
+    if (dto.isActive != null) {
+      if (!dto.isActive) {
+        await this.assertContactNotAssigned(userId);
+        if (client.primaryContact?.id === contact.id) {
+          throw new BadRequestException(
+            'Cannot deactivate the primary contact. Set another primary first.',
+          );
+        }
+      }
+      contact.isActive = dto.isActive;
+    }
+    contact.fullName = buildFullName(contact.firstName, contact.middleName, contact.surname);
+
+    const typeName = client.clientType?.name?.toLowerCase();
+    if (
+      typeName === 'individual' &&
+      client.primaryContact?.id === contact.id
+    ) {
+      client.name = contact.fullName;
+    }
+
+    await this.em.flush();
+    return this.toContactDto(contact, client.primaryContact?.id ?? null);
+  }
+
+  async setPrimaryContact(clientId: string, userId: string): Promise<ClientContactResponseDto> {
+    const client = await this.loadClientOrFail(clientId);
+    const contact = await this.loadContactOrFail(clientId, userId);
+    if (!contact.isActive) {
+      throw new BadRequestException('Cannot set an inactive contact as primary');
+    }
+    client.primaryContact = contact;
+    await this.em.flush();
+    return this.toContactDto(contact, contact.id);
+  }
+
+  async resetContactUserPassword(
+    clientId: string,
+    userId: string,
+  ): Promise<ClientContactResponseDto> {
+    const client = await this.loadClientOrFail(clientId);
+    const contact = await this.loadContactOrFail(clientId, userId);
+    await this.users.resetPassword(contact.id);
+    return this.toContactDto(contact, client.primaryContact?.id ?? null);
+  }
+
+  async deactivateContact(clientId: string, userId: string): Promise<ClientContactResponseDto> {
+    return this.updateContact(clientId, userId, { isActive: false });
+  }
+
+  private async assertContactNotAssigned(userId: string): Promise<void> {
+    const assigned = await this.em.count(EngagementClientContactEntity, { user: userId });
+    if (assigned > 0) {
+      throw new BadRequestException(
+        'Contact is assigned to one or more engagements. Remove them from those engagements first.',
+      );
+    }
   }
 }
