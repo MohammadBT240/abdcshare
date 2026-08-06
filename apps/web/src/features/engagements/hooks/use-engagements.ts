@@ -9,6 +9,12 @@ import {
 import type { PageMeta } from "@abdcshare/api-client";
 import { bffApi } from "@/lib/bff/client";
 
+export interface EngagementTeamPreview {
+  userId: string;
+  fullName: string;
+  avatarUrl?: string | null;
+}
+
 export interface EngagementListItem {
   id: string;
   referenceCode: string;
@@ -28,6 +34,8 @@ export interface EngagementListItem {
   requestCount: number;
   overdueCount: number;
   teamSize: number;
+  teamPreview?: EngagementTeamPreview[];
+  progressPercent?: number;
 }
 
 export interface EngagementListResponse {
@@ -42,6 +50,15 @@ export interface EngagementTeamMember {
   avatarUrl?: string;
   memberRole: "Lead" | "Member";
   addedAt: string;
+}
+
+export interface EngagementClientContact {
+  userId: string;
+  fullName: string;
+  email: string;
+  isMain: boolean;
+  receiveEmail: boolean;
+  avatarUrl?: string | null;
 }
 
 export interface ClassRollup {
@@ -88,6 +105,7 @@ export interface EngagementWorkspace {
   completedAt?: string;
   createdAt: string;
   team: EngagementTeamMember[];
+  clientContacts: EngagementClientContact[];
   /** Legacy detail shape — prefer classRollups for workspace UI. */
   requestClasses: { requestClassId: number; name: string; sortOrder: number }[];
   classRollups: ClassRollup[];
@@ -115,6 +133,7 @@ export interface EngagementWorkspace {
   canManageEngagement: boolean;
   canTransitionEngagement: boolean;
   canSignOffEngagement: boolean;
+  finalReportsNeedingFirmAction: number;
 }
 
 export interface EngagementHistoryItem {
@@ -131,12 +150,27 @@ export interface EngagementHistoryResponse {
   data: EngagementHistoryItem[];
 }
 
+export interface EngagementFilterOptions {
+  clients: Array<{ id: string; name: string }>;
+  departments: Array<{ id: number; name: string }>;
+}
+
 export function useEngagementsList(queryString: string) {
   return useQuery({
     queryKey: ["engagements", "list", queryString],
     queryFn: () =>
       bffApi<EngagementListResponse>(`/api/engagements?${queryString}`),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Scoped client/department options for engagement list filters (works for Staff). */
+export function useEngagementFilterOptions() {
+  return useQuery({
+    queryKey: ["engagements", "filter-options"],
+    queryFn: () =>
+      bffApi<EngagementFilterOptions>("/api/engagements/filter-options"),
+    staleTime: 60_000,
   });
 }
 
@@ -174,6 +208,9 @@ export function useCreateEngagement() {
       startDate?: string;
       targetCompletionDate?: string;
       requestClassIds?: number[];
+      clientContactUserIds: string[];
+      mainClientContactUserId: string;
+      emailClientContactUserIds?: string[];
     }) =>
       bffApi<EngagementWorkspace>("/api/engagements", {
         method: "POST",
@@ -278,6 +315,62 @@ export function useRemoveTeamMember(id: string) {
       bffApi<void>(`/api/engagements/${id}/team/${userId}`, {
         method: "DELETE",
       }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["engagements", id] });
+    },
+  });
+}
+
+export function useAddEngagementClientContact(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      userId: string;
+      isMain?: boolean;
+      receiveEmail?: boolean;
+    }) =>
+      bffApi<EngagementWorkspace>(`/api/engagements/${id}/client-contacts`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["engagements", id] });
+    },
+  });
+}
+
+export function useUpdateEngagementClientContact(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      userId,
+      ...body
+    }: {
+      userId: string;
+      isMain?: boolean;
+      receiveEmail?: boolean;
+    }) =>
+      bffApi<EngagementWorkspace>(
+        `/api/engagements/${id}/client-contacts/${userId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        },
+      ),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["engagements", id] });
+    },
+  });
+}
+
+export function useRemoveEngagementClientContact(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      bffApi<EngagementWorkspace>(
+        `/api/engagements/${id}/client-contacts/${userId}`,
+        { method: "DELETE" },
+      ),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["engagements", id] });
     },
