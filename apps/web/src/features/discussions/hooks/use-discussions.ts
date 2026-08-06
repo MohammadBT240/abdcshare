@@ -11,14 +11,25 @@ export interface DiscussionAttachment {
   sizeBytes?: number | null;
 }
 
+export interface DiscussionFileRef {
+  id: string;
+  submissionFileId?: string | null;
+  fileName: string;
+  /** File status at the moment the message was posted. */
+  statusAtPost: string;
+  submissionId?: string | null;
+}
+
 export interface DiscussionMessage {
   id: string;
   authorId: string;
   authorName?: string | null;
+  authorAvatarUrl?: string | null;
   parentMessageId?: string | null;
   body: string;
   mentionUserIds: string[];
   attachments: DiscussionAttachment[];
+  referencedFiles: DiscussionFileRef[];
   editedAt?: string | null;
   createdAt: string;
 }
@@ -33,6 +44,7 @@ export interface PostMessageInput {
   body: string;
   parentMessageId?: string;
   mentionUserIds?: string[];
+  referencedFileIds?: string[];
 }
 
 export interface EditMessageInput {
