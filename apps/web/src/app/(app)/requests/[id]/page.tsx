@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  IconArrowRight,
   IconBuilding,
   IconHistory,
   IconLayoutDashboard,
@@ -13,20 +14,26 @@ import {
   IconNotebook,
 } from "@tabler/icons-react";
 import { UserAvatar } from "@/components/data/user-avatar";
+import { StatusPill, resolveStatusTone } from "@/components/data";
 import { PageToolbar } from "@/components/layout/page-toolbar";
 import { AppTabNav } from "@/components/layout/app-tab-nav";
 import { useAuthContext } from "@/components/providers/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { ConfirmDialog } from "@/components/forms";
 import { toast } from "sonner";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { RequestDiscussionTab } from "@/features/discussions/components/request-discussion-tab";
+import {
+  RequestDiscussionTab,
+  type DiscussFileSeed,
+} from "@/features/discussions/components/request-discussion-tab";
 import { useEngagementWorkspace } from "@/features/engagements/hooks/use-engagements";
 import { STAGE_STYLES } from "@/features/engagements/lib/stage-styles";
 import { RequestHistoryList } from "@/features/requests/components/request-history-list";
 import {
   ManageAssigneesDialog,
+  RequestExpectationBriefStrip,
   RequestLinkedWorkingPapersTab,
   RequestOverviewTab,
 } from "@/features/requests/components/request-overview-tab";
@@ -61,14 +68,17 @@ function RequestDetailInner({ id }: { id: string }) {
   const remove = useDeleteRequest(id);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [discussFile, setDiscussFile] = useState<DiscussFileSeed | null>(null);
   const workspace = useEngagementWorkspace(request.data?.engagementId ?? "");
 
   /** Edit / stage / status / delete — Super Admin. */
   const canManageRequest = can("request:update") && can("catalogue:view");
+  /** Expectation brief upload/replace/remove — staff with request:update. */
+  const canManageBrief = can("request:update");
   /** Assignees — Super Admin. */
   const canManageAssignees = can("request:assign") && can("catalogue:view");
-  /** Linked working papers tab — not for Client (no document:view). */
-  const canViewLinkedWorkingPapers = can("document:view");
+  /** Linked working papers — firm users only (Clients lack working-paper:upload). */
+  const canViewLinkedWorkingPapers = can("working-paper:upload");
   const canSubmitReview = can("review:submit");
   const canParticipateInDiscussion = can("discussion:participate");
   const canRespond = can("submission:respond");
@@ -239,8 +249,10 @@ function RequestDetailInner({ id }: { id: string }) {
                 {r.phase}
               </Badge>
               {r.stage ? <Badge variant="outline">{r.stage}</Badge> : null}
-              {r.status ? <Badge variant="outline">{r.status}</Badge> : null}
-              {r.isOverdue ? <Badge variant="destructive">Overdue</Badge> : null}
+              {r.status ? (
+                <StatusPill tone={resolveStatusTone(r.status)}>{r.status}</StatusPill>
+              ) : null}
+              {r.isOverdue ? <StatusPill tone="danger">Overdue</StatusPill> : null}
             </div>
           </div>
 
@@ -253,6 +265,38 @@ function RequestDetailInner({ id }: { id: string }) {
               No description provided.
             </p>
           )}
+
+          <RequestExpectationBriefStrip
+            request={r}
+            canManageBrief={canManageBrief}
+          />
+
+          <div className="space-y-1.5 border-t border-border/60 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                Document progress ·{" "}
+                <span className="font-medium text-foreground">
+                  {r.acceptedFileCount}/{r.expectedDocumentCount} accepted
+                </span>{" "}
+                ({r.progressPercent}%)
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant={activeTab === "submissions" ? "secondary" : "default"}
+                className="h-8"
+                onClick={() => setTab("submissions")}
+              >
+                {canRespond
+                  ? "Go to submissions"
+                  : canReview
+                    ? "Review submissions"
+                    : "Open submissions"}
+                <IconArrowRight className="ml-1.5 h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <Progress value={r.progressPercent} className="h-1.5" />
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -325,6 +369,7 @@ function RequestDetailInner({ id }: { id: string }) {
             canRespond={canRespond}
             canReview={canReview}
             onManageAssignees={() => setAssignOpen(true)}
+            onGoToSubmissions={() => setTab("submissions")}
           />
         </TabsContent>
 
@@ -336,6 +381,8 @@ function RequestDetailInner({ id }: { id: string }) {
             currentUserId={user?.id}
             canParticipate={canParticipateInDiscussion}
             active={activeTab === "discussion"}
+            initialReferencedFile={discussFile}
+            onInitialReferencedFileConsumed={() => setDiscussFile(null)}
           />
         </TabsContent>
 
@@ -345,6 +392,14 @@ function RequestDetailInner({ id }: { id: string }) {
             canRespond={canRespond}
             canReview={canReview}
             enabled={activeTab === "submissions"}
+            onDiscussFile={
+              canParticipateInDiscussion
+                ? (file) => {
+                    setDiscussFile(file);
+                    setTab("discussion");
+                  }
+                : undefined
+            }
           />
         </TabsContent>
 
