@@ -5,3 +5,4 @@ export * from './queues';
 export * from './events';
 export * from './errors';
 export * from './notification-types';
+export * from './request-metrics';
