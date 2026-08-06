@@ -98,3 +98,118 @@ export function useResetClientContactPassword() {
     },
   });
 }
+
+export interface ClientContactRecord {
+  id: string;
+  firstName: string;
+  middleName?: string | null;
+  surname: string;
+  fullName: string;
+  email: string;
+  phoneNumber?: string | null;
+  titleId?: number | null;
+  isPrimary: boolean;
+  isActive: boolean;
+  avatarUrl?: string | null;
+  createdAt: string;
+}
+
+export function useClientContacts(clientId: string) {
+  return useQuery({
+    queryKey: ['clients', clientId, 'contacts'],
+    queryFn: () => bffApi<ClientContactRecord[]>(`/api/clients/${clientId}/contacts`),
+    enabled: Boolean(clientId),
+  });
+}
+
+function invalidateClientContacts(qc: ReturnType<typeof useQueryClient>, clientId: string) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: ['clients'] }),
+    qc.invalidateQueries({ queryKey: ['clients', clientId] }),
+    qc.invalidateQueries({ queryKey: ['clients', clientId, 'contacts'] }),
+  ]);
+}
+
+export function useAddClientContact(clientId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      firstName: string;
+      surname: string;
+      email: string;
+      phoneNumber?: string;
+      middleName?: string;
+      titleId?: number;
+    }) =>
+      bffApi<ClientContactRecord>(`/api/clients/${clientId}/contacts`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: async () => {
+      await invalidateClientContacts(qc, clientId);
+    },
+  });
+}
+
+export function useUpdateClientContact(clientId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      userId,
+      ...body
+    }: {
+      userId: string;
+      firstName?: string;
+      surname?: string;
+      email?: string;
+      phoneNumber?: string | null;
+      middleName?: string | null;
+    }) =>
+      bffApi<ClientContactRecord>(`/api/clients/${clientId}/contacts/${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: async () => {
+      await invalidateClientContacts(qc, clientId);
+    },
+  });
+}
+
+export function useSetPrimaryClientContact(clientId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      bffApi<ClientContactRecord>(`/api/clients/${clientId}/contacts/${userId}/set-primary`, {
+        method: 'POST',
+      }),
+    onSuccess: async () => {
+      await invalidateClientContacts(qc, clientId);
+    },
+  });
+}
+
+export function useResetClientContactUserPassword(clientId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      bffApi<ClientContactRecord>(`/api/clients/${clientId}/contacts/${userId}/reset-password`, {
+        method: 'POST',
+      }),
+    onSuccess: async () => {
+      await invalidateClientContacts(qc, clientId);
+    },
+  });
+}
+
+export function useDeactivateClientContact(clientId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      bffApi<ClientContactRecord>(`/api/clients/${clientId}/contacts/${userId}/deactivate`, {
+        method: 'POST',
+      }),
+    onSuccess: async () => {
+      await invalidateClientContacts(qc, clientId);
+    },
+  });
+}

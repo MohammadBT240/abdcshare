@@ -11,6 +11,7 @@ import { PageToolbar } from '@/components/layout/page-toolbar';
 import { FormCardSkeleton } from '@/components/skeletons';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/data';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -234,9 +235,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Badge variant={record.isActive ? 'success' : 'secondary'}>
-              {record.isActive ? 'Active' : 'Inactive'}
-            </Badge>
+            <StatusBadge status={record.isActive} />
             {record.partnerDesignation ? (
               <Badge variant="secondary">
                 {record.partnerDesignation === 'PrincipalPartner'

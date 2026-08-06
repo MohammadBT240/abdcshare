@@ -10,6 +10,7 @@ import { PageToolbar } from '@/components/layout/page-toolbar';
 import { FormCardSkeleton } from '@/components/skeletons';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/data';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,6 +33,7 @@ import {
   useResetClientContactPassword,
   useUpdateClient,
 } from '@/features/clients/hooks/use-clients';
+import { ClientContactsPanel } from '@/features/clients/components/client-contacts-panel';
 import { uploadUserAvatar } from '@/features/users/lib/upload-user-avatar';
 import { format, isValid, parse } from 'date-fns';
 
@@ -46,10 +48,6 @@ interface EditClientFormValues {
   residentialAddress: string;
   email: string;
   phoneNumber: string;
-  contactFirstName: string;
-  contactSurname: string;
-  contactEmail: string;
-  contactPhone: string;
   isActive: boolean;
 }
 
@@ -83,10 +81,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       residentialAddress: '',
       email: '',
       phoneNumber: '',
-      contactFirstName: '',
-      contactSurname: '',
-      contactEmail: '',
-      contactPhone: '',
       isActive: true,
     },
   });
@@ -112,10 +106,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       residentialAddress: record.residentialAddress ?? '',
       email: record.email ?? '',
       phoneNumber: record.phoneNumber ?? '',
-      contactFirstName: record.primaryContactFirstName ?? '',
-      contactSurname: record.primaryContactSurname ?? '',
-      contactEmail: record.primaryContactEmail ?? '',
-      contactPhone: record.primaryContactPhone ?? '',
       isActive: record.isActive,
     });
     setAvatarFile(null);
@@ -128,15 +118,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
   const firstName = form.watch('firstName');
   const surname = form.watch('surname');
-  const contactFirstName = form.watch('contactFirstName');
-  const contactSurname = form.watch('contactSurname');
 
   const initials = useMemo(() => {
     if (isIndividual) {
       return `${firstName?.trim()?.[0] ?? ''}${surname?.trim()?.[0] ?? ''}` || '?';
     }
-    return `${contactFirstName?.trim()?.[0] ?? ''}${contactSurname?.trim()?.[0] ?? ''}` || '?';
-  }, [firstName, surname, contactFirstName, contactSurname, isIndividual]);
+    const record = client.data;
+    return (
+      `${record?.primaryContactFirstName?.trim()?.[0] ?? ''}${record?.primaryContactSurname?.trim()?.[0] ?? ''}` ||
+      '?'
+    );
+  }, [firstName, surname, isIndividual, client.data]);
 
   async function onSubmit(values: EditClientFormValues) {
     try {
@@ -167,12 +159,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         body.companyRegisteredAddress = values.companyRegisteredAddress.trim() || null;
         body.incorporationNo = values.incorporationNo.trim() || null;
         body.incorporationDate = values.incorporationDate || null;
-        body.contact = {
-          firstName: values.contactFirstName.trim(),
-          surname: values.contactSurname.trim(),
-          email: values.contactEmail.trim(),
-          phoneNumber: values.contactPhone.trim() || null,
-        };
+        // Portal contacts are managed in the Contacts panel — do not overwrite primary here.
       }
 
       await update.mutateAsync(body);
@@ -237,9 +224,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Badge variant={record.isActive ? 'success' : 'secondary'}>
-              {record.isActive ? 'Active' : 'Inactive'}
-            </Badge>
+            <StatusBadge status={record.isActive} />
             {record.clientType ? <Badge variant="secondary">{record.clientType}</Badge> : null}
           </div>
         }
@@ -248,19 +233,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
         <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
           <div className="space-y-5">
-            <FormSection title="Profile">
-              <ProfilePhotoUpload
-                value={avatarFile}
-                onChange={setAvatarFile}
-                existingUrl={record.primaryContactAvatarUrl}
-                initials={initials}
-                description={
-                  isIndividual
-                    ? 'Optional — applied to the individual’s portal login.'
-                    : 'Optional — applied to the primary contact’s portal login.'
-                }
-              />
-            </FormSection>
+            {isIndividual ? (
+              <FormSection title="Profile">
+                <ProfilePhotoUpload
+                  value={avatarFile}
+                  onChange={setAvatarFile}
+                  existingUrl={record.primaryContactAvatarUrl}
+                  initials={initials}
+                  description="Optional — applied to the individual’s portal login."
+                />
+              </FormSection>
+            ) : null}
 
             {isIndividual ? (
               <FormSection
@@ -329,30 +312,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 </div>
               </FormSection>
             ) : null}
-          </div>
-
-          <div className="space-y-5">
-            {isCorporate ? (
-              <FormSection
-                title="Primary contact"
-                description="Portal login for the company representative."
-              >
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <FormField label="First name" required>
-                    <Input {...form.register('contactFirstName')} disabled={!canManage} />
-                  </FormField>
-                  <FormField label="Surname" required>
-                    <Input {...form.register('contactSurname')} disabled={!canManage} />
-                  </FormField>
-                  <FormField label="Email" required className="sm:col-span-2">
-                    <Input type="email" {...form.register('contactEmail')} disabled={!canManage} />
-                  </FormField>
-                  <FormField label="Phone" className="sm:col-span-2">
-                    <Input {...form.register('contactPhone')} disabled={!canManage} />
-                  </FormField>
-                </div>
-              </FormSection>
-            ) : null}
 
             <FormSection title="Addresses" description="Optional.">
               <div className="grid gap-3">
@@ -394,6 +353,25 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               </FormField>
             </FormSection>
           </div>
+
+          <div className="space-y-5 lg:sticky lg:top-4">
+            {isCorporate ? (
+              <FormSection
+                title="Primary photo"
+                description="Shown for the primary contact’s portal profile."
+              >
+                <ProfilePhotoUpload
+                  value={avatarFile}
+                  onChange={setAvatarFile}
+                  existingUrl={record.primaryContactAvatarUrl}
+                  initials={initials}
+                  description="Optional — applied to the primary contact."
+                />
+              </FormSection>
+            ) : null}
+
+            <ClientContactsPanel clientId={id} canManage={canManage} />
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
@@ -404,31 +382,33 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               </LoadingButton>
               {record.isActive ? (
                 <>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button type="button" variant="outline">
-                        Reset & email password
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>
-                          Reset contact password and email credentials?
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          A new temporary password will be emailed to{' '}
-                          {record.primaryContactEmail ?? record.email ?? 'the primary contact'}.
-                          They must change it on next login.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => void onResetContactPassword()}>
-                          Reset & email
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  {isIndividual ? (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button type="button" variant="outline">
+                          Reset & email password
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            Reset contact password and email credentials?
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            A new temporary password will be emailed to{' '}
+                            {record.primaryContactEmail ?? record.email ?? 'the primary contact'}.
+                            They must change it on next login.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => void onResetContactPassword()}>
+                            Reset & email
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  ) : null}
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button type="button" variant="outline">
