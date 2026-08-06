@@ -21,6 +21,8 @@ export class MultipartCreateDto {
   @IsInt()
   @Min(0)
   sizeBytes?: number;
+  /** Submissions only: replace a Returned file (append-only). */
+  @ApiPropertyOptional() @IsOptional() @IsUUID() replacesFileId?: string;
 }
 
 export class MultipartCreateResponseDto {
