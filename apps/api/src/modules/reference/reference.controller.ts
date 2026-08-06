@@ -13,13 +13,12 @@ export class ReferenceController {
 
   /** List the available lookup types (titles, genders, states, lgas, wards, ...). */
   @Get()
-  @RequirePermission('reference-data:view')
   types(): string[] {
     return LOOKUP_TYPES;
   }
 
+  /** Read-only lookup lists — any authenticated user (needed for self-service profile). */
   @Get(':type')
-  @RequirePermission('reference-data:view')
   list(@Param('type') type: string, @Query() query: LookupListQueryDto) {
     return this.reference.list(type, query);
   }
