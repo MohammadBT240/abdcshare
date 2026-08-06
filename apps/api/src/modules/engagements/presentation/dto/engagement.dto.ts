@@ -1,7 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDate,
   IsEnum,
   IsInt,
@@ -23,6 +25,54 @@ export class CreateEngagementDto {
   @ApiPropertyOptional() @IsOptional() @Type(() => Date) @IsDate() targetCompletionDate?: Date;
   @ApiPropertyOptional({ type: [Number], description: 'request classes in scope at creation.' })
   @IsOptional() @IsArray() @IsInt({ each: true }) requestClassIds?: number[];
+
+  @ApiProperty({
+    type: [String],
+    description: 'Client contact user ids assigned to this engagement (≥1).',
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  clientContactUserIds!: string[];
+
+  @ApiProperty({ description: 'Main client contact (must be in clientContactUserIds).' })
+  @IsUUID()
+  mainClientContactUserId!: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Contacts who receive email (subset of assigned; defaults to [main]).',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  emailClientContactUserIds?: string[];
+}
+
+export class AddClientContactDto {
+  @ApiProperty() @IsUUID() userId!: string;
+  @ApiPropertyOptional({ description: 'Promote to main (demotes previous main).' })
+  @IsOptional()
+  @IsBoolean()
+  isMain?: boolean;
+  @ApiPropertyOptional({ description: 'Receive email notifications for this engagement.' })
+  @IsOptional()
+  @IsBoolean()
+  receiveEmail?: boolean;
+}
+
+export class UpdateClientContactAssignmentDto {
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isMain?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() receiveEmail?: boolean;
+}
+
+export class EngagementClientContactDto {
+  @ApiProperty() userId!: string;
+  @ApiProperty() fullName!: string;
+  @ApiProperty() email!: string;
+  @ApiProperty() isMain!: boolean;
+  @ApiProperty() receiveEmail!: boolean;
+  @ApiPropertyOptional() avatarUrl?: string | null;
 }
 
 export class UpdateEngagementDto {
@@ -64,12 +114,35 @@ export class EngagementListQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() clientId?: string;
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() departmentId?: number;
   @ApiPropertyOptional({ enum: EngagementStage }) @IsOptional() @IsEnum(EngagementStage) stage?: EngagementStage;
+  /** Filter engagements starting on this calendar day (YYYY-MM-DD). */
+  @ApiPropertyOptional() @IsOptional() @Type(() => Date) @IsDate() startDate?: Date;
+  /** Filter engagements with target completion on this calendar day (YYYY-MM-DD). */
+  @ApiPropertyOptional() @IsOptional() @Type(() => Date) @IsDate() targetDate?: Date;
+}
+
+export class EngagementFilterOptionDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() name!: string;
+}
+
+export class EngagementDepartmentFilterOptionDto {
+  @ApiProperty() id!: number;
+  @ApiProperty() name!: string;
+}
+
+/** Distinct clients / departments from engagements visible to the caller. */
+export class EngagementFilterOptionsDto {
+  @ApiProperty({ type: [EngagementFilterOptionDto] })
+  clients!: EngagementFilterOptionDto[];
+  @ApiProperty({ type: [EngagementDepartmentFilterOptionDto] })
+  departments!: EngagementDepartmentFilterOptionDto[];
 }
 
 export class EngagementTeamMemberDto {
   @ApiProperty() userId!: string;
   @ApiProperty() fullName!: string;
   @ApiProperty({ enum: EngagementMemberRole }) memberRole!: EngagementMemberRole;
+  @ApiPropertyOptional() avatarUrl?: string | null;
 }
 
 export class EngagementRequestClassDto {
@@ -96,14 +169,27 @@ export class EngagementResponseDto {
   @ApiProperty() createdAt!: Date;
 }
 
+export class EngagementTeamPreviewDto {
+  @ApiProperty() userId!: string;
+  @ApiProperty() fullName!: string;
+  @ApiPropertyOptional() avatarUrl?: string | null;
+}
+
 export class EngagementListItemDto extends EngagementResponseDto {
   @ApiProperty() requestCount!: number;
   @ApiProperty() overdueCount!: number;
   @ApiProperty() teamSize!: number;
+  /** Up to 4 team members for collaborator stack. */
+  @ApiProperty({ type: [EngagementTeamPreviewDto] })
+  teamPreview!: EngagementTeamPreviewDto[];
+  /** 0–100 request status completion (Accepted/Closed/… over total requests). */
+  @ApiProperty() progressPercent!: number;
 }
 
 export class EngagementDetailResponseDto extends EngagementResponseDto {
   @ApiProperty({ type: [EngagementTeamMemberDto] }) team!: EngagementTeamMemberDto[];
+  @ApiProperty({ type: [EngagementClientContactDto] })
+  clientContacts!: EngagementClientContactDto[];
   @ApiProperty({ type: [EngagementRequestClassDto] }) requestClasses!: EngagementRequestClassDto[];
 }
 
@@ -137,10 +223,11 @@ export class SignOffResponseDto {
 export class ClassRollupDto {
   @ApiProperty() requestClassId!: number;
   @ApiProperty() name!: string;
-  @ApiProperty() total!: number;
-  @ApiProperty() done!: number;
+  @ApiProperty({ description: 'Request count in this class' }) total!: number;
+  @ApiProperty({ description: 'Requests in a done status (Accepted/Closed)' }) done!: number;
   @ApiProperty() overdue!: number;
-  @ApiProperty() progressPercent!: number;
+  @ApiProperty({ description: 'Request status completion for this class (done / total)' })
+  progressPercent!: number;
   @ApiProperty() signedOff!: boolean;
   @ApiProperty({
     description: 'Request counts for this class keyed by EngagementPhase.',
@@ -150,13 +237,15 @@ export class ClassRollupDto {
 }
 
 export class SubmissionCountsDto {
-  @ApiProperty({ description: 'Total client submission files on the engagement' })
+  @ApiProperty({ description: 'Current (non-superseded) client submission files' })
   uploaded!: number;
-  @ApiProperty({ description: 'Submissions awaiting staff review (Pending)' })
+  @ApiProperty({ description: 'Current files with status Pending' })
   awaitingReview!: number;
-  @ApiProperty() returned!: number;
-  @ApiProperty() accepted!: number;
-  @ApiProperty({ description: 'Staff document reviews in ForReview' })
+  @ApiProperty({ description: 'Current files with status Returned' })
+  returned!: number;
+  @ApiProperty({ description: 'Current files with status Accepted' })
+  accepted!: number;
+  @ApiProperty({ description: 'Current files with status UnderReview' })
   underReview!: number;
 }
 
@@ -168,7 +257,8 @@ export class EngagementWorkspaceResponseDto extends EngagementDetailResponseDto 
     example: { Planning: 0, Execution: 0, Reporting: 0 },
   })
   phaseCounts!: Record<EngagementPhase, number>;
-  @ApiProperty() progressPercent!: number;
+  @ApiProperty({ description: 'Request status completion across the engagement (done / total)' })
+  progressPercent!: number;
   @ApiProperty() overdueCount!: number;
   @ApiProperty() requestCount!: number;
   @ApiProperty({ type: SubmissionCountsDto })
@@ -181,10 +271,12 @@ export class EngagementWorkspaceResponseDto extends EngagementDetailResponseDto 
   @ApiProperty() viewerIsLead!: boolean;
   /** SA global update OR Lead on this engagement. */
   @ApiProperty() canManageEngagement!: boolean;
-  /** SA global transition OR Lead on this engagement. */
+  /** Super Admin who created this engagement (stage advance only). */
   @ApiProperty() canTransitionEngagement!: boolean;
   /** SA global sign-off OR Lead on this engagement. */
   @ApiProperty() canSignOffEngagement!: boolean;
+  /** Final reports in ChangesRequested or Locked that need firm action. */
+  @ApiProperty() finalReportsNeedingFirmAction!: number;
 }
 
 export class EngagementHistoryItemDto {

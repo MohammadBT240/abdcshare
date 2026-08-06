@@ -16,11 +16,13 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { EngagementsService } from './engagements.service';
 import {
+  AddClientContactDto,
   AddRequestClassDto,
   AddTeamMemberDto,
   CreateEngagementDto,
   CloneEngagementDto,
   EngagementDetailResponseDto,
+  EngagementFilterOptionsDto,
   EngagementHistoryItemDto,
   EngagementListQueryDto,
   EngagementListResponseDto,
@@ -29,6 +31,7 @@ import {
   RevokeSignOffDto,
   SignOffResponseDto,
   TransitionEngagementDto,
+  UpdateClientContactAssignmentDto,
   UpdateEngagementDto,
 } from './presentation/dto/engagement.dto';
 
@@ -37,6 +40,15 @@ import {
 @Controller('engagements')
 export class EngagementsController {
   constructor(private readonly engagements: EngagementsService) {}
+
+  /** Distinct clients/departments for list filters (scoped; no client:view required). */
+  @Get('filter-options')
+  @RequirePermission('engagement:view')
+  filterOptions(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EngagementFilterOptionsDto> {
+    return this.engagements.filterOptions(user);
+  }
 
   @Get(':id/sign-offs')
   @RequirePermission('engagement:view')
@@ -125,7 +137,7 @@ export class EngagementsController {
     return this.engagements.update(id, dto, user);
   }
 
-  /** Authz: engagement:view at the gate; service requires engagement:transition OR Lead. */
+  /** Authz: engagement:view at the gate; service requires creating Super Admin. */
   @Post(':id/transition')
   @RequirePermission('engagement:view')
   transition(
@@ -144,6 +156,40 @@ export class EngagementsController {
     @CurrentUser('userId') userId: string,
   ): Promise<EngagementDetailResponseDto> {
     return this.engagements.clone(id, dto, userId);
+  }
+
+  /** Authz: engagement:view at the gate; service requires engagement:update OR Lead. */
+  @Post(':id/client-contacts')
+  @RequirePermission('engagement:view')
+  addClientContact(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddClientContactDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EngagementDetailResponseDto> {
+    return this.engagements.addClientContact(id, dto, user);
+  }
+
+  /** Authz: engagement:view at the gate; service requires engagement:update OR Lead. */
+  @Patch(':id/client-contacts/:userId')
+  @RequirePermission('engagement:view')
+  updateClientContact(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: UpdateClientContactAssignmentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EngagementDetailResponseDto> {
+    return this.engagements.updateClientContact(id, userId, dto, user);
+  }
+
+  /** Authz: engagement:view at the gate; service requires engagement:update OR Lead. */
+  @Delete(':id/client-contacts/:userId')
+  @RequirePermission('engagement:view')
+  removeClientContact(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<EngagementDetailResponseDto> {
+    return this.engagements.removeClientContact(id, userId, user);
   }
 
   /** Authz: engagement:view at the gate; service requires engagement:update OR Lead. */

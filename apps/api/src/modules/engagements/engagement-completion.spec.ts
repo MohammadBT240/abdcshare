@@ -24,7 +24,12 @@ function mockNotifications() {
 describe('EngagementsService.transition → Completed (sign-off gate)', () => {
   it('blocks completion while an in-scope request class is unsigned', async () => {
     const em = {
-      findOne: jest.fn(async () => null),
+      findOne: jest.fn(async (entity: unknown) => {
+        if (entity === EngagementEntity) {
+          return { id: 'e1', createdBy: { id: sa.userId } };
+        }
+        return null;
+      }),
       findOneOrFail: jest.fn(async () => ({ stage: EngagementStage.Reporting })),
       count: jest.fn(async () => 0), // no engagement-wide sign-off
       find: jest.fn(async (entity: unknown) => {
@@ -35,7 +40,7 @@ describe('EngagementsService.transition → Completed (sign-off gate)', () => {
       create: jest.fn(),
       flush: jest.fn(),
     };
-    const service = new EngagementsService(em as never, mockOutbox() as never, mockNotifications() as never);
+    const service = new EngagementsService(em as never, mockOutbox() as never, mockNotifications() as never, { presignDownload: jest.fn() } as never);
     await expect(
       service.transition('e1', { toStage: EngagementStage.Completed }, sa),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -47,9 +52,13 @@ describe('EngagementsService.transition → Completed (sign-off gate)', () => {
       stage: EngagementStage.Reporting,
       completedAt: null as Date | null,
       referenceCode: 'ENG-1',
+      createdBy: { id: sa.userId },
     };
     const em = {
-      findOne: jest.fn(async () => null),
+      findOne: jest.fn(async (entity: unknown) => {
+        if (entity === EngagementEntity) return engagement;
+        return null;
+      }),
       findOneOrFail: jest.fn(async (entity: unknown) =>
         entity === EngagementEntity ? engagement : engagement,
       ),
@@ -61,7 +70,7 @@ describe('EngagementsService.transition → Completed (sign-off gate)', () => {
     };
     const outbox = mockOutbox();
     const notifications = mockNotifications();
-    const service = new EngagementsService(em as never, outbox as never, notifications as never);
+    const service = new EngagementsService(em as never, outbox as never, notifications as never, { presignDownload: jest.fn() } as never);
     jest.spyOn(service, 'getOne').mockResolvedValue({ id: 'e1' } as never);
 
     await service.transition('e1', { toStage: EngagementStage.Completed }, sa);
