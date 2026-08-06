@@ -355,7 +355,8 @@ Three new tables + a storage abstraction, wired into `app.module`:
   the document, Draft→Ready, emits `DocumentFileUploaded`. `GET /:id/files/:fileId/download` → presigned URL.
 - **Rules:** FinalReport create = **Super Admin only** (`hasPermission(final-report:upload)`); sign-off
   (status→SignedOff) = Super Admin (`review:signoff`); FS line must be in the engagement scope; **staff
-  scoping** applies (must be on the engagement). Clients have no `document:view` → no access. Guards
+  scoping** applies (must be on the engagement). (Later: Clients gained `document:view` +
+  `supporting:upload` for Supporting/planning docs only — still no WP/FinalReport.) Guards
   `document:view` / `working-paper:upload`.
 - Test `documents.service.spec.ts` (Staff can't create FinalReport; confirmUpload bumps version + emits).
   Typecheck green; `migration:create` → "No changes required". 10 spec files.
@@ -499,7 +500,9 @@ migrations: `pnpm --filter @abdcshare/api migration:up`.
   uploads with `phase=Planning`) group together.
 - **Supporting documents** — `DocumentCategory += Supporting`; **`documents.request_class_id` is now
   nullable**. Supporting = engagement-level reference material, **no request class** (skips the in-scope
-  check), any team member (`working-paper:upload`). WorkingPaper/FinalReport still require a request class.
+  check). Create/upload: `engagement:update` **or** `supporting:upload`. Clients may view/upload
+  Supporting and delete **their own**; firm WP/FinalReport stay firm-only. WorkingPaper/FinalReport
+  still require a request class when linked.
 - Tests: `documents.service.spec` (Supporting → no request class, phase defaults from stage); engagement
   specs updated to new enum values. api + worker + shared typecheck green; `migration:create` clean.
   Docs updated (ERD §6/§7/§8 + USER_STORIES H-2/H-6/H-7). **15 spec files.** Run `migration:up` on the Mac.
@@ -652,6 +655,21 @@ Staff/client product surfaces on top of Phase 3–4 APIs (plus upgrades above).
   wired into client responses, discussion attachments, engagement documents. Progress bars on submit.
 - **Ops** — R2 CORS must include `PUT` + expose `ETag`; set bucket lifecycle to abort incomplete
   multipart uploads after 7 days (see `apps/api/.env.example`).
+
+## Multi-contact clients + engagement client contacts (complete) ⚠️ **has a migration**
+- **Org contacts:** Client-role users under a client; keep `primaryContact`; APIs
+  `GET/POST /clients/:id/contacts`, patch / set-primary / reset-password / deactivate
+  (block deactivate while assigned to engagements).
+- **Engagement join** `engagement_client_contacts` (`is_main`, `receive_email`) —
+  Migration `Migration20260806210000` + backfill from `client.primary_contact_id`.
+- **Scope:** Client portal sees only engagements they are assigned to
+  (`engagementScopeWhere` → `clientContacts.user`).
+- **Notify:** all assigned get in-app; email only when `receiveEmail`;
+  `NotifyRecipient.channels` + `engagementClientContactRecipients` wired into
+  discussions, report-reviews, request.created.
+- **Web:** client detail Contacts panel; create-engagement contact/main/email pickers;
+  workspace Client contacts panel (SA/Lead manage).
+- Run: `pnpm --filter @abdcshare/api migration:up`.
 
 ## Pending / next
 1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
