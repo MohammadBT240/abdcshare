@@ -3,23 +3,60 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ColumnDef } from '@tanstack/react-table';
+import { IconArrowRight } from '@tabler/icons-react';
 import { DataTable } from '@/components/data/data-table';
+import { StatusPill } from '@/components/data';
+import { FileTypeIcon } from '@/components/data/file-type-icon';
 import { PageToolbar } from '@/components/layout/page-toolbar';
-import { useAuthContext } from '@/components/providers/auth-provider';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   type ClientPendingReport,
   useClientFinalReports,
 } from '@/features/report-reviews/hooks/use-report-reviews';
 
+function formatSentAt(iso?: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
+
 export default function FinalReportsPage() {
   const router = useRouter();
-  const { can } = useAuthContext();
   const [page, setPage] = useState(1);
   const reports = useClientFinalReports(`page=${page}&pageSize=20`);
   const columns = useMemo<ColumnDef<ClientPendingReport, unknown>[]>(
     () => [
-      { header: 'Report', accessorKey: 'title' },
+      {
+        header: 'Report',
+        cell: ({ row }) => (
+          <div className="flex min-w-0 items-start gap-2">
+            <FileTypeIcon
+              fileName={row.original.fileName ?? undefined}
+              mimeType={row.original.mimeType}
+              size={18}
+              className="mt-0.5 shrink-0"
+            />
+            <div className="min-w-0">
+              <p className="truncate font-medium">{row.original.title}</p>
+              {row.original.fileName ? (
+                <p className="truncate text-xs text-muted-foreground">{row.original.fileName}</p>
+              ) : null}
+            </div>
+          </div>
+        ),
+      },
+      {
+        header: 'Engagement',
+        cell: ({ row }) => (
+          <div className="min-w-0">
+            <p className="truncate text-sm">{row.original.engagementReferenceCode}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {row.original.engagementTitle}
+            </p>
+          </div>
+        ),
+      },
       {
         header: 'Cycle',
         cell: ({ row }) => `Round ${row.original.reviewRound}`,
@@ -29,21 +66,35 @@ export default function FinalReportsPage() {
         cell: ({ row }) => `v${row.original.currentVersion}`,
       },
       {
+        header: 'Sent',
+        cell: ({ row }) => formatSentAt(row.original.sentAt),
+      },
+      {
         header: 'Status',
-        cell: () => <Badge variant="outline">Awaiting your response</Badge>,
+        cell: () => <StatusPill tone="warning">Awaiting your response</StatusPill>,
+      },
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={(event) => {
+              event.stopPropagation();
+              router.push(`/final-reports/${row.original.documentId}`);
+            }}
+          >
+            Review
+            <IconArrowRight className="ml-1.5 h-3.5 w-3.5" />
+          </Button>
+        ),
       },
     ],
-    [],
+    [router],
   );
-
-  if (!can('report-review:respond')) {
-    return (
-      <div className="space-y-5">
-        <PageToolbar title="Final reports" breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Final reports' }]} />
-        <p className="text-sm text-destructive">You do not have permission to review final reports.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-5">
