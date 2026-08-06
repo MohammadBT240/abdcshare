@@ -4,6 +4,7 @@ import { RequestEntity } from '../../../requests/infrastructure/persistence/requ
 import { UserEntity } from '../../../users/infrastructure/persistence/user.entity';
 import { DiscussionAttachmentEntity } from './discussion-attachment.entity';
 import { DiscussionMentionEntity } from './discussion-mention.entity';
+import { DiscussionFileReferenceEntity } from './discussion-file-reference.entity';
 
 /** A message in a request's discussion thread. */
 @Entity({ tableName: 'discussion_messages' })
@@ -28,4 +29,7 @@ export class DiscussionMessageEntity extends BaseEntity {
 
   @OneToMany(() => DiscussionAttachmentEntity, (a) => a.message)
   attachments = new Collection<DiscussionAttachmentEntity>(this);
+
+  @OneToMany(() => DiscussionFileReferenceEntity, (r) => r.message)
+  fileRefs = new Collection<DiscussionFileReferenceEntity>(this);
 }
