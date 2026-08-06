@@ -47,39 +47,54 @@ export function uploadBasePath(kind: UploadEndpointKind, parentId: string): stri
   }
 }
 
+export interface UploadBytesProgress {
+  percent: number;
+  bytesUploaded: number;
+  bytesTotal: number;
+}
+
 export interface CreateUploadUppyOptions {
   kind: UploadEndpointKind;
   parentId: string;
   /** Optional: mark uploaded files as replacements for a Returned submission file. */
   replacesFileId?: string;
   onProgress?: (percent: number) => void;
+  /** Aggregate bytes progress (for bandwidth / transferred-size UI). */
+  onBytesProgress?: (progress: UploadBytesProgress) => void;
   onFileProgress?: (fileId: string, percent: number, fileName: string) => void;
 }
 
 function configureAwsS3(uppy: Uppy, options: CreateUploadUppyOptions): void {
   const base = uploadBasePath(options.kind, options.parentId);
+  /** Prefetch window of part URLs to cut API round-trips on slow links. */
+  const partUrlCache = new Map<string, Map<number, string>>();
+  const PART_PREFETCH = 6;
 
   uppy.use(AwsS3, {
     id: 'AwsS3',
-    limit: 4,
+    // 2 concurrent uploads: fills bandwidth without thrashing slow / lossy links.
+    limit: 2,
     retryDelays: [0, 1000, 3000, 5000],
     shouldUseMultipart: (file) => (file.size ?? 0) > MULTIPART_THRESHOLD_BYTES,
-    getChunkSize: () => 10 * 1024 * 1024,
+    // 8 MiB parts: fewer requests than tiny chunks, still recoverable on failure.
+    getChunkSize: () => 8 * 1024 * 1024,
 
     async getUploadParameters(file) {
       const contentType = file.type || 'application/octet-stream';
+      const replacesFileId = options.replacesFileId;
       const presigned = await bffApi<PresignedUpload>(`${base}/presign`, {
         method: 'POST',
         body: JSON.stringify({
           fileName: file.name,
           contentType,
+          ...(replacesFileId ? { replacesFileId } : {}),
         }),
       });
       file.meta = {
         ...file.meta,
         storageKey: presigned.storageKey,
         contentType,
-        replacesFileId: options.replacesFileId,
+        replacesFileId,
       };
       return {
         method: 'PUT',
@@ -90,37 +105,64 @@ function configureAwsS3(uppy: Uppy, options: CreateUploadUppyOptions): void {
 
     async createMultipartUpload(file) {
       const contentType = file.type || 'application/octet-stream';
+      const replacesFileId = options.replacesFileId;
       const created = await bffApi<MultipartCreateResult>(`${base}/multipart`, {
         method: 'POST',
         body: JSON.stringify({
           fileName: file.name,
           contentType,
           sizeBytes: file.size ?? 0,
+          ...(replacesFileId ? { replacesFileId } : {}),
         }),
       });
       file.meta = {
         ...file.meta,
         storageKey: created.storageKey,
         contentType,
-        replacesFileId: options.replacesFileId,
+        replacesFileId,
       };
+      partUrlCache.set(`${created.uploadId}:${created.storageKey}`, new Map());
       return { uploadId: created.uploadId, key: created.storageKey };
     },
 
     async signPart(_file, { uploadId, key, partNumber }) {
+      const cacheKey = `${uploadId}:${key}`;
+      let cache = partUrlCache.get(cacheKey);
+      if (!cache) {
+        cache = new Map();
+        partUrlCache.set(cacheKey, cache);
+      }
+
+      const cached = cache.get(partNumber);
+      if (cached) {
+        cache.delete(partNumber);
+        return { method: 'PUT' as const, url: cached };
+      }
+
+      const partNumbers: number[] = [];
+      for (let n = partNumber; n < partNumber + PART_PREFETCH; n += 1) {
+        if (!cache.has(n)) partNumbers.push(n);
+      }
+
       const signed = await bffApi<MultipartSignPartsResult>(
         `${base}/multipart/${encodeURIComponent(uploadId)}/parts`,
         {
           method: 'POST',
           body: JSON.stringify({
             storageKey: key,
-            partNumbers: [partNumber],
+            partNumbers,
           }),
         },
       );
-      const part = signed.parts[0];
-      if (!part?.url) throw new Error(`Failed to sign part ${partNumber}`);
-      return { method: 'PUT', url: part.url };
+
+      for (const part of signed.parts) {
+        if (part?.url) cache.set(part.partNumber, part.url);
+      }
+
+      const url = cache.get(partNumber);
+      if (!url) throw new Error(`Failed to sign part ${partNumber}`);
+      cache.delete(partNumber);
+      return { method: 'PUT' as const, url };
     },
 
     async listParts() {
@@ -129,6 +171,7 @@ function configureAwsS3(uppy: Uppy, options: CreateUploadUppyOptions): void {
 
     async abortMultipartUpload(_file, { uploadId, key }) {
       if (!uploadId || !key) return;
+      partUrlCache.delete(`${uploadId}:${key}`);
       await bffApi(`${base}/multipart/${encodeURIComponent(uploadId)}/abort`, {
         method: 'POST',
         body: JSON.stringify({ storageKey: key }),
@@ -137,6 +180,7 @@ function configureAwsS3(uppy: Uppy, options: CreateUploadUppyOptions): void {
 
     async completeMultipartUpload(file, { uploadId, key, parts }) {
       if (!uploadId || !key) throw new Error('Missing multipart upload id or key');
+      partUrlCache.delete(`${uploadId}:${key}`);
       const replacesFileId =
         (file.meta?.replacesFileId as string | undefined) ?? options.replacesFileId;
       await bffApi(`${base}/multipart/${encodeURIComponent(uploadId)}/complete`, {
@@ -181,7 +225,13 @@ export function createUploadUppy(options: CreateUploadUppyOptions): Uppy {
       uploaded += f.progress?.bytesUploaded || 0;
     }
     if (total > 0) {
-      options.onProgress?.(Math.min(100, Math.round((uploaded / total) * 100)));
+      const aggregatePercent = Math.min(100, Math.round((uploaded / total) * 100));
+      options.onProgress?.(aggregatePercent);
+      options.onBytesProgress?.({
+        percent: aggregatePercent,
+        bytesUploaded: uploaded,
+        bytesTotal: total,
+      });
     }
   });
 
@@ -405,6 +455,62 @@ export function useUppyUploader(options: UseUppyUploaderOptions) {
     [ensureUppy, sync],
   );
 
+  const removeFile = useCallback(
+    (fileId: string) => {
+      const uppy = uppyRef.current;
+      if (!uppy) return;
+      try {
+        uppy.removeFile(fileId);
+      } catch {
+        // already gone
+      }
+      sync();
+    },
+    [sync],
+  );
+
+  const removeFileByName = useCallback(
+    (name: string) => {
+      const uppy = uppyRef.current;
+      if (!uppy) return;
+      for (const f of uppy.getFiles()) {
+        if (f.name === name) {
+          try {
+            uppy.removeFile(f.id);
+          } catch {
+            // ignore
+          }
+        }
+      }
+      sync();
+    },
+    [sync],
+  );
+
+  const retryAllFailed = useCallback(async (): Promise<{ allDone: boolean }> => {
+    const uppy = ensureUppy();
+    const failed = uppy.getFiles().filter((f) => f.error);
+    for (const file of failed) {
+      uppy.setFileState(file.id, {
+        error: null,
+        progress: { ...file.progress, uploadComplete: false },
+      });
+    }
+    sync();
+    if (failed.length > 0) {
+      await uppy.retryAll();
+      await confirmPendingSimpleUploads(uppy, {
+        kind: optionsRef.current.kind,
+        parentId: optionsRef.current.parentId!,
+        replacesFileId: optionsRef.current.replacesFileId,
+      });
+    }
+    sync();
+    const files = uppy.getFiles();
+    const allDone = files.length > 0 && files.every((f) => !f.error && f.progress?.uploadComplete);
+    return { allDone };
+  }, [ensureUppy, sync]);
+
   const cancelAll = useCallback(() => {
     uppyRef.current?.cancelAll();
     sync();
@@ -420,10 +526,33 @@ export function useUppyUploader(options: UseUppyUploaderOptions) {
     addFiles,
     upload,
     retryFile,
+    retryAllFailed,
+    removeFile,
+    removeFileByName,
     cancelAll,
     destroy,
     allDone,
     hasFailed,
     isUploading,
   };
+}
+
+/** Tracks browser online/offline for upload retry UX. */
+export function useOnlineStatus(): boolean {
+  const [online, setOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true,
+  );
+
+  useEffect(() => {
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  return online;
 }

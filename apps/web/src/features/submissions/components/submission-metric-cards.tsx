@@ -17,7 +17,7 @@ const METRICS: {
   label: string;
   /** When true, positive counts show ↑ (healthy); otherwise ↓ (queue / issue). */
   upWhenPositive: boolean;
-  tone: 'primary' | 'amber' | 'rose' | 'teal';
+  tone: 'primary' | 'amber' | 'rose' | 'teal' | 'violet';
   illustration: string;
   illustrationDark?: string;
 }[] = [
@@ -53,7 +53,7 @@ const METRICS: {
     key: 'underReview',
     label: 'Under review',
     upWhenPositive: false,
-    tone: 'teal',
+    tone: 'violet',
     illustration: '/illustrations/easy/8.svg',
   },
 ];
@@ -63,6 +63,7 @@ const toneClass: Record<(typeof METRICS)[number]['tone'], string> = {
   amber: 'text-amber-400 dark:text-amber-300',
   rose: 'text-rose-400 dark:text-rose-300',
   teal: 'text-teal-500 dark:text-teal-300',
+  violet: 'text-violet-500 dark:text-violet-300',
 };
 
 interface SubmissionMetricCardsProps {
@@ -126,21 +127,20 @@ function currentFiles(files: MetricFile[]): MetricFile[] {
 }
 
 /**
- * Derive counts from a request's submissions list (+ optional under-review count).
+ * Derive counts from a request's submissions list.
  * All tiles count **current files** by file status (not response count).
  */
 export function countsFromSubmissions(
   submissions: MetricSubmission[],
-  underReview = 0,
 ): SubmissionMetricCounts {
   const counts = emptySubmissionCounts();
-  counts.underReview = underReview;
   for (const s of submissions) {
     if (s.status === 'Draft') continue;
     const files = currentFiles(s.files ?? []);
     for (const f of files) {
       counts.uploaded += 1;
       if (f.status === 'Pending') counts.awaitingReview += 1;
+      else if (f.status === 'UnderReview') counts.underReview += 1;
       else if (f.status === 'Returned') counts.returned += 1;
       else if (f.status === 'Accepted') counts.accepted += 1;
     }

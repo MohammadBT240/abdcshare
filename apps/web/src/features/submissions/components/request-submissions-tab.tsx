@@ -2,18 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  IconAlertTriangle,
   IconCheck,
   IconChevronDown,
   IconClock,
   IconDownload,
+  IconMessage,
   IconMessageReply,
+  IconArrowBackUp,
   IconRotateClockwise,
   IconUpload,
 } from '@tabler/icons-react';
 import { SubmissionStatus } from '@abdcshare/shared';
 import { toast } from 'sonner';
-import { FormDialog, FormField, LoadingButton } from '@/components/forms';
-import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { FormDialog, FormField, LoadingButton, UPLOAD_MAX_BYTES } from '@/components/forms';
+import { StatusPill, formatStatusLabel, resolveStatusTone } from '@/components/data';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -32,22 +36,39 @@ import {
   fetchSubmissionZipEntry,
   openSubmissionFileDownload,
   requestSubmissionExport,
+  useDiscardDraft,
   useReopenSubmissionFile,
   useReplaceSubmissionFile,
   useReviewSubmissionFile,
+  useStartSubmissionFileReview,
   useSubmissions,
+  useUndoAcceptSubmissionFile,
+  useUndoReturnSubmissionFile,
 } from '@/features/submissions/hooks/use-submissions';
-import { useReviewsList } from '@/features/reviews/hooks/use-reviews';
+import { watchSubmissionExportToast } from '@/features/submissions/lib/export-toast';
 import {
   countsFromSubmissions,
   SubmissionMetricCards,
 } from '@/features/submissions/components/submission-metric-cards';
 import { RespondDialog } from '@/features/submissions/components/respond-dialog';
+import {
+  clearDraftUploadSession,
+  isSessionActive,
+  loadDraftUploadSession,
+} from '@/features/submissions/lib/draft-upload-session';
 import { FileTypeIcon } from '@/components/data/file-type-icon';
+import { MULTIPART_THRESHOLD_BYTES } from '@/lib/uploads/uppy-client';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/useAuthStore';
 
 const PAGE_SIZE = 5;
+
+type ReplaceProgress = {
+  fileId: string;
+  fileName: string;
+  percent: number;
+  sizeBytes: number;
+};
 
 interface RequestSubmissionsPanelProps {
   requestId: string;
@@ -56,12 +77,17 @@ interface RequestSubmissionsPanelProps {
   enabled?: boolean;
   hideMetrics?: boolean;
   className?: string;
+  /** Jump to discussion with this file tagged. */
+  onDiscussFile?: (file: {
+    id: string;
+    fileName: string;
+    status: SubmissionStatus;
+    submissionId: string;
+  }) => void;
 }
 
-function statusVariant(status: SubmissionStatus): BadgeProps['variant'] {
-  if (status === SubmissionStatus.Accepted) return 'success';
-  if (status === SubmissionStatus.Returned) return 'destructive';
-  return 'secondary';
+function submissionStatusTone(status: SubmissionStatus) {
+  return resolveStatusTone(status);
 }
 
 function formatBytes(bytes?: number | null): string | null {
@@ -106,17 +132,34 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function fileChipSummary(files: SubmissionFile[]): string {
+function fileChipSummary(files: SubmissionFile[], submissionStatus?: SubmissionStatus): string {
   const current = files.filter((f) => !f.superseded);
+  if (submissionStatus === SubmissionStatus.Draft) {
+    if (current.length === 0) return 'No files yet · not sent';
+    return `${current.length} file${current.length === 1 ? '' : 's'} · sending…`;
+  }
   if (current.length === 0) return 'No files';
   const pending = current.filter((f) => f.status === SubmissionStatus.Pending).length;
+  const underReview = current.filter(
+    (f) => f.status === SubmissionStatus.UnderReview,
+  ).length;
   const accepted = current.filter((f) => f.status === SubmissionStatus.Accepted).length;
   const returned = current.filter((f) => f.status === SubmissionStatus.Returned).length;
   const parts: string[] = [`${current.length} file${current.length === 1 ? '' : 's'}`];
-  if (pending) parts.push(`${pending} pending`);
+  if (pending) parts.push(`${pending} awaiting review`);
+  if (underReview) parts.push(`${underReview} under review`);
   if (returned) parts.push(`${returned} returned`);
-  if (accepted && (pending || returned)) parts.push(`${accepted} accepted`);
+  if (accepted && (pending || underReview || returned)) parts.push(`${accepted} accepted`);
   return parts.join(' · ');
+}
+
+function canClientAttachMore(status: SubmissionStatus): boolean {
+  return (
+    status === SubmissionStatus.Draft ||
+    status === SubmissionStatus.Pending ||
+    status === SubmissionStatus.UnderReview ||
+    status === SubmissionStatus.Returned
+  );
 }
 
 function IconAction({
@@ -150,16 +193,22 @@ function IconAction({
   );
 }
 
-function ReopenFileDialog({
+function ReasonDialog({
   open,
   onOpenChange,
-  fileName,
+  title,
+  description,
+  confirmLabel,
+  placeholder,
   busy,
   onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  fileName: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  placeholder: string;
   busy: boolean;
   onConfirm: (reason: string) => Promise<void>;
 }) {
@@ -175,8 +224,8 @@ function ReopenFileDialog({
       onOpenChange={(next) => {
         if (!busy) onOpenChange(next);
       }}
-      title="Reopen for revision"
-      description={`Ask the client to revise “${displayFileName(fileName, 60)}”. Acceptance will be withdrawn.`}
+      title={title}
+      description={description}
       maxWidthClass="sm:max-w-md"
       footer={
         <>
@@ -194,7 +243,7 @@ function ReopenFileDialog({
             disabled={!reason.trim()}
             onClick={() => void onConfirm(reason.trim())}
           >
-            Reopen
+            {confirmLabel}
           </LoadingButton>
         </>
       }
@@ -203,7 +252,7 @@ function ReopenFileDialog({
         <Textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Explain what needs to change…"
+          placeholder={placeholder}
           rows={3}
           disabled={busy}
         />
@@ -228,8 +277,12 @@ function SubmissionFileRow({
   onOpenViewer,
   onDownload,
   onReopen,
+  onUndoAccept,
+  onUndoReturn,
   onReplace,
-  replacing,
+  onDiscuss,
+  replaceProgress,
+  replaceBusy,
   downloading,
   reviewing,
 }: {
@@ -248,18 +301,30 @@ function SubmissionFileRow({
   onOpenViewer: () => void;
   onDownload: () => void;
   onReopen: () => void;
+  onUndoAccept: () => void;
+  onUndoReturn: () => void;
   onReplace: (file: SubmissionFile, browserFile: File) => void;
-  replacing: boolean;
+  onDiscuss?: () => void;
+  /** Progress for this row’s in-flight replacement, if any. */
+  replaceProgress: ReplaceProgress | null;
+  /** True while any replacement upload is running (disables other replace buttons). */
+  replaceBusy: boolean;
   downloading: boolean;
   reviewing: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const pending = !file.superseded && file.status === SubmissionStatus.Pending;
+  const uploadingThis = replaceProgress?.fileId === file.id;
+  const reviewable =
+    !file.superseded &&
+    (file.status === SubmissionStatus.Pending ||
+      file.status === SubmissionStatus.UnderReview);
   const showBadge =
     showFileStatus &&
     (file.superseded ||
+      file.status === SubmissionStatus.Pending ||
       file.status === SubmissionStatus.Accepted ||
-      file.status === SubmissionStatus.Returned);
+      file.status === SubmissionStatus.Returned ||
+      file.status === SubmissionStatus.UnderReview);
 
   return (
     <li
@@ -287,18 +352,46 @@ function SubmissionFileRow({
             {formatBytes(file.sizeBytes)}
           </span>
         ) : null}
+        {file.uploadedAt ? (
+          <span
+            className="hidden shrink-0 text-muted-foreground sm:inline"
+            title={new Date(file.uploadedAt).toLocaleString()}
+          >
+            {relativeTime(file.uploadedAt)}
+          </span>
+        ) : null}
         {showBadge ? (
-          <Badge variant={statusVariant(file.status)} className="h-5 shrink-0 px-1.5 text-[10px]">
-            {file.superseded ? 'Replaced' : file.status}
-          </Badge>
+          <StatusPill
+            tone={file.superseded ? 'neutral' : submissionStatusTone(file.status)}
+            className="h-5 shrink-0 px-2 text-[10px]"
+          >
+            {file.superseded
+              ? 'Replaced'
+              : formatStatusLabel(file.status)}
+          </StatusPill>
         ) : null}
         <div className="flex shrink-0 items-center">
+          {onDiscuss && !file.superseded ? (
+            <IconAction label="Discuss this file" onClick={onDiscuss}>
+              <IconMessage className="h-3.5 w-3.5" />
+            </IconAction>
+          ) : null}
           <IconAction label="Download" disabled={downloading} onClick={onDownload}>
             <IconDownload className="h-3.5 w-3.5" />
           </IconAction>
           {!file.superseded && canReopen && file.status === SubmissionStatus.Accepted ? (
-            <IconAction label="Reopen for revision" onClick={onReopen}>
-              <IconRotateClockwise className="h-3.5 w-3.5" />
+            <>
+              <IconAction label="Undo accept" onClick={onUndoAccept}>
+                <IconArrowBackUp className="h-3.5 w-3.5" />
+              </IconAction>
+              <IconAction label="Reopen for review" onClick={onReopen}>
+                <IconRotateClockwise className="h-3.5 w-3.5" />
+              </IconAction>
+            </>
+          ) : null}
+          {!file.superseded && canReopen && file.status === SubmissionStatus.Returned ? (
+            <IconAction label="Undo return" onClick={onUndoReturn}>
+              <IconArrowBackUp className="h-3.5 w-3.5" />
             </IconAction>
           ) : null}
         </div>
@@ -307,8 +400,15 @@ function SubmissionFileRow({
       {!file.superseded && file.status === SubmissionStatus.Returned && file.reviewReason ? (
         <p className="pl-6 text-[11px] text-destructive/90">{file.reviewReason}</p>
       ) : null}
+      {!file.superseded &&
+      file.status === SubmissionStatus.UnderReview &&
+      file.reviewReason ? (
+        <p className="pl-6 text-[11px] text-violet-800/90 dark:text-violet-200/90">
+          {file.reviewReason}
+        </p>
+      ) : null}
 
-      {canReviewPending && pending ? (
+      {canReviewPending && reviewable ? (
         <div className="space-y-1.5 pl-6">
           {!returning ? (
             <div className="flex flex-wrap gap-1.5">
@@ -374,7 +474,7 @@ function SubmissionFileRow({
       ) : null}
 
       {!file.superseded && file.status === SubmissionStatus.Returned && canReplace ? (
-        <div className="pl-6">
+        <div className="space-y-2 pl-6">
           <input
             ref={inputRef}
             type="file"
@@ -385,17 +485,47 @@ function SubmissionFileRow({
               e.target.value = '';
             }}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7"
-            disabled={replacing}
-            onClick={() => inputRef.current?.click()}
-          >
-            <IconUpload className="mr-1 h-3.5 w-3.5" />
-            Upload replacement
-          </Button>
+          {uploadingThis && replaceProgress ? (
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="min-w-0 truncate font-medium text-foreground">
+                  Uploading {replaceProgress.fileName}
+                </span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  {replaceProgress.percent}%
+                  {replaceProgress.sizeBytes > MULTIPART_THRESHOLD_BYTES
+                    ? ' · multipart'
+                    : ''}
+                </span>
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-primary transition-[width] duration-150"
+                  style={{ width: `${replaceProgress.percent}%` }}
+                />
+              </div>
+              {formatBytes(replaceProgress.sizeBytes) ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {formatBytes(replaceProgress.sizeBytes)}
+                  {replaceProgress.sizeBytes > MULTIPART_THRESHOLD_BYTES
+                    ? ' — large file, uploading in chunks'
+                    : null}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7"
+              disabled={replaceBusy}
+              onClick={() => inputRef.current?.click()}
+            >
+              <IconUpload className="mr-1 h-3.5 w-3.5" />
+              Upload replacement
+            </Button>
+          )}
         </div>
       ) : null}
     </li>
@@ -409,8 +539,13 @@ function ReviewableSubmissionCard({
   canReplace,
   isLatest,
   defaultExpanded,
-  replacing,
+  replaceProgress,
+  replaceBusy,
   onReplace,
+  onContinueDraft,
+  onDiscardDraft,
+  onAddFiles,
+  onDiscussFile,
 }: {
   requestId: string;
   submission: Submission;
@@ -418,11 +553,19 @@ function ReviewableSubmissionCard({
   canReplace: boolean;
   isLatest: boolean;
   defaultExpanded: boolean;
-  replacing: boolean;
+  replaceProgress: ReplaceProgress | null;
+  replaceBusy: boolean;
   onReplace: (file: SubmissionFile, browserFile: File) => void;
+  onContinueDraft?: () => void;
+  onDiscardDraft?: () => void;
+  onAddFiles?: () => void;
+  onDiscussFile?: (file: SubmissionFile) => void;
 }) {
   const reviewFile = useReviewSubmissionFile(requestId);
   const reopenFile = useReopenSubmissionFile(requestId);
+  const startReview = useStartSubmissionFileReview(requestId);
+  const undoAccept = useUndoAcceptSubmissionFile(requestId);
+  const undoReturn = useUndoReturnSubmissionFile(requestId);
 
   const currentFiles = useMemo(
     () => submission.files.filter((f) => !f.superseded),
@@ -433,13 +576,22 @@ function ReviewableSubmissionCard({
     [submission.files],
   );
   const pendingFiles = useMemo(
-    () => currentFiles.filter((f) => f.status === SubmissionStatus.Pending),
+    () =>
+      currentFiles.filter(
+        (f) =>
+          f.status === SubmissionStatus.Pending ||
+          f.status === SubmissionStatus.UnderReview,
+      ),
     [currentFiles],
   );
   const canReviewPending = canReview && pendingFiles.length > 0;
   const mixedStatuses =
     new Set(currentFiles.map((f) => f.status)).size > 1 ||
-    currentFiles.some((f) => f.status === SubmissionStatus.Returned);
+    currentFiles.some(
+      (f) =>
+        f.status === SubmissionStatus.Returned ||
+        f.status === SubmissionStatus.UnderReview,
+    );
   const showFileStatus = mixedStatuses || submission.status !== SubmissionStatus.Accepted;
 
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -454,6 +606,7 @@ function ReviewableSubmissionCard({
   const [exportingAll, setExportingAll] = useState(false);
   const [viewerFile, setViewerFile] = useState<SubmissionFile | null>(null);
   const [reopenTarget, setReopenTarget] = useState<SubmissionFile | null>(null);
+  const [undoReturnTarget, setUndoReturnTarget] = useState<SubmissionFile | null>(null);
 
   useEffect(() => {
     if (pendingFiles.length > 0) {
@@ -519,9 +672,11 @@ function ReviewableSubmissionCard({
   async function handleDownloadAll() {
     if (currentFiles.length === 0) return;
     setExportingAll(true);
+    const toastId = `submission-export-${submission.id}`;
     try {
       await requestSubmissionExport(submission.id);
-      toast.success('Preparing archive… you’ll get a notification when it’s ready to download.');
+      // Fire-and-forget sticky toast that polls until ready/failed.
+      void watchSubmissionExportToast({ submissionId: submission.id, toastId });
     } catch (error) {
       toast.error(errorMessage(error, 'Failed to start download'));
     } finally {
@@ -537,7 +692,7 @@ function ReviewableSubmissionCard({
         fileId: reopenTarget.id,
         reason,
       });
-      toast.success('File reopened for revision');
+      toast.success('File reopened for review');
       setReopenTarget(null);
       setExpanded(true);
       setFilesOpen(true);
@@ -545,6 +700,73 @@ function ReviewableSubmissionCard({
       toast.error(errorMessage(error, 'Failed to reopen file'));
     }
   }
+
+  async function handleUndoReturn(reason: string) {
+    if (!undoReturnTarget) return;
+    try {
+      await undoReturn.mutateAsync({
+        submissionId: submission.id,
+        fileId: undoReturnTarget.id,
+        reason,
+      });
+      toast.success('Return undone — file is under review again');
+      setUndoReturnTarget(null);
+      setExpanded(true);
+      setFilesOpen(true);
+    } catch (error) {
+      toast.error(errorMessage(error, 'Failed to undo return'));
+    }
+  }
+
+  async function handleUndoAccept(file: SubmissionFile) {
+    setReviewingId(file.id);
+    try {
+      await undoAccept.mutateAsync({
+        submissionId: submission.id,
+        fileId: file.id,
+      });
+      toast.success(`Acceptance undone for ${displayFileName(file.fileName)}`);
+    } catch (error) {
+      toast.error(errorMessage(error, 'Failed to undo acceptance'));
+    } finally {
+      setReviewingId(null);
+    }
+  }
+
+  async function handleOpenViewer(file: SubmissionFile) {
+    setViewerFile(file);
+    if (
+      canReview &&
+      !file.superseded &&
+      file.status === SubmissionStatus.Pending
+    ) {
+      try {
+        await startReview.mutateAsync({
+          submissionId: submission.id,
+          fileId: file.id,
+        });
+      } catch {
+        // Opening the viewer still works even if claim fails.
+      }
+    }
+  }
+
+  // Keep viewer in sync with list updates (accept / return / claim).
+  useEffect(() => {
+    if (!viewerFile) return;
+    const latest = submission.files.find((f) => f.id === viewerFile.id);
+    if (!latest) {
+      setViewerFile(null);
+      return;
+    }
+    if (
+      latest.status !== viewerFile.status ||
+      latest.reviewReason !== viewerFile.reviewReason ||
+      latest.superseded !== viewerFile.superseded
+    ) {
+      setViewerFile(latest);
+    }
+  }, [submission.files, viewerFile]);
 
   const messagePreview =
     submission.message.length > 120
@@ -564,7 +786,11 @@ function ReviewableSubmissionCard({
             <p className="text-sm font-medium">
               {submission.submittedByName || 'Client response'}
             </p>
-            <Badge variant={statusVariant(submission.status)}>{submission.status}</Badge>
+            <StatusPill tone={submissionStatusTone(submission.status)}>
+              {submission.status === SubmissionStatus.Draft
+                ? 'Draft — not sent'
+                : formatStatusLabel(submission.status)}
+            </StatusPill>
             {isLatest ? <Badge variant="outline">Latest</Badge> : null}
             {pendingFiles.length > 0 ? (
               <Badge variant="secondary" className="font-normal">
@@ -578,7 +804,7 @@ function ReviewableSubmissionCard({
           >
             {relativeTime(submission.createdAt)}
             <span className="mx-1.5 text-border">·</span>
-            {fileChipSummary(submission.files)}
+            {fileChipSummary(submission.files, submission.status)}
           </p>
           {!expanded && submission.message.trim() ? (
             <p className="line-clamp-1 text-xs text-muted-foreground">{messagePreview}</p>
@@ -594,6 +820,36 @@ function ReviewableSubmissionCard({
 
       {expanded ? (
         <div className="mt-3 space-y-3">
+          {submission.status === SubmissionStatus.Draft && canReplace ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2.5">
+              <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                {submission.files.filter((f) => !f.superseded).length === 0
+                  ? 'No files uploaded yet. Continue to upload — each file is sent to the team as soon as it finishes.'
+                  : 'Upload still in progress. Files that finished are already with the team.'}
+              </p>
+              <Button type="button" size="sm" onClick={onContinueDraft}>
+                Continue upload
+              </Button>
+              {submission.files.filter((f) => !f.superseded).length === 0 ? (
+                <Button type="button" size="sm" variant="outline" onClick={onDiscardDraft}>
+                  Discard
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {submission.status !== SubmissionStatus.Draft &&
+          canReplace &&
+          canClientAttachMore(submission.status) &&
+          onAddFiles ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={onAddFiles}>
+                <IconUpload className="mr-1.5 h-3.5 w-3.5" />
+                Add files
+              </Button>
+            </div>
+          ) : null}
+
           {submission.message.trim() ? (
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
               {submission.message}
@@ -609,7 +865,7 @@ function ReviewableSubmissionCard({
                   onClick={() => setFilesOpen((v) => !v)}
                   aria-expanded={filesOpen}
                 >
-                  <span className="truncate">{fileChipSummary(submission.files)}</span>
+                  <span className="truncate">{fileChipSummary(submission.files, submission.status)}</span>
                   <IconChevronDown
                     className={cn(
                       'h-3.5 w-3.5 shrink-0 transition-transform',
@@ -656,13 +912,23 @@ function ReviewableSubmissionCard({
                           setReturnReason('');
                         }}
                         onConfirmReturn={() => void handleConfirmReturn(file)}
-                        onOpenViewer={() => setViewerFile(file)}
+                        onOpenViewer={() => void handleOpenViewer(file)}
                         onDownload={() => void handleDownload(file)}
                         onReopen={() => setReopenTarget(file)}
+                        onUndoAccept={() => void handleUndoAccept(file)}
+                        onUndoReturn={() => setUndoReturnTarget(file)}
                         downloading={downloadingId === file.id}
                         reviewing={reviewingId === file.id}
-                        replacing={replacing}
+                        replaceProgress={
+                          replaceProgress?.fileId === file.id ? replaceProgress : null
+                        }
+                        replaceBusy={replaceBusy}
                         onReplace={onReplace}
+                        onDiscuss={
+                          onDiscussFile && !file.superseded
+                            ? () => onDiscussFile(file)
+                            : undefined
+                        }
                       />
                     ))}
                   </ul>
@@ -697,9 +963,12 @@ function ReviewableSubmissionCard({
                               onOpenViewer={() => setViewerFile(file)}
                               onDownload={() => void handleDownload(file)}
                               onReopen={() => undefined}
+                              onUndoAccept={() => undefined}
+                              onUndoReturn={() => undefined}
                               downloading={downloadingId === file.id}
                               reviewing={false}
-                              replacing={false}
+                              replaceProgress={null}
+                              replaceBusy={false}
                               onReplace={() => undefined}
                             />
                           ))}
@@ -718,7 +987,13 @@ function ReviewableSubmissionCard({
         <FileViewerDialog
           open
           onOpenChange={(open) => {
-            if (!open) setViewerFile(null);
+            if (!open) {
+              setViewerFile(null);
+              if (returningId === viewerFile.id) {
+                setReturningId(null);
+                setReturnReason('');
+              }
+            }
           }}
           fileName={viewerFile.fileName}
           mimeType={viewerFile.mimeType}
@@ -738,17 +1013,123 @@ function ReviewableSubmissionCard({
               : undefined
           }
           onDownload={() => openSubmissionFileDownload(submission.id, viewerFile.id)}
+          actions={
+            <>
+              {canReview &&
+              !viewerFile.superseded &&
+              (viewerFile.status === SubmissionStatus.Pending ||
+                viewerFile.status === SubmissionStatus.UnderReview) &&
+              returningId !== viewerFile.id ? (
+                <>
+                  <LoadingButton
+                    type="button"
+                    size="sm"
+                    loading={reviewingId === viewerFile.id}
+                    disabled={reviewingId === viewerFile.id}
+                    onClick={() => void handleAccept(viewerFile)}
+                  >
+                    <IconCheck className="mr-1 h-3.5 w-3.5" />
+                    Accept
+                  </LoadingButton>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={reviewingId === viewerFile.id}
+                    onClick={() => {
+                      setReturningId(viewerFile.id);
+                      setReturnReason('');
+                    }}
+                  >
+                    <IconRotateClockwise className="mr-1 h-3.5 w-3.5" />
+                    Return
+                  </Button>
+                </>
+              ) : null}
+              {onDiscussFile && !viewerFile.superseded ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    onDiscussFile(viewerFile);
+                    setViewerFile(null);
+                  }}
+                >
+                  <IconMessage className="mr-1 h-3.5 w-3.5" />
+                  Discuss
+                </Button>
+              ) : null}
+            </>
+          }
+          footerExtra={
+            canReview && returningId === viewerFile.id ? (
+              <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3 text-left">
+                <p className="text-xs font-medium text-foreground">
+                  Return “{displayFileName(viewerFile.fileName, 48)}”
+                </p>
+                <Textarea
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="Explain what to revise…"
+                  rows={3}
+                  className="text-sm"
+                  disabled={reviewingId === viewerFile.id}
+                  autoFocus
+                />
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={reviewingId === viewerFile.id}
+                    onClick={() => {
+                      setReturningId(null);
+                      setReturnReason('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <LoadingButton
+                    type="button"
+                    size="sm"
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    loading={reviewingId === viewerFile.id}
+                    disabled={!returnReason.trim()}
+                    onClick={() => void handleConfirmReturn(viewerFile)}
+                  >
+                    Confirm return
+                  </LoadingButton>
+                </div>
+              </div>
+            ) : null
+          }
         />
       ) : null}
 
-      <ReopenFileDialog
+      <ReasonDialog
         open={Boolean(reopenTarget)}
         onOpenChange={(open) => {
           if (!open) setReopenTarget(null);
         }}
-        fileName={reopenTarget?.fileName ?? ''}
+        title="Reopen for review"
+        description={`Move “${displayFileName(reopenTarget?.fileName ?? '', 60)}” back to under review. The client will not be asked to replace it until you Return the file.`}
+        confirmLabel="Reopen"
+        placeholder="Explain why this needs another look…"
         busy={reopenFile.isPending}
         onConfirm={handleReopen}
+      />
+      <ReasonDialog
+        open={Boolean(undoReturnTarget)}
+        onOpenChange={(open) => {
+          if (!open) setUndoReturnTarget(null);
+        }}
+        title="Undo return"
+        description={`Clear the return on “${displayFileName(undoReturnTarget?.fileName ?? '', 60)}” and put it back under review.`}
+        confirmLabel="Undo return"
+        placeholder="Explain why the return is being undone…"
+        busy={undoReturn.isPending}
+        onConfirm={handleUndoReturn}
       />
     </>
   );
@@ -761,6 +1142,7 @@ export function RequestSubmissionsPanel({
   enabled = true,
   hideMetrics = false,
   className,
+  onDiscussFile,
 }: RequestSubmissionsPanelProps) {
   const [page, setPage] = useState(1);
   const submissions = useSubmissions(requestId, enabled, {
@@ -771,43 +1153,152 @@ export function RequestSubmissionsPanel({
     page: 1,
     pageSize: 100,
   });
-  const reviews = useReviewsList(
-    `requestId=${requestId}&status=ForReview&pageSize=1`,
-    enabled && !hideMetrics,
-  );
   const [respondOpen, setRespondOpen] = useState(false);
+  const [replaceProgress, setReplaceProgress] = useState<ReplaceProgress | null>(null);
   const replaceFile = useReplaceSubmissionFile(requestId);
+  const discardDraft = useDiscardDraft(requestId);
   const userId = useAuthStore((s) => s.user?.id);
+  const sessionCheckedRef = useRef(false);
 
   const items = submissions.data?.data ?? [];
   const meta = submissions.data?.meta;
+  const ownDraft = useMemo(
+    () =>
+      userId != null
+        ? items.find(
+            (s) => s.status === SubmissionStatus.Draft && s.submittedById === userId,
+          )
+        : undefined,
+    [items, userId],
+  );
+  /** Latest own response that can still receive more files (progressive attach). */
+  const ownOpenSubmission = useMemo(() => {
+    if (userId == null) return undefined;
+    if (ownDraft) return ownDraft;
+    return items.find(
+      (s) => s.submittedById === userId && canClientAttachMore(s.status),
+    );
+  }, [items, userId, ownDraft]);
+  const [attachTargetId, setAttachTargetId] = useState<string | null>(null);
+  const attachTarget = useMemo(() => {
+    if (attachTargetId) {
+      return items.find((s) => s.id === attachTargetId) ?? ownOpenSubmission;
+    }
+    return ownOpenSubmission;
+  }, [attachTargetId, items, ownOpenSubmission]);
+
+  const savedSession = useMemo(
+    () => (canRespond ? loadDraftUploadSession(requestId) : null),
+    [canRespond, requestId],
+  );
+
+  useEffect(() => {
+    if (!canRespond || sessionCheckedRef.current) return;
+    sessionCheckedRef.current = true;
+    const session = loadDraftUploadSession(requestId);
+    if (session && isSessionActive(session)) {
+      setRespondOpen(true);
+    }
+  }, [canRespond, requestId]);
+
   const latestNeedsReview =
     page === 1 &&
     items[0] &&
+    items[0].status !== SubmissionStatus.Draft &&
     (items[0].status === SubmissionStatus.Pending ||
+      items[0].status === SubmissionStatus.UnderReview ||
       items[0].status === SubmissionStatus.Returned);
-  const metricCounts = countsFromSubmissions(
-    metricsSource.data?.data ?? [],
-    reviews.data?.meta.total ?? 0,
-  );
+  const metricCounts = countsFromSubmissions(metricsSource.data?.data ?? []);
 
   async function handleReplace(submission: Submission, file: SubmissionFile, browserFile: File) {
+    if (browserFile.size > UPLOAD_MAX_BYTES) {
+      toast.error(
+        `File exceeds maximum size of ${Math.floor(UPLOAD_MAX_BYTES / (1024 * 1024 * 1024))} GB`,
+      );
+      return;
+    }
+    setReplaceProgress({
+      fileId: file.id,
+      fileName: browserFile.name,
+      percent: 0,
+      sizeBytes: browserFile.size,
+    });
     try {
       await replaceFile.mutateAsync({
         submissionId: submission.id,
         replacesFileId: file.id,
         file: browserFile,
+        onProgress: (percent) => {
+          setReplaceProgress((prev) =>
+            prev && prev.fileId === file.id ? { ...prev, percent } : prev,
+          );
+        },
       });
       toast.success('Replacement uploaded');
     } catch (error) {
       toast.error(errorMessage(error, 'Failed to upload replacement'));
+    } finally {
+      setReplaceProgress(null);
     }
   }
+
+  function openRespondDialog(target?: Submission) {
+    setAttachTargetId(target?.id ?? null);
+    setRespondOpen(true);
+  }
+
+  async function handleDiscardDraft(draftId: string) {
+    try {
+      await discardDraft.mutateAsync(draftId);
+      clearDraftUploadSession(requestId);
+      toast.success('Draft discarded');
+      if (respondOpen) setRespondOpen(false);
+    } catch (error) {
+      toast.error(errorMessage(error, 'Failed to discard draft'));
+    }
+  }
+
+  const sessionIncomplete =
+    Boolean(savedSession && isSessionActive(savedSession)) &&
+    (savedSession?.files.some((f) => f.status !== 'confirmed' && f.status !== 'done') ?? false);
+  const emptyOwnDraft =
+    Boolean(ownDraft) && ownDraft!.files.filter((f) => !f.superseded).length === 0;
+  const showResumeBanner =
+    canRespond && !respondOpen && (sessionIncomplete || emptyOwnDraft);
 
   return (
     <TooltipProvider delayDuration={300}>
       <div className={cn('space-y-3', className)}>
         {!hideMetrics ? <SubmissionMetricCards counts={metricCounts} /> : null}
+
+        {showResumeBanner ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+            <IconAlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">
+                {emptyOwnDraft ? 'Unfinished response' : 'Some uploads did not finish'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {emptyOwnDraft
+                  ? 'No files sent yet — continue uploading. Each finished file goes to the team immediately.'
+                  : 'Files that completed are already with the team. Re-attach only what failed.'}
+              </p>
+            </div>
+            <Button type="button" size="sm" onClick={() => openRespondDialog(ownOpenSubmission)}>
+              Continue upload
+            </Button>
+            {emptyOwnDraft && ownDraft ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void handleDiscardDraft(ownDraft.id)}
+              >
+                Discard
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -827,9 +1318,21 @@ export function RequestSubmissionsPanel({
             </p>
           </div>
           {canRespond ? (
-            <Button type="button" size="sm" onClick={() => setRespondOpen(true)}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() =>
+                openRespondDialog(
+                  ownDraft ?? (sessionIncomplete ? ownOpenSubmission : undefined),
+                )
+              }
+            >
               <IconMessageReply className="mr-2 h-4 w-4" />
-              Send response
+              {ownDraft || sessionIncomplete
+                ? 'Continue response'
+                : ownOpenSubmission && ownOpenSubmission.status !== SubmissionStatus.Draft
+                  ? 'Add files'
+                  : 'Send response'}
             </Button>
           ) : null}
         </div>
@@ -853,8 +1356,12 @@ export function RequestSubmissionsPanel({
               {items.map((submission, index) => {
                 const canReplace =
                   canRespond && userId != null && submission.submittedById === userId;
-                const isLatest = page === 1 && index === 0;
+                const isLatest =
+                  page === 1 &&
+                  index === 0 &&
+                  submission.status !== SubmissionStatus.Draft;
                 const needsAttention =
+                  submission.status === SubmissionStatus.Draft ||
                   isLatest ||
                   submission.files.some(
                     (f) =>
@@ -874,9 +1381,44 @@ export function RequestSubmissionsPanel({
                       canReplace={canReplace}
                       isLatest={isLatest}
                       defaultExpanded={needsAttention}
-                      replacing={replaceFile.isPending}
+                      replaceProgress={
+                        replaceProgress &&
+                        submission.files.some((f) => f.id === replaceProgress.fileId)
+                          ? replaceProgress
+                          : null
+                      }
+                      replaceBusy={Boolean(replaceProgress) || replaceFile.isPending}
                       onReplace={(f, browserFile) =>
                         void handleReplace(submission, f, browserFile)
+                      }
+                      onContinueDraft={
+                        submission.status === SubmissionStatus.Draft
+                          ? () => openRespondDialog(submission)
+                          : undefined
+                      }
+                      onDiscardDraft={
+                        submission.status === SubmissionStatus.Draft &&
+                        submission.files.filter((f) => !f.superseded).length === 0
+                          ? () => void handleDiscardDraft(submission.id)
+                          : undefined
+                      }
+                      onAddFiles={
+                        canReplace &&
+                        submission.status !== SubmissionStatus.Draft &&
+                        canClientAttachMore(submission.status)
+                          ? () => openRespondDialog(submission)
+                          : undefined
+                      }
+                      onDiscussFile={
+                        onDiscussFile
+                          ? (file) =>
+                              onDiscussFile({
+                                id: file.id,
+                                fileName: file.fileName,
+                                status: file.status,
+                                submissionId: submission.id,
+                              })
+                          : undefined
                       }
                     />
                   </li>
@@ -915,7 +1457,16 @@ export function RequestSubmissionsPanel({
         )}
 
         {canRespond ? (
-          <RespondDialog requestId={requestId} open={respondOpen} onOpenChange={setRespondOpen} />
+          <RespondDialog
+            requestId={requestId}
+            open={respondOpen}
+            onOpenChange={(next) => {
+              setRespondOpen(next);
+              if (!next) setAttachTargetId(null);
+            }}
+            existingSubmission={attachTarget ?? null}
+            resumeSession={savedSession}
+          />
         ) : null}
       </div>
     </TooltipProvider>

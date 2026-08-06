@@ -16,6 +16,7 @@ export interface SubmissionFile {
   reviewedAt?: string | null;
   replacesFileId?: string | null;
   superseded: boolean;
+  uploadedAt: string;
 }
 
 export interface Submission {
@@ -211,7 +212,7 @@ export function useReviewSubmissionFile(requestId: string) {
   });
 }
 
-/** Reopen an Accepted file for revision (Accepted → Returned with reason). */
+/** Reopen an Accepted file into UnderReview with reason (does not unlock client replace). */
 export function useReopenSubmissionFile(requestId: string) {
   const qc = useQueryClient();
 
@@ -226,6 +227,72 @@ export function useReopenSubmissionFile(requestId: string) {
       reason: string;
     }) =>
       bffApi<Submission>(`/api/submissions/${submissionId}/files/${fileId}/reopen`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
+    onSuccess: async (submission) => {
+      await invalidateSubmissionQueries(qc, requestId, submission.id);
+    },
+  });
+}
+
+/** Claim a Pending file for review (Pending → UnderReview). */
+export function useStartSubmissionFileReview(requestId: string) {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      submissionId,
+      fileId,
+    }: {
+      submissionId: string;
+      fileId: string;
+    }) =>
+      bffApi<Submission>(`/api/submissions/${submissionId}/files/${fileId}/start-review`, {
+        method: 'POST',
+      }),
+    onSuccess: async (submission) => {
+      await invalidateSubmissionQueries(qc, requestId, submission.id);
+    },
+  });
+}
+
+/** Undo acceptance (Accepted → UnderReview). */
+export function useUndoAcceptSubmissionFile(requestId: string) {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      submissionId,
+      fileId,
+    }: {
+      submissionId: string;
+      fileId: string;
+    }) =>
+      bffApi<Submission>(`/api/submissions/${submissionId}/files/${fileId}/undo-accept`, {
+        method: 'POST',
+      }),
+    onSuccess: async (submission) => {
+      await invalidateSubmissionQueries(qc, requestId, submission.id);
+    },
+  });
+}
+
+/** Undo a file return (Returned → UnderReview) with reason. */
+export function useUndoReturnSubmissionFile(requestId: string) {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      submissionId,
+      fileId,
+      reason,
+    }: {
+      submissionId: string;
+      fileId: string;
+      reason: string;
+    }) =>
+      bffApi<Submission>(`/api/submissions/${submissionId}/files/${fileId}/undo-return`, {
         method: 'POST',
         body: JSON.stringify({ reason }),
       }),
