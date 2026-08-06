@@ -1,14 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { toast } from 'sonner';
 import { IconPlus, IconTrash, IconCrown } from '@tabler/icons-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FormDialog, FormField, LoadingButton, AppSelect } from '@/components/forms';
+import { FormDialog, FormField, LoadingButton, MultiCombobox } from '@/components/forms';
 import { ConfirmDialog } from '@/components/forms/confirm-dialog';
 import { UserAvatar } from '@/components/data/user-avatar';
 import { BffClientError } from '@/lib/bff/client';
@@ -20,12 +17,6 @@ import {
 import { useUsersList } from '@/features/users/hooks/use-users';
 import type { EngagementWorkspace } from '@/features/engagements/hooks/use-engagements';
 
-const addMemberSchema = z.object({
-  userId: z.string().min(1, 'User is required'),
-});
-
-type AddMemberFormValues = z.infer<typeof addMemberSchema>;
-
 interface TeamPanelProps {
   workspace: EngagementWorkspace;
   canManageTeam: boolean;
@@ -33,6 +24,7 @@ interface TeamPanelProps {
 
 export function TeamPanel({ workspace, canManageTeam }: TeamPanelProps) {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [elevatingUserId, setElevatingUserId] = useState<string | null>(null);
 
@@ -41,19 +33,24 @@ export function TeamPanel({ workspace, canManageTeam }: TeamPanelProps) {
   const removeMember = useRemoveTeamMember(workspace.id);
   const users = useUsersList('pageSize=100&isActive=true');
 
-  const form = useForm<AddMemberFormValues>({
-    resolver: zodResolver(addMemberSchema),
-    defaultValues: { userId: '' },
-  });
-
   const leadCount = workspace.team.filter((m) => m.memberRole === 'Lead').length;
 
-  async function handleAddMember(values: AddMemberFormValues) {
+  async function handleAddMembers() {
+    if (selectedUserIds.length === 0) {
+      toast.error('Select at least one person');
+      return;
+    }
     try {
-      await addMember.mutateAsync({ userId: values.userId, memberRole: 'Member' });
-      toast.success('Team member added');
+      for (const userId of selectedUserIds) {
+        await addMember.mutateAsync({ userId, memberRole: 'Member' });
+      }
+      toast.success(
+        selectedUserIds.length === 1
+          ? 'Team member added'
+          : `${selectedUserIds.length} team members added`,
+      );
       setAddDialogOpen(false);
-      form.reset();
+      setSelectedUserIds([]);
     } catch (err) {
       const message = err instanceof BffClientError ? err.message : 'Failed to add member';
       toast.error(message);
@@ -85,7 +82,9 @@ export function TeamPanel({ workspace, canManageTeam }: TeamPanelProps) {
   }
 
   const availableUsers = (users.data?.data ?? []).filter(
-    (u) => !workspace.team.some((tm) => tm.userId === u.id),
+    (u) =>
+      (u.role === 'Staff' || u.role === 'Super Admin') &&
+      !workspace.team.some((tm) => tm.userId === u.id),
   );
 
   return (
@@ -97,7 +96,13 @@ export function TeamPanel({ workspace, canManageTeam }: TeamPanelProps) {
             <p className="text-xs text-muted-foreground">{workspace.team.length} members</p>
           </div>
           {canManageTeam ? (
-            <Button onClick={() => setAddDialogOpen(true)} size="sm">
+            <Button
+              onClick={() => {
+                setSelectedUserIds([]);
+                setAddDialogOpen(true);
+              }}
+              size="sm"
+            >
               <IconPlus className="mr-1.5 h-4 w-4" />
               Add
             </Button>
@@ -168,7 +173,8 @@ export function TeamPanel({ workspace, canManageTeam }: TeamPanelProps) {
       <FormDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
-        title="Add team member"
+        title="Add team members"
+        description="Search and select one or more staff to add as Members."
         maxWidthClass="sm:max-w-md"
         footer={
           <>
@@ -180,27 +186,37 @@ export function TeamPanel({ workspace, canManageTeam }: TeamPanelProps) {
               Cancel
             </Button>
             <LoadingButton
-              onClick={form.handleSubmit(handleAddMember)}
+              onClick={() => void handleAddMembers()}
               loading={addMember.isPending}
+              disabled={selectedUserIds.length === 0}
             >
-              Add member
+              {selectedUserIds.length > 1
+                ? `Add ${selectedUserIds.length} members`
+                : 'Add member'}
             </LoadingButton>
           </>
         }
       >
-        <FormField label="User" error={form.formState.errors.userId?.message} required>
-          <AppSelect
-            {...form.register('userId')}
-            options={availableUsers.map((u) => ({ value: u.id, label: u.fullName }))}
-            value={form.watch('userId')}
-            onValueChange={(value) => form.setValue('userId', value, { shouldValidate: true })}
-            placeholder="Select user"
+        <FormField
+          label="Staff"
+          required
+          description="New members join as Member. Use Make Lead to elevate someone."
+        >
+          <MultiCombobox
+            values={selectedUserIds}
+            onValuesChange={setSelectedUserIds}
+            options={availableUsers.map((u) => ({
+              value: u.id,
+              label: u.fullName,
+              description: u.email ? `${u.role} · ${u.email}` : u.role,
+              avatarUrl: u.avatarUrl,
+            }))}
+            placeholder="Search and select staff…"
+            searchPlaceholder="Search staff…"
+            emptyMessage="No matching staff"
             isLoading={users.isPending}
           />
         </FormField>
-        <p className="mt-2 text-xs text-muted-foreground">
-          New members join as Member. Use Make Lead to elevate someone.
-        </p>
       </FormDialog>
 
       <ConfirmDialog

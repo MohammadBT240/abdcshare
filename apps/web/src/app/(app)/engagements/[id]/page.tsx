@@ -1,34 +1,41 @@
-'use client';
+"use client";
 
-import { Suspense, use, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import {
+  Suspense,
+  use,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   IconFolder,
   IconLayoutDashboard,
   IconListDetails,
   IconSettings,
-} from '@tabler/icons-react';
-import { PageToolbar } from '@/components/layout/page-toolbar';
-import { AppTabNav } from '@/components/layout/app-tab-nav';
-import { useAuthContext } from '@/components/providers/auth-provider';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { useEngagementWorkspace } from '@/features/engagements/hooks/use-engagements';
-import { useSupportingDocuments } from '@/features/documents/hooks/use-supporting-documents';
-import { EngagementHeader } from '@/features/engagements/components/workspace/engagement-header';
-import { buildNextActions } from '@/features/engagements/components/workspace/next-actions';
-import { OverviewTab } from '@/features/engagements/components/workspace/overview-tab';
-import { WorkTab } from '@/features/engagements/components/workspace/work-tab';
-import { DocumentsTab } from '@/features/engagements/components/workspace/documents-tab';
-import { AdminTab } from '@/features/engagements/components/workspace/admin-tab';
-import { TransitionEngagementDialog } from '@/features/engagements/components/transition-engagement-dialog';
-import { CloneEngagementDialog } from '@/features/engagements/components/clone-engagement-dialog';
-import { Button } from '@/components/ui/button';
+} from "@tabler/icons-react";
+import { PageToolbar } from "@/components/layout/page-toolbar";
+import { AppTabNav } from "@/components/layout/app-tab-nav";
+import { useAuthContext } from "@/components/providers/auth-provider";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { useEngagementWorkspace } from "@/features/engagements/hooks/use-engagements";
+import { useSupportingDocuments } from "@/features/documents/hooks/use-supporting-documents";
+import { EngagementHeader } from "@/features/engagements/components/workspace/engagement-header";
+import { buildNextActions } from "@/features/engagements/components/workspace/next-actions";
+import { OverviewTab } from "@/features/engagements/components/workspace/overview-tab";
+import { WorkTab } from "@/features/engagements/components/workspace/work-tab";
+import { DocumentsTab } from "@/features/engagements/components/workspace/documents-tab";
+import { AdminTab } from "@/features/engagements/components/workspace/admin-tab";
+import { TransitionEngagementDialog } from "@/features/engagements/components/transition-engagement-dialog";
+import { CloneEngagementDialog } from "@/features/engagements/components/clone-engagement-dialog";
+import { Button } from "@/components/ui/button";
 import {
   WORKSPACE_TABS,
   defaultTabForStage,
   parseWorkspaceTab,
   type WorkspaceTab,
-} from '@/features/engagements/lib/workspace-tabs';
+} from "@/features/engagements/lib/workspace-tabs";
 
 const WORKSPACE_TAB_ICONS: Record<WorkspaceTab, ReactNode> = {
   overview: <IconLayoutDashboard />,
@@ -51,47 +58,61 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
   const [transitionOpen, setTransitionOpen] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
 
-  const canCreateRequest = can('request:create');
-  const canDeleteDocument = can('document:delete');
-  const canViewDocuments = can('document:view');
+  const canCreateRequest = can("request:create");
+  const canDeleteAnyDocument = can("document:delete");
+  const canUploadSupporting = can("supporting:upload");
+  // Firm Documents tab (WP / FinalReport) — not Client planning docs on Overview.
+  const showDocumentsTab =
+    can("document:view") &&
+    (can("working-paper:upload") || can("final-report:upload"));
   // Prefer workspace-scoped flags (SA global OR Lead on this engagement).
   const canUpdate =
-    workspace.data?.canManageEngagement ?? can('engagement:update');
-  const canTransition =
-    workspace.data?.canTransitionEngagement ?? can('engagement:transition');
+    workspace.data?.canManageEngagement ?? can("engagement:update");
+  const canUploadPlanning = canUpdate || canUploadSupporting;
+  // Server flag only — creator Super Admin; do not fall back to global perm.
+  const canTransition = workspace.data?.canTransitionEngagement ?? false;
   const canSignOff =
-    workspace.data?.canSignOffEngagement ?? can('review:signoff');
+    workspace.data?.canSignOffEngagement ?? can("review:signoff");
   const showAdmin = canUpdate || canSignOff || canTransition;
 
-  const tabFromUrl = parseWorkspaceTab(searchParams.get('tab'));
-  const classParam = searchParams.get('classId');
-  const selectedClassId: number | 'all' =
-    classParam && classParam !== 'all' && !Number.isNaN(Number(classParam))
+  const tabFromUrl = parseWorkspaceTab(searchParams.get("tab"));
+  const classParam = searchParams.get("classId");
+  const selectedClassId: number | "all" =
+    classParam && classParam !== "all" && !Number.isNaN(Number(classParam))
       ? Number(classParam)
-      : 'all';
+      : "all";
 
   const defaultTab = workspace.data
     ? defaultTabForStage(workspace.data.stage)
-    : 'overview';
+    : "overview";
   const activeTab: WorkspaceTab =
     tabFromUrl &&
-    (tabFromUrl !== 'settings' || showAdmin) &&
-    (tabFromUrl !== 'documents' || canViewDocuments)
+    (tabFromUrl !== "settings" || showAdmin) &&
+    (tabFromUrl !== "documents" || showDocumentsTab)
       ? tabFromUrl
       : defaultTab;
 
-  function setQuery(patch: { tab?: WorkspaceTab; classId?: number | 'all' }) {
+  function setQuery(patch: {
+    tab?: WorkspaceTab;
+    classId?: number | "all";
+    category?: string;
+  }) {
     const next = new URLSearchParams(searchParams.toString());
-    if (patch.tab) next.set('tab', patch.tab);
+    if (patch.tab) next.set("tab", patch.tab);
     if (patch.classId !== undefined) {
-      if (patch.classId === 'all') next.delete('classId');
-      else next.set('classId', String(patch.classId));
+      if (patch.classId === "all") next.delete("classId");
+      else next.set("classId", String(patch.classId));
+    }
+    if (patch.category !== undefined) {
+      if (patch.category) next.set("category", patch.category);
+      else next.delete("category");
     }
     // Documents-only filters should not bleed onto other tabs.
-    if (patch.tab && patch.tab !== 'documents') {
-      next.delete('category');
-      next.delete('requestId');
-      next.delete('page');
+    if (patch.tab && patch.tab !== "documents") {
+      next.delete("category");
+      next.delete("requestId");
+      next.delete("page");
+      next.delete("documentId");
     }
     const qs = next.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -111,11 +132,19 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
       workspace: workspace.data,
       planningDocCount: planningDocs.data?.data?.length ?? 0,
       canUpdate,
+      canUploadSupporting,
       canSignOff,
       canTransition,
       onTransition: () => setTransitionOpen(true),
     });
-  }, [workspace.data, planningDocs.data, canUpdate, canSignOff, canTransition]);
+  }, [
+    workspace.data,
+    planningDocs.data,
+    canUpdate,
+    canUploadSupporting,
+    canSignOff,
+    canTransition,
+  ]);
 
   if (workspace.isPending) {
     return (
@@ -123,8 +152,8 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
         <PageToolbar
           variant="compact"
           breadcrumbs={[
-            { label: 'Home', href: '/dashboard' },
-            { label: 'Engagements', href: '/engagements' },
+            { label: "Home", href: "/dashboard" },
+            { label: "Engagements", href: "/engagements" },
           ]}
         />
         <p className="text-sm text-muted-foreground">Loading workspace…</p>
@@ -138,19 +167,21 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
         <PageToolbar
           variant="compact"
           breadcrumbs={[
-            { label: 'Home', href: '/dashboard' },
-            { label: 'Engagements', href: '/engagements' },
+            { label: "Home", href: "/dashboard" },
+            { label: "Engagements", href: "/engagements" },
           ]}
         />
-        <p className="text-sm text-destructive">Failed to load engagement workspace</p>
+        <p className="text-sm text-destructive">
+          Failed to load engagement workspace
+        </p>
       </div>
     );
   }
 
   const ws = workspace.data;
   const visibleTabs = WORKSPACE_TABS.filter((t) => {
-    if (t.id === 'settings') return showAdmin;
-    if (t.id === 'documents') return canViewDocuments;
+    if (t.id === "settings") return showAdmin;
+    if (t.id === "documents") return showDocumentsTab;
     return true;
   });
 
@@ -159,13 +190,18 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
       <PageToolbar
         variant="compact"
         breadcrumbs={[
-          { label: 'Home', href: '/dashboard' },
-          { label: 'Engagements', href: '/engagements' },
+          { label: "Home", href: "/dashboard" },
+          { label: "Engagements", href: "/engagements" },
           { label: ws.referenceCode },
         ]}
         actions={
-          can('engagement:create') ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => setCloneOpen(true)}>
+          can("engagement:create") ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCloneOpen(true)}
+            >
               Clone for new period
             </Button>
           ) : null
@@ -177,7 +213,12 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
         onTransition={() => setTransitionOpen(true)}
         canTransition={canTransition}
         nextActions={nextActions}
-        onSelectTab={(tab) => setQuery({ tab })}
+        onSelectTab={(tab, query) =>
+          setQuery({
+            tab,
+            category: query?.category,
+          })
+        }
       />
 
       <Tabs
@@ -195,8 +236,9 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
         <TabsContent value="overview" className="mt-0 outline-none">
           <OverviewTab
             workspace={ws}
-            canUpload={canUpdate}
-            canDelete={canDeleteDocument}
+            canUpload={canUploadPlanning}
+            canDeleteAny={canDeleteAnyDocument}
+            currentUserId={user?.id}
           />
         </TabsContent>
 
@@ -206,12 +248,12 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
             canCreateRequest={canCreateRequest}
             canManageClasses={canUpdate}
             selectedClassId={selectedClassId}
-            onSelectClass={(classId) => setQuery({ tab: 'requests', classId })}
-            onGoAdmin={() => setQuery({ tab: 'settings' })}
+            onSelectClass={(classId) => setQuery({ tab: "requests", classId })}
+            onGoAdmin={() => setQuery({ tab: "settings" })}
           />
         </TabsContent>
 
-        {canViewDocuments ? (
+        {showDocumentsTab ? (
           <TabsContent value="documents" className="mt-0 outline-none">
             <DocumentsTab engagementId={id} workspace={ws} />
           </TabsContent>
@@ -247,7 +289,9 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
   );
 }
 
-export default function EngagementWorkspacePage({ params }: EngagementWorkspacePageProps) {
+export default function EngagementWorkspacePage({
+  params,
+}: EngagementWorkspacePageProps) {
   const { id } = use(params);
   return (
     <Suspense

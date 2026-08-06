@@ -133,7 +133,7 @@ export function RequestClassesPanel({
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {rc.done}/{rc.total}
+                        {rc.progressPercent}% · {rc.done}/{rc.total} done
                         {rc.overdue > 0 ? ` · ${rc.overdue} overdue` : ''}
                       </p>
                     </div>

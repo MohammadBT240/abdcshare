@@ -20,12 +20,14 @@ export interface NextAction {
   label: string;
   tone: NextActionTone;
   tab?: WorkspaceTab;
+  /** Extra query params when selecting a tab (e.g. documents category). */
+  query?: Record<string, string>;
   onClick?: () => void;
 }
 
 interface NextActionChipsProps {
   actions: NextAction[];
-  onSelectTab: (tab: WorkspaceTab) => void;
+  onSelectTab: (tab: WorkspaceTab, query?: Record<string, string>) => void;
 }
 
 const toneClass: Record<NextActionTone, string> = {
@@ -41,12 +43,20 @@ export function buildNextActions(input: {
   workspace: EngagementWorkspace;
   planningDocCount: number;
   canUpdate: boolean;
+  canUploadSupporting?: boolean;
   canSignOff: boolean;
   canTransition: boolean;
   onTransition: () => void;
 }): NextAction[] {
-  const { workspace, planningDocCount, canUpdate, canSignOff, canTransition, onTransition } =
-    input;
+  const {
+    workspace,
+    planningDocCount,
+    canUpdate,
+    canUploadSupporting = false,
+    canSignOff,
+    canTransition,
+    onTransition,
+  } = input;
   const actions: NextAction[] = [];
   const classCount = workspace.classRollups?.length ?? 0;
   const unsigned = workspace.missingRequestClassIds?.length ?? 0;
@@ -60,7 +70,11 @@ export function buildNextActions(input: {
     });
   }
 
-  if (workspace.stage === 'Planning' && planningDocCount === 0 && canUpdate) {
+  if (
+    workspace.stage === 'Planning' &&
+    planningDocCount === 0 &&
+    (canUpdate || canUploadSupporting)
+  ) {
     actions.push({
       id: 'upload-planning',
       label: 'Upload planning document',
@@ -84,6 +98,20 @@ export function buildNextActions(input: {
       label: `Review ${workspace.overdueCount} overdue request${workspace.overdueCount === 1 ? '' : 's'}`,
       tone: 'destructive',
       tab: 'requests',
+    });
+  }
+
+  const firmReportAction = workspace.finalReportsNeedingFirmAction ?? 0;
+  if (firmReportAction > 0) {
+    actions.push({
+      id: 'final-report-revision',
+      label:
+        firmReportAction === 1
+          ? 'Final report needs revision'
+          : `${firmReportAction} final reports need revision`,
+      tone: 'warning',
+      tab: 'documents',
+      query: { category: 'FinalReport' },
     });
   }
 
@@ -118,6 +146,7 @@ const icons: Record<string, ReactNode> = {
   'upload-planning': <IconFileUpload className="h-3.5 w-3.5 shrink-0" />,
   'add-classes': <IconLayersLinked className="h-3.5 w-3.5 shrink-0" />,
   overdue: <IconAlertCircle className="h-3.5 w-3.5 shrink-0" />,
+  'final-report-revision': <IconFileUpload className="h-3.5 w-3.5 shrink-0" />,
   'sign-off': <IconCheck className="h-3.5 w-3.5 shrink-0" />,
   transition: <IconArrowRight className="h-3.5 w-3.5 shrink-0" />,
 };
@@ -138,7 +167,7 @@ export function NextActionChips({ actions, onSelectTab }: NextActionChipsProps) 
             )}
             onClick={() => {
               if (action.onClick) action.onClick();
-              else if (action.tab) onSelectTab(action.tab);
+              else if (action.tab) onSelectTab(action.tab, action.query);
             }}
           >
             {icons[action.id] ?? null}

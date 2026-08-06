@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { TeamPanel } from "@/features/engagements/components/workspace/team-panel";
+import { ClientContactsPanel } from "@/features/engagements/components/workspace/client-contacts-panel";
 import { RequestClassesPanel } from "@/features/engagements/components/workspace/request-classes-panel";
 import { SignOffPanel } from "@/features/engagements/components/workspace/sign-off-panel";
 import { Input } from "@/components/ui/input";
@@ -134,6 +135,10 @@ export function AdminTab({
 
       <div className="grid gap-3 lg:grid-cols-2 lg:items-stretch">
         <TeamPanel workspace={workspace} canManageTeam={canUpdate} />
+        <ClientContactsPanel workspace={workspace} canManage={canUpdate} />
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-1 lg:items-stretch">
         <RequestClassesPanel
           workspace={workspace}
           canManage={canUpdate}
