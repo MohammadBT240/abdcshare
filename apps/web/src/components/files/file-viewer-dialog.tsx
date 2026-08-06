@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   IconArrowLeft,
+  IconChevronRight,
   IconDownload,
   IconFolder,
+  IconFolderOpen,
   IconLoader2,
 } from "@tabler/icons-react";
 import {
@@ -19,6 +21,12 @@ import { Button } from "@/components/ui/button";
 import { LoadingButton } from "@/components/forms";
 import { FileTypeIcon } from "@/components/data/file-type-icon";
 import { cn } from "@/lib/utils";
+import {
+  buildZipEntryTree,
+  countZipTreeFiles,
+  defaultExpandedZipFolders,
+  type ZipTreeNode,
+} from "@/components/files/zip-entry-tree";
 
 export type FilePreviewResult = {
   url: string | null;
@@ -151,6 +159,162 @@ function CenteredStatus({ children }: { children: ReactNode }) {
   );
 }
 
+function ZipTreeRows({
+  nodes,
+  depth,
+  expanded,
+  onToggle,
+  entryLoading,
+  entryDownloading,
+  getZipEntry,
+  onOpen,
+  onDownload,
+}: {
+  nodes: ZipTreeNode[];
+  depth: number;
+  expanded: Set<string>;
+  onToggle: (id: string) => void;
+  entryLoading: string | null;
+  entryDownloading: string | null;
+  getZipEntry?: (entryPath: string) => Promise<ZipEntryOpenResult>;
+  onOpen: (entryPath: string) => void;
+  onDownload: (entryPath: string) => void;
+}) {
+  return (
+    <>
+      {nodes.map((node) => {
+        if (node.isDirectory) {
+          const isOpen = expanded.has(node.id);
+          const FolderIcon = isOpen ? IconFolderOpen : IconFolder;
+          return (
+            <li key={node.id} className="border-b border-border last:border-0">
+              <button
+                type="button"
+                className="flex w-full items-center gap-1.5 py-2 pr-3 text-left text-sm transition-colors hover:bg-muted/50"
+                style={{ paddingLeft: `${12 + depth * 16}px` }}
+                aria-expanded={isOpen}
+                onClick={() => onToggle(node.id)}
+              >
+                <IconChevronRight
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+                    isOpen && "rotate-90",
+                  )}
+                />
+                <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 truncate font-medium" title={node.path}>
+                  {node.name}
+                </span>
+                <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                  {countZipTreeFiles([node])}
+                </span>
+              </button>
+              {isOpen && node.children.length > 0 ? (
+                <ul>
+                  <ZipTreeRows
+                    nodes={node.children}
+                    depth={depth + 1}
+                    expanded={expanded}
+                    onToggle={onToggle}
+                    entryLoading={entryLoading}
+                    entryDownloading={entryDownloading}
+                    getZipEntry={getZipEntry}
+                    onOpen={onOpen}
+                    onDownload={onDownload}
+                  />
+                </ul>
+              ) : null}
+            </li>
+          );
+        }
+
+        const previewable = canPreviewZipEntry(node.name);
+        const opening = entryLoading === node.path;
+        const downloadingEntry = entryDownloading === node.path;
+        const pad = { paddingLeft: `${12 + depth * 16 + 18}px` };
+
+        if (!previewable) {
+          const extractForDownload =
+            isAllowlisted(undefined, node.name) &&
+            !isBlocked(undefined, node.name);
+          return (
+            <li
+              key={node.id}
+              className="flex items-center gap-2 border-b border-border py-2.5 pr-3 text-sm last:border-0"
+              style={pad}
+            >
+              <FileTypeIcon fileName={node.name} size={18} />
+              <span
+                className="min-w-0 flex-1 truncate font-medium"
+                title={node.path}
+              >
+                {node.name}
+              </span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {formatBytes(node.size)}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 shrink-0 p-0"
+                disabled={
+                  downloadingEntry || (extractForDownload && !getZipEntry)
+                }
+                title={
+                  extractForDownload
+                    ? `Download ${node.name}`
+                    : `Download archive (cannot open ${node.name} in browser)`
+                }
+                aria-label={`Download ${node.name}`}
+                onClick={() => onDownload(node.path)}
+              >
+                {downloadingEntry ? (
+                  <IconLoader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <IconDownload className="h-4 w-4" />
+                )}
+              </Button>
+            </li>
+          );
+        }
+
+        return (
+          <li key={node.id} className="border-b border-border last:border-0">
+            <button
+              type="button"
+              disabled={!getZipEntry || opening}
+              onClick={() => onOpen(node.path)}
+              className={cn(
+                "flex w-full items-center gap-2 py-2.5 pr-3 text-left text-sm transition-colors",
+                getZipEntry
+                  ? "hover:bg-muted/50"
+                  : "cursor-default opacity-80",
+              )}
+              style={pad}
+            >
+              <FileTypeIcon fileName={node.name} size={18} />
+              <span
+                className="min-w-0 flex-1 truncate font-medium"
+                title={node.path}
+              >
+                {node.name}
+              </span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {opening ? (
+                  <IconLoader2 className="inline h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  formatBytes(node.size)
+                )}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </>
+  );
+}
+
 interface FileViewerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -162,6 +326,10 @@ interface FileViewerDialogProps {
   /** Open a single zip member for preview/download. */
   getZipEntry?: (entryPath: string) => Promise<ZipEntryOpenResult>;
   onDownload: () => Promise<void> | void;
+  /** Primary review / context actions (e.g. Accept, Return) shown beside Download. */
+  actions?: ReactNode;
+  /** Optional full-width block above the footer buttons (e.g. return reason form). */
+  footerExtra?: ReactNode;
 }
 
 export function FileViewerDialog({
@@ -173,6 +341,8 @@ export function FileViewerDialog({
   getZipEntries,
   getZipEntry,
   onDownload,
+  actions,
+  footerExtra,
 }: FileViewerDialogProps) {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<FilePreviewResult | null>(null);
@@ -188,6 +358,9 @@ export function FileViewerDialog({
     null,
   );
   const [entryText, setEntryText] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const getPreviewRef = useRef(getPreview);
   const getZipEntriesRef = useRef(getZipEntries);
@@ -195,6 +368,20 @@ export function FileViewerDialog({
   getPreviewRef.current = getPreview;
   getZipEntriesRef.current = getZipEntries;
   getZipEntryRef.current = getZipEntry;
+
+  const zipTree = useMemo(
+    () => (zipEntries ? buildZipEntryTree(zipEntries) : []),
+    [zipEntries],
+  );
+  const zipFileCount = useMemo(() => countZipTreeFiles(zipTree), [zipTree]);
+
+  useEffect(() => {
+    if (zipTree.length > 0) {
+      setExpandedFolders(defaultExpandedZipFolders(zipTree));
+    } else {
+      setExpandedFolders(new Set());
+    }
+  }, [zipTree]);
 
   useEffect(() => {
     if (!open) {
@@ -332,8 +519,16 @@ export function FileViewerDialog({
   const url = activeEntry?.url ?? preview?.url ?? null;
   const viewMime = activeEntry?.mimeType ?? mimeType;
   const viewName = activeEntry?.fileName ?? fileName;
-  const filesOnly = (zipEntries ?? []).filter((e) => !e.isDirectory);
   const allowlisted = isAllowlisted(viewMime, viewName);
+
+  function toggleFolder(id: string) {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -424,110 +619,25 @@ export function FileViewerDialog({
           ) : zipEntries ? (
             <div className="space-y-3 px-4 py-4">
               <p className="text-sm text-muted-foreground">
-                {filesOnly.length} file{filesOnly.length === 1 ? "" : "s"} in
-                archive. Open supported files, or download others.
+                {zipFileCount} file{zipFileCount === 1 ? "" : "s"} in archive.
+                Expand folders to browse. Open supported files, or download
+                others.
               </p>
               {error ? (
                 <p className="text-sm text-destructive">{error}</p>
               ) : null}
               <ul className="max-h-[55vh] overflow-auto rounded-md border border-border bg-card">
-                {zipEntries.map((e) => {
-                  const name = baseName(e.name);
-                  const previewable = canPreviewZipEntry(name);
-                  const opening = entryLoading === e.name;
-                  const downloadingEntry = entryDownloading === e.name;
-                  if (e.isDirectory) {
-                    return (
-                      <li
-                        key={e.name}
-                        className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs text-muted-foreground last:border-0"
-                      >
-                        <IconFolder className="h-4 w-4 shrink-0" />
-                        <span className="min-w-0 truncate font-mono">
-                          {e.name}
-                        </span>
-                      </li>
-                    );
-                  }
-                  if (!previewable) {
-                    const extractForDownload =
-                      isAllowlisted(undefined, name) &&
-                      !isBlocked(undefined, name);
-                    return (
-                      <li
-                        key={e.name}
-                        className="flex items-center gap-2 border-b border-border px-3 py-2.5 text-sm last:border-0"
-                      >
-                        <FileTypeIcon fileName={name} size={18} />
-                        <span
-                          className="min-w-0 flex-1 truncate font-medium"
-                          title={e.name}
-                        >
-                          {name}
-                        </span>
-                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                          {formatBytes(e.size)}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0"
-                          disabled={
-                            downloadingEntry ||
-                            (extractForDownload && !getZipEntry)
-                          }
-                          title={
-                            extractForDownload
-                              ? `Download ${name}`
-                              : `Download archive (cannot open ${name} in browser)`
-                          }
-                          aria-label={`Download ${name}`}
-                          onClick={() => void downloadZipEntry(e.name)}
-                        >
-                          {downloadingEntry ? (
-                            <IconLoader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <IconDownload className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </li>
-                    );
-                  }
-                  return (
-                    <li
-                      key={e.name}
-                      className="border-b border-border last:border-0"
-                    >
-                      <button
-                        type="button"
-                        disabled={!getZipEntry || opening}
-                        onClick={() => void openZipEntry(e.name)}
-                        className={cn(
-                          "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors",
-                          getZipEntry
-                            ? "hover:bg-muted/50"
-                            : "cursor-default opacity-80",
-                        )}
-                      >
-                        <FileTypeIcon fileName={name} size={18} />
-                        <span
-                          className="min-w-0 flex-1 truncate font-medium"
-                          title={e.name}
-                        >
-                          {name}
-                        </span>
-                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                          {opening ? (
-                            <IconLoader2 className="inline h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            formatBytes(e.size)
-                          )}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
+                <ZipTreeRows
+                  nodes={zipTree}
+                  depth={0}
+                  expanded={expandedFolders}
+                  onToggle={toggleFolder}
+                  entryLoading={entryLoading}
+                  entryDownloading={entryDownloading}
+                  getZipEntry={getZipEntry}
+                  onOpen={(path) => void openZipEntry(path)}
+                  onDownload={(path) => void downloadZipEntry(path)}
+                />
               </ul>
             </div>
           ) : preview?.reason === "pending" ? (
@@ -589,22 +699,28 @@ export function FileViewerDialog({
           )}
         </div>
 
-        <DialogFooter className="border-t border-border px-6 py-3 sm:justify-between">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
-            Close
-          </Button>
-          <LoadingButton
-            type="button"
-            loading={downloading}
-            onClick={() => void handleDownload()}
-          >
-            <IconDownload className="mr-1.5 h-4 w-4" />
-            {activeEntry ? "Download file" : "Download"}
-          </LoadingButton>
+        <DialogFooter className="flex-col gap-3 border-t border-border px-6 py-3 sm:flex-col sm:space-x-0">
+          {footerExtra ? <div className="w-full">{footerExtra}</div> : null}
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
+              Close
+            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {actions}
+              <LoadingButton
+                type="button"
+                loading={downloading}
+                onClick={() => void handleDownload()}
+              >
+                <IconDownload className="mr-1.5 h-4 w-4" />
+                {activeEntry ? "Download file" : "Download"}
+              </LoadingButton>
+            </div>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
