@@ -15,6 +15,11 @@ import { NotificationResponseDto } from './presentation/dto/notification.dto';
 export interface NotifyRecipient {
   userId: string;
   email?: string | null;
+  /**
+   * Channel overrides (applied before user prefs).
+   * Defaults: inApp true; email true when `email` is present.
+   */
+  channels?: { inApp?: boolean; email?: boolean };
 }
 
 export interface NotifyInput {
@@ -80,10 +85,13 @@ export class NotificationsService {
     const emails: EmailJob[] = [];
     for (const r of recipients) {
       const pref = prefByUser.get(r.userId);
-      const inApp = pref?.inAppEnabled ?? true;
-      const email = pref?.emailEnabled ?? true;
+      const wantInApp = r.channels?.inApp !== false && (pref?.inAppEnabled ?? true);
+      const wantEmail =
+        r.channels?.email !== false &&
+        (pref?.emailEnabled ?? true) &&
+        Boolean(r.email);
       let notificationId: string | undefined;
-      if (inApp) {
+      if (wantInApp) {
         const row = this.em.create(NotificationEntity, {
           user: this.em.getReference(UserEntity, r.userId),
           type: input.type,
@@ -97,7 +105,7 @@ export class NotificationsService {
         });
         notificationId = row.id;
       }
-      if (email && r.email) {
+      if (wantEmail && r.email) {
         emails.push({
           notificationId,
           to: r.email,

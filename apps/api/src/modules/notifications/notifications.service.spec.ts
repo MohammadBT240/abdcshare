@@ -45,4 +45,34 @@ describe('NotificationsService.emit', () => {
     expect(em.create).not.toHaveBeenCalled();
     expect(outbox.enqueue).not.toHaveBeenCalled();
   });
+
+  it('honors channels: in-app without email when channels.email is false', async () => {
+    const created: unknown[] = [];
+    const em = {
+      find: jest.fn(async () => []),
+      getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+      create: jest.fn((entity: unknown, data: Record<string, unknown>) => {
+        const row = { id: `n-${created.length}`, ...data };
+        if (entity === NotificationEntity) created.push(row);
+        return row;
+      }),
+    };
+    const outbox = { enqueue: jest.fn() };
+    const service = new NotificationsService(em as never, outbox as never);
+
+    await service.emit({
+      recipients: [
+        {
+          userId: 'c1',
+          email: 'c@x.com',
+          channels: { inApp: true, email: false },
+        },
+      ],
+      type: 'request.created',
+      title: 'New request',
+    });
+
+    expect(created).toHaveLength(1);
+    expect(outbox.enqueue).not.toHaveBeenCalled();
+  });
 });
