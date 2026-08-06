@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EntityManager } from '@mikro-orm/postgresql';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import archiver from 'archiver';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -65,7 +64,10 @@ export class DocumentExportService {
 
     const fileName = `documents-${engagementId}-${new Date().toISOString().slice(0, 10)}.zip`;
     const storageKey = await this.upload(engagementId, fileName, zip);
-    const url = await this.downloadUrl(storageKey, fileName);
+    const link =
+      `/api/bff/proxy/documents/exports/download` +
+      `?engagementId=${encodeURIComponent(engagementId)}` +
+      `&key=${encodeURIComponent(storageKey)}&name=${encodeURIComponent(fileName)}`;
     const now = new Date();
     await em.getConnection().execute(
       `insert into notifications
@@ -81,7 +83,7 @@ export class DocumentExportService {
         `${rows.length} document file(s) are ready to download`,
         'engagement',
         engagementId,
-        url,
+        link,
       ],
     );
   }
@@ -120,23 +122,6 @@ export class DocumentExportService {
       }));
     }
     return storageKey;
-  }
-
-  private async downloadUrl(storageKey: string, fileName: string): Promise<string> {
-    if (this.config.get('STORAGE_DRIVER', 'local') === 'local') {
-      const base = this.config.get<string>('STORAGE_PUBLIC_BASE_URL', 'http://localhost:4000')
-        .replace(/\/+$/, '');
-      return `${base}/api/storage/local/${encodeURIComponent(storageKey)}?download=${encodeURIComponent(fileName)}`;
-    }
-    return getSignedUrl(
-      this.r2(),
-      new GetObjectCommand({
-        Bucket: this.config.get<string>('R2_BUCKET')!,
-        Key: storageKey,
-        ResponseContentDisposition: `attachment; filename="${fileName}"`,
-      }),
-      { expiresIn: this.config.get<number>('STORAGE_UPLOAD_TTL', 900) },
-    );
   }
 
   private r2(): S3Client {

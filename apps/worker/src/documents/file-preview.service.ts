@@ -30,6 +30,11 @@ export class FilePreviewService {
       throw new Error('Invalid file preview payload');
     }
 
+    if (entityType === 'request_brief') {
+      await this.generateRequestBrief(fileId, storageKey, fileName, em);
+      return;
+    }
+
     const table =
       entityType === 'submission_file'
         ? 'submission_files'
@@ -51,6 +56,69 @@ export class FilePreviewService {
     // Already permanently failed — do not burn retries; operator can re-upload.
     if (row.preview_status === 'Failed') return;
 
+    try {
+      const previewKey = await this.convertToPdf(storageKey, fileName);
+      await em.getConnection().execute(
+        `update "${table}"
+         set preview_storage_key = ?, preview_status = 'Ready', preview_error = null
+         where id = ?`,
+        [previewKey, fileId],
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Preview failed for ${table}/${fileId}: ${message}`);
+      await em.getConnection().execute(
+        `update "${table}"
+         set preview_status = 'Failed', preview_error = ?
+         where id = ?`,
+        [message.slice(0, 2000), fileId],
+      );
+    }
+  }
+
+  private async generateRequestBrief(
+    requestId: string,
+    storageKey: string,
+    fileName: string,
+    em: EntityManager,
+  ): Promise<void> {
+    const existing = await em.getConnection().execute<
+      { brief_preview_status: string; brief_preview_storage_key: string | null }[]
+    >(
+      `select brief_preview_status as brief_preview_status,
+              brief_preview_storage_key as brief_preview_storage_key
+       from "requests" where id = ?`,
+      [requestId],
+    );
+    const row = existing[0];
+    if (!row) {
+      this.logger.warn(`Preview target missing: requests/${requestId}`);
+      return;
+    }
+    if (row.brief_preview_status === 'Ready' && row.brief_preview_storage_key) return;
+    if (row.brief_preview_status === 'Failed') return;
+
+    try {
+      const previewKey = await this.convertToPdf(storageKey, fileName);
+      await em.getConnection().execute(
+        `update "requests"
+         set brief_preview_storage_key = ?, brief_preview_status = 'Ready', brief_preview_error = null
+         where id = ?`,
+        [previewKey, requestId],
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Preview failed for request brief ${requestId}: ${message}`);
+      await em.getConnection().execute(
+        `update "requests"
+         set brief_preview_status = 'Failed', brief_preview_error = ?
+         where id = ?`,
+        [message.slice(0, 2000), requestId],
+      );
+    }
+  }
+
+  private async convertToPdf(storageKey: string, fileName: string): Promise<string> {
     const workDir = await mkdtemp(path.join(tmpdir(), 'abdc-preview-'));
     try {
       const inputName = path.basename(fileName) || 'input.bin';
@@ -68,24 +136,7 @@ export class FilePreviewService {
       const pdfName = inputName.replace(/\.[^.]+$/, '') + '.pdf';
       const pdfPath = path.join(workDir, pdfName);
       const pdfBytes = await readFile(pdfPath);
-      const previewKey = await this.uploadPreview(pdfBytes, pdfName);
-
-      await em.getConnection().execute(
-        `update "${table}"
-         set preview_storage_key = ?, preview_status = 'Ready', preview_error = null
-         where id = ?`,
-        [previewKey, fileId],
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Preview failed for ${table}/${fileId}: ${message}`);
-      await em.getConnection().execute(
-        `update "${table}"
-         set preview_status = 'Failed', preview_error = ?
-         where id = ?`,
-        [message.slice(0, 2000), fileId],
-      );
-      // Seal as handled — previewStatus=Failed is the user-visible outcome.
+      return await this.uploadPreview(pdfBytes, pdfName);
     } finally {
       await rm(workDir, { recursive: true, force: true });
     }

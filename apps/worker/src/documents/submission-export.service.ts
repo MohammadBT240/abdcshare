@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EntityManager } from '@mikro-orm/postgresql';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import archiver from 'archiver';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -86,8 +85,10 @@ export class SubmissionExportService {
       const who = this.safeName(row.submitterName || 'response');
       const fileName = `${who}-${stamp}.zip`;
       const storageKey = await this.upload(submissionId, fileName, zip);
-      // 7-day signed URL so the notification stays usable longer than upload TTL.
-      const url = await this.downloadUrl(storageKey, fileName, 7 * 24 * 3600);
+      // Short app link — client mints a fresh signed URL on click (avoids varchar/expiry issues).
+      const link =
+        `/api/bff/proxy/submissions/${submissionId}/exports/download` +
+        `?key=${encodeURIComponent(storageKey)}&name=${encodeURIComponent(fileName)}`;
 
       await this.insertNotification(em, {
         userId: actorUserId,
@@ -96,7 +97,7 @@ export class SubmissionExportService {
         body: `${files.length} file${files.length === 1 ? '' : 's'} from ${row.submitterName || 'the client'} are ready to download`,
         entityType: 'submission',
         entityId: submissionId,
-        link: url,
+        link,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -207,28 +208,6 @@ export class SubmissionExportService {
       );
     }
     return storageKey;
-  }
-
-  private async downloadUrl(
-    storageKey: string,
-    fileName: string,
-    expiresIn: number,
-  ): Promise<string> {
-    if (this.config.get('STORAGE_DRIVER', 'local') === 'local') {
-      const base = this.config
-        .get<string>('STORAGE_PUBLIC_BASE_URL', 'http://localhost:4000')
-        .replace(/\/+$/, '');
-      return `${base}/api/storage/local/${encodeURIComponent(storageKey)}?download=${encodeURIComponent(fileName)}`;
-    }
-    return getSignedUrl(
-      this.r2(),
-      new GetObjectCommand({
-        Bucket: this.config.get<string>('R2_BUCKET')!,
-        Key: storageKey,
-        ResponseContentDisposition: `attachment; filename="${fileName.replace(/"/g, '')}"`,
-      }),
-      { expiresIn },
-    );
   }
 
   private r2(): S3Client {
