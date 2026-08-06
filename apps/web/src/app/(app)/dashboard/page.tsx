@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { IconBriefcase, IconClock, IconFileCheck, IconInbox, IconUsers } from '@tabler/icons-react';
 import { DashboardSkeleton } from '@/components/skeletons';
@@ -12,7 +13,7 @@ import { bffApi } from '@/lib/bff/client';
 interface DashboardSummary {
   engagements: { total: number; byStage?: Record<string, number>; byStatus?: Record<string, number> };
   requests: { inScope: number; overdue: number; assignedToMe: number };
-  finalReports: { awaitingClientReview: number };
+  finalReports: { awaitingClientReview: number; needsFirmAction: number };
   notifications: { unread: number };
 }
 
@@ -93,14 +94,35 @@ export default function DashboardPage() {
                 <CardTitle className="text-base">Reviews & notifications</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <IconFileCheck className="h-5 w-5 text-primary" />
+                <Link
+                  href="/admin/final-reports"
+                  className="flex items-center gap-3 rounded-md transition-colors hover:bg-muted/40"
+                >
+                  <IconFileCheck className="h-5 w-5 text-destructive" />
                   <div>
                     <p className="text-2xl font-bold">
-                      {data?.finalReports.awaitingClientReview ?? 0}
+                      {data?.finalReports.needsFirmAction ?? 0}
                     </p>
-                    <p className="text-sm text-muted-foreground">Final reports awaiting client review</p>
+                    <p className="text-sm text-muted-foreground">
+                      Final reports needing firm action
+                    </p>
                   </div>
+                </Link>
+                <div className="border-t border-border pt-4">
+                  <Link
+                    href="/admin/final-reports"
+                    className="flex items-center gap-3 rounded-md transition-colors hover:bg-muted/40"
+                  >
+                    <IconFileCheck className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="text-2xl font-bold">
+                        {data?.finalReports.awaitingClientReview ?? 0}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Final reports awaiting client review
+                      </p>
+                    </div>
+                  </Link>
                 </div>
                 <div className="border-t border-border pt-4">
                   <p className="text-2xl font-bold">{data?.notifications.unread ?? 0}</p>

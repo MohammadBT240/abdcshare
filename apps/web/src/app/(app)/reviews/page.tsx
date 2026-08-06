@@ -7,8 +7,7 @@ import { toast } from 'sonner';
 import { DataTable } from '@/components/data/data-table';
 import { AppSelect, FormDialog, FormField, LoadingButton } from '@/components/forms';
 import { PageToolbar } from '@/components/layout/page-toolbar';
-import { useAuthContext } from '@/components/providers/auth-provider';
-import { Badge } from '@/components/ui/badge';
+import { StatusPill } from '@/components/data';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -20,7 +19,6 @@ import {
 import { BffClientError } from '@/lib/bff/client';
 
 export default function ReviewsPage() {
-  const { can } = useAuthContext();
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Review | null>(null);
   const reviews = useReviewsList(`status=ForReview&page=${page}&pageSize=20`);
@@ -43,7 +41,7 @@ export default function ReviewsPage() {
         header: 'Submitted',
         cell: ({ row }) => new Date(row.original.submittedAt).toLocaleString(),
       },
-      { header: 'Status', cell: () => <Badge variant="outline">Pending</Badge> },
+      { header: 'Status', cell: () => <StatusPill tone="warning">Pending</StatusPill> },
       {
         id: 'actions',
         header: '',
@@ -63,15 +61,6 @@ export default function ReviewsPage() {
     ],
     [],
   );
-
-  if (!can('review:decide')) {
-    return (
-      <div className="space-y-5">
-        <PageToolbar title="Reviews" breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Reviews' }]} />
-        <p className="text-sm text-destructive">You do not have permission to decide reviews.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-5">

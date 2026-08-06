@@ -1,19 +1,14 @@
 'use client';
 
-import { CatalogueAdminPage } from '@/features/catalogues/components/catalogue-admin-page';
-import { getCatalogueSection } from '@/features/catalogues/catalogue-sections';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { DEFAULT_CATALOGUE_HREF } from '@/features/catalogues/catalogue-sections';
 
-const HREF = '/admin/catalogues/request-stages';
-
+/** Request stages are system-inferred; catalogue management is disabled. */
 export default function RequestStagesPage() {
-  const section = getCatalogueSection(HREF)!;
-
-  return (
-    <CatalogueAdminPage
-      title={section.title}
-      description={section.description}
-      resource="request-stages"
-      fields={['name', 'sortOrder']}
-    />
-  );
+  const router = useRouter();
+  useEffect(() => {
+    router.replace(DEFAULT_CATALOGUE_HREF);
+  }, [router]);
+  return null;
 }
