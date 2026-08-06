@@ -1,7 +1,6 @@
 'use client';
 
-import { IconLoader2 } from '@tabler/icons-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/forms/combobox';
 import { cn } from '@/lib/utils';
 
 export interface AppSelectOption {
@@ -15,6 +14,8 @@ export interface AppSelectProps {
   value?: string;
   onValueChange: (value: string) => void;
   placeholder?: string;
+  searchPlaceholder?: string;
+  emptyMessage?: string;
   allowNone?: boolean;
   noneLabel?: string;
   noneValue?: string;
@@ -26,13 +27,16 @@ export interface AppSelectProps {
 }
 
 /**
- * Controlled select. Never pass empty string as value — use undefined or allowNone sentinel.
+ * Searchable select (Combobox) used across list filters and forms.
+ * Empty-string values are supported for “All …” filter options.
  */
 export function AppSelect({
   options,
   value,
   onValueChange,
   placeholder = 'Select…',
+  searchPlaceholder = 'Search…',
+  emptyMessage = 'No results',
   allowNone = false,
   noneLabel = 'None',
   noneValue = 'none',
@@ -42,49 +46,41 @@ export function AppSelect({
   className,
   triggerClassName,
 }: AppSelectProps) {
-  const resolved =
-    value && value.length > 0
-      ? value
-      : allowNone
-        ? noneValue
-        : undefined;
+  const normalizedOptions = options.map((opt) =>
+    opt.value === ''
+      ? { ...opt, value: noneValue }
+      : opt,
+  );
+
+  const hasEmptySentinel = options.some((o) => o.value === '');
+  const resolvedValue =
+    value === '' && hasEmptySentinel
+      ? noneValue
+      : value && value.length > 0
+        ? value
+        : allowNone
+          ? noneValue
+          : undefined;
 
   return (
-    <Select
-      value={resolved}
+    <Combobox
+      options={normalizedOptions}
+      value={resolvedValue}
       onValueChange={(v) => {
-        if (allowNone && v === noneValue) {
-          onValueChange('');
+        if (v === noneValue) {
+          onValueChange(hasEmptySentinel || allowNone ? '' : v);
           return;
         }
         onValueChange(v);
       }}
-      disabled={disabled || isLoading}
-    >
-      <SelectTrigger
-        className={cn(
-          size === 'sm' && 'h-9',
-          triggerClassName,
-          className,
-        )}
-      >
-        {isLoading ? (
-          <span className="flex items-center gap-2 text-muted-foreground">
-            <IconLoader2 className="h-4 w-4 animate-spin" />
-            Loading…
-          </span>
-        ) : (
-          <SelectValue placeholder={placeholder} />
-        )}
-      </SelectTrigger>
-      <SelectContent>
-        {allowNone ? <SelectItem value={noneValue}>{noneLabel}</SelectItem> : null}
-        {options.map((opt) => (
-          <SelectItem key={opt.value} value={opt.value} disabled={opt.disabled}>
-            {opt.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      placeholder={placeholder}
+      searchPlaceholder={searchPlaceholder}
+      emptyMessage={emptyMessage}
+      allowNone={allowNone && !hasEmptySentinel}
+      noneLabel={noneLabel}
+      isLoading={isLoading}
+      disabled={disabled}
+      className={cn(size === 'sm' && 'h-9', triggerClassName, className)}
+    />
   );
 }

@@ -33,10 +33,10 @@ export function validateFile(
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 export const AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
-/** Default for documents / company profiles / working papers. */
+/** Default for company profiles / planning docs / request briefs. */
 export const DOCUMENT_MAX_BYTES = 100 * 1024 * 1024;
 
-/** Client submissions + discussion attachments (matches API UPLOAD_MAX_BYTES). */
+/** Client submissions, discussions, working papers, final reports (matches API UPLOAD_MAX_BYTES). */
 export const UPLOAD_MAX_BYTES = 5 * 1024 * 1024 * 1024;
 
 export const COMPANY_PROFILE_TYPES = new Set([

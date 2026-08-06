@@ -22,6 +22,8 @@ export interface FileUploadProps {
   className?: string;
   label?: string;
   description?: string;
+  /** When true, only the dropzone is shown — caller renders its own file list. */
+  hideFileList?: boolean;
 }
 
 export function FileUpload({
@@ -35,6 +37,7 @@ export function FileUpload({
   className,
   label = 'Upload files',
   description = 'Drag and drop or click to browse.',
+  hideFileList = false,
 }: FileUploadProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -119,7 +122,7 @@ export function FileUpload({
         />
       </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      {files.length > 0 ? (
+      {!hideFileList && files.length > 0 ? (
         <ul className="space-y-1">
           {files.map((file, i) => (
             <li

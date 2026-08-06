@@ -14,6 +14,8 @@ export interface DatePickerProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /** Optional titled header strip in the popover (Tailux-style). */
+  title?: string;
 }
 
 export function DatePicker({
@@ -22,6 +24,7 @@ export function DatePicker({
   placeholder = 'Pick a date',
   disabled = false,
   className,
+  title,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false);
 
@@ -33,7 +36,7 @@ export function DatePicker({
           variant="outline"
           disabled={disabled}
           className={cn(
-            'h-11 w-full justify-start gap-2 text-left font-normal',
+            'h-11 w-full justify-start gap-2 rounded-lg text-left font-normal',
             !value && 'text-muted-foreground',
             className,
           )}
@@ -43,17 +46,21 @@ export function DatePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-auto p-0"
+        className="w-auto overflow-hidden p-0"
         align="start"
         onOpenAutoFocus={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => {
-          // Keep open when interacting with portaled calendar controls inside a Dialog.
           const target = e.target as HTMLElement | null;
           if (target?.closest('[data-slot="calendar"], .rdp-root, [class*="rdp"]')) {
             e.preventDefault();
           }
         }}
       >
+        {title ? (
+          <div className="border-b border-border bg-muted/50 px-3 py-2 text-sm font-medium">
+            {title}
+          </div>
+        ) : null}
         <Calendar
           mode="single"
           selected={value}

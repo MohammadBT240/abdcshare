@@ -2,6 +2,11 @@ export { FormField, FormSection } from '@/components/forms/form-field';
 export { AppSelect, type AppSelectOption, type AppSelectProps } from '@/components/forms/app-select';
 export { LookupSelect, type LookupSelectProps } from '@/components/forms/lookup-select';
 export { Combobox, type ComboboxProps } from '@/components/forms/combobox';
+export {
+  MultiCombobox,
+  type MultiComboboxOption,
+  type MultiComboboxProps,
+} from '@/components/forms/multi-combobox';
 export { DatePicker, type DatePickerProps } from '@/components/forms/date-picker';
 export { DateRangePicker, type DateRangePickerProps } from '@/components/forms/date-range-picker';
 export {

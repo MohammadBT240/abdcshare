@@ -133,8 +133,8 @@ export function Combobox({
               ) : null}
               {options.map((opt) => (
                 <CommandItem
-                  key={opt.value}
-                  value={opt.label}
+                  key={opt.value || opt.label}
+                  value={`${opt.label} ${opt.value}`}
                   disabled={opt.disabled}
                   onSelect={() => {
                     onValueChange(opt.value);
