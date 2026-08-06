@@ -2,7 +2,18 @@
 
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import type { PageMeta } from '@abdcshare/api-client';
+import {
+  computeRequestProgressPercent,
+  isRequestOverdue,
+} from '@abdcshare/shared';
 import { bffApi } from '@/lib/bff/client';
+
+export interface RequestBriefMeta {
+  fileName: string;
+  contentType?: string | null;
+  sizeBytes?: number | null;
+  uploadedAt?: string | null;
+}
 
 export interface RequestListItem {
   id: string;
@@ -10,6 +21,9 @@ export interface RequestListItem {
   referenceCode: string;
   engagementId: string;
   engagementTitle: string;
+  engagementReferenceCode: string;
+  clientId: string;
+  clientName: string;
   requestTypeId: number;
   requestTypeName: string;
   requestClassId: number;
@@ -21,6 +35,10 @@ export interface RequestListItem {
   dueDate?: string;
   completedAt?: string;
   createdAt: string;
+  expectedDocumentCount: number;
+  acceptedFileCount: number;
+  progressPercent: number;
+  brief?: RequestBriefMeta | null;
   assignees: Array<{
     userId: string;
     fullName: string;
@@ -60,33 +78,28 @@ interface ApiRequestRow {
   dueDate?: string | null;
   completedAt?: string | null;
   createdAt: string;
+  expectedDocumentCount?: number;
+  acceptedFileCount?: number;
+  progressPercent?: number;
+  brief?: RequestBriefMeta | null;
   assignees?: Array<{ userId: string; fullName: string; avatarUrl?: string }>;
   isOverdue?: boolean;
-}
-
-function isDoneStatus(status: string): boolean {
-  const s = status.toLowerCase();
-  return s.includes('complete') || s.includes('closed') || s.includes('done');
-}
-
-function computeIsOverdue(dueDate: string | undefined, status: string): boolean {
-  if (!dueDate || isDoneStatus(status)) return false;
-  const due = new Date(dueDate);
-  if (Number.isNaN(due.getTime())) return false;
-  const endOfDue = new Date(due);
-  endOfDue.setHours(23, 59, 59, 999);
-  return endOfDue < new Date();
 }
 
 function normalizeRequestRow(row: ApiRequestRow): RequestListItem {
   const requestTypeName = row.requestTypeName ?? 'Request';
   const status = row.status ?? row.statusName ?? '';
   const dueDate = row.dueDate ?? undefined;
+  const expectedDocumentCount = Math.max(1, row.expectedDocumentCount ?? 1);
+  const acceptedFileCount = Math.max(0, row.acceptedFileCount ?? 0);
   return {
     id: row.id,
     referenceCode: row.referenceCode ?? requestTypeName,
     engagementId: row.engagementId,
     engagementTitle: row.engagementTitle ?? '',
+    engagementReferenceCode: row.engagementReferenceCode ?? '',
+    clientId: row.clientId ?? '',
+    clientName: row.clientName ?? '',
     requestTypeId: row.requestTypeId,
     requestTypeName,
     requestClassId: row.requestClassId,
@@ -98,8 +111,14 @@ function normalizeRequestRow(row: ApiRequestRow): RequestListItem {
     dueDate,
     completedAt: row.completedAt ?? undefined,
     createdAt: row.createdAt,
+    expectedDocumentCount,
+    acceptedFileCount,
+    progressPercent:
+      row.progressPercent ??
+      computeRequestProgressPercent(expectedDocumentCount, acceptedFileCount, status),
+    brief: row.brief ?? null,
     assignees: row.assignees ?? [],
-    isOverdue: row.isOverdue ?? computeIsOverdue(dueDate, status),
+    isOverdue: row.isOverdue ?? isRequestOverdue(dueDate, status),
   };
 }
 
@@ -121,6 +140,7 @@ export interface RequestHistoryItem {
   note?: string | null;
   actorId?: string | null;
   actorName?: string | null;
+  actorAvatarUrl?: string | null;
   createdAt: string;
 }
 
@@ -185,6 +205,7 @@ export function useCreateRequest() {
       requestTypeId: number;
       description?: string;
       dueDate?: string;
+      expectedDocumentCount?: number;
       assigneeIds?: string[];
     }) => bffApi<RequestDetail>('/api/requests', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: async () => {
@@ -198,7 +219,11 @@ export function useCreateRequest() {
 export function useUpdateRequest(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { description?: string; dueDate?: string }) =>
+    mutationFn: (body: {
+      description?: string;
+      dueDate?: string;
+      expectedDocumentCount?: number;
+    }) =>
       bffApi<RequestDetail>(`/api/requests/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     onSuccess: async () => {
       await Promise.all([
@@ -206,6 +231,103 @@ export function useUpdateRequest(id: string) {
         qc.invalidateQueries({ queryKey: ['requests', id] }),
         qc.invalidateQueries({ queryKey: ['engagements'] }),
         qc.invalidateQueries({ queryKey: ['dashboard'] }),
+      ]);
+    },
+  });
+}
+
+interface PresignedBriefUpload {
+  storageKey: string;
+  uploadUrl: string;
+  method: 'PUT';
+  headers: Record<string, string>;
+}
+
+/** Presign → PUT → confirm for the request expectation brief. */
+export async function uploadRequestBrief(requestId: string, file: File): Promise<void> {
+  const contentType = file.type || 'application/octet-stream';
+  const presigned = await bffApi<PresignedBriefUpload>(
+    `/api/requests/${requestId}/brief/presign`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        fileName: file.name,
+        contentType,
+        sizeBytes: file.size,
+      }),
+    },
+  );
+  const put = await fetch(presigned.uploadUrl, {
+    method: 'PUT',
+    headers: {
+      ...presigned.headers,
+      'Content-Type': contentType,
+    },
+    body: file,
+  });
+  if (!put.ok) {
+    throw new Error(`Brief upload failed (${put.status})`);
+  }
+  await bffApi(`/api/requests/${requestId}/brief/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({
+      storageKey: presigned.storageKey,
+      fileName: file.name,
+      contentType,
+      sizeBytes: file.size,
+    }),
+  });
+}
+
+export function useDownloadRequestBrief(requestId: string) {
+  return useMutation({
+    mutationFn: () =>
+      bffApi<{ downloadUrl: string; fileName: string }>(
+        `/api/requests/${requestId}/brief/download`,
+        { method: 'POST' },
+      ),
+  });
+}
+
+export type RequestBriefPreviewResult = {
+  url: string | null;
+  mode: 'native' | 'converted' | 'unavailable';
+  previewStatus: string;
+  reason?: 'pending' | 'failed' | 'unsupported';
+};
+
+export async function fetchRequestBriefPreview(
+  requestId: string,
+  opts?: { retryFailed?: boolean },
+): Promise<RequestBriefPreviewResult> {
+  const qs = opts?.retryFailed ? '?retryFailed=1' : '';
+  return bffApi<RequestBriefPreviewResult>(
+    `/api/requests/${requestId}/brief/preview${qs}`,
+  );
+}
+
+export function useRemoveRequestBrief(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      bffApi<RequestDetail>(`/api/requests/${requestId}/brief`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['requests'] }),
+        qc.invalidateQueries({ queryKey: ['requests', requestId] }),
+      ]);
+    },
+  });
+}
+
+export function useUploadRequestBrief(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => uploadRequestBrief(requestId, file),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['requests'] }),
+        qc.invalidateQueries({ queryKey: ['requests', requestId] }),
       ]);
     },
   });
