@@ -38,11 +38,10 @@ import type {
   MultipartCreateDto,
   MultipartSignPartsDto,
 } from "../../common/storage/multipart.dto";
-import {
-  NotificationsService,
-  type NotifyRecipient,
-} from "../notifications/notifications.service";
+import { NotificationsService } from "../notifications/notifications.service";
+import { engagementTeamRecipients } from "../notifications/recipient-helpers";
 import { OutboxService } from "../outbox/outbox.service";
+import { syncInferredRequestStage } from "../requests/request-stage-sync";
 import { ClientSubmissionEntity } from "./infrastructure/persistence/client-submission.entity";
 import { SubmissionFileEntity } from "./infrastructure/persistence/submission-file.entity";
 import { RequestEntity } from "../requests/infrastructure/persistence/request.entity";
@@ -50,6 +49,7 @@ import { UserEntity } from "../users/infrastructure/persistence/user.entity";
 import type {
   CreateSubmissionDto,
   ReopenSubmissionFileDto,
+  UndoReturnSubmissionFileDto,
   ReviewSubmissionDto,
   ReviewSubmissionFileDto,
   SubmissionFileConfirmDto,
@@ -113,7 +113,8 @@ export class SubmissionsService {
 
   /**
    * Derive submission status from current (non-superseded) files.
-   * All Accepted → Accepted; any Returned → Returned; else Pending.
+   * All Accepted → Accepted; any UnderReview → UnderReview; any Returned → Returned;
+   * else Pending. UnderReview reflects active staff review even when other files are returned.
    */
   private deriveStatus(submission: ClientSubmissionEntity): SubmissionStatus {
     if (submission.status === SubmissionStatus.Draft)
@@ -123,10 +124,20 @@ export class SubmissionsService {
     if (current.every((f) => f.status === SubmissionStatus.Accepted)) {
       return SubmissionStatus.Accepted;
     }
+    if (current.some((f) => f.status === SubmissionStatus.UnderReview)) {
+      return SubmissionStatus.UnderReview;
+    }
     if (current.some((f) => f.status === SubmissionStatus.Returned)) {
       return SubmissionStatus.Returned;
     }
     return SubmissionStatus.Pending;
+  }
+
+  private isReviewable(status: SubmissionStatus): boolean {
+    return (
+      status === SubmissionStatus.Pending ||
+      status === SubmissionStatus.UnderReview
+    );
   }
 
   private toDto(s: ClientSubmissionEntity): SubmissionResponseDto {
@@ -150,6 +161,7 @@ export class SubmissionsService {
         reviewedAt: f.reviewedAt ?? null,
         replacesFileId: f.replacesFile?.id ?? null,
         superseded: this.isSuperseded(f, s),
+        uploadedAt: f.uploadedAt,
       })),
       createdAt: s.createdAt,
     };
@@ -187,27 +199,75 @@ export class SubmissionsService {
     user: AuthenticatedUser,
     replacing = false,
   ): void {
-    if (submission.status === SubmissionStatus.Draft) {
-      this.assertOwner(submission, user);
-      return;
-    }
+    // Progressive uploads: owner may attach new files while staff reviews others.
+    const openForAttach =
+      submission.status === SubmissionStatus.Draft ||
+      submission.status === SubmissionStatus.Pending ||
+      submission.status === SubmissionStatus.UnderReview ||
+      submission.status === SubmissionStatus.Returned;
+
     if (replacing) {
-      if (
-        submission.status !== SubmissionStatus.Returned &&
-        submission.status !== SubmissionStatus.Pending
-      ) {
+      // confirmFile still requires the specific target file to be Returned.
+      if (!openForAttach || submission.status === SubmissionStatus.Draft) {
         throw new BadRequestException(
-          "Can only replace files on a returned or pending response",
+          "Can only replace files on a returned, pending, or under-review response",
         );
       }
       this.assertOwner(submission, user);
       return;
     }
-    if (submission.status !== SubmissionStatus.Pending) {
+
+    if (!openForAttach) {
       throw new BadRequestException(
         "Cannot attach files to an already-reviewed submission",
       );
     }
+    this.assertOwner(submission, user);
+  }
+
+  /** Staff notification when a client response becomes visible (first published file). */
+  private async notifyStaffResponseCreated(
+    submission: ClientSubmissionEntity,
+    user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.em.populate(submission, ["request.engagement"]);
+    const staff = await engagementTeamRecipients(
+      this.em,
+      submission.request.engagement.id,
+    );
+    await this.notifications.emit({
+      recipients: staff,
+      type: "submission.created",
+      title: "A client responded to a request",
+      body: submission.message.slice(0, 140),
+      entityType: "request",
+      entityId: submission.request.id,
+      link: `/requests/${submission.request.id}`,
+      excludeUserId: user.userId,
+    });
+  }
+
+  /** Lighter notify when more files arrive on an already-visible response. */
+  private async notifyStaffAdditionalFile(
+    submission: ClientSubmissionEntity,
+    user: AuthenticatedUser,
+    fileName: string,
+  ): Promise<void> {
+    await this.em.populate(submission, ["request.engagement"]);
+    const staff = await engagementTeamRecipients(
+      this.em,
+      submission.request.engagement.id,
+    );
+    await this.notifications.emit({
+      recipients: staff,
+      type: "submission.created",
+      title: "Client added a file to a response",
+      body: fileName.slice(0, 140),
+      entityType: "request",
+      entityId: submission.request.id,
+      link: `/requests/${submission.request.id}`,
+      excludeUserId: user.userId,
+    });
   }
 
   private assertSizeCap(sizeBytes?: number): void {
@@ -223,10 +283,11 @@ export class SubmissionsService {
     user: AuthenticatedUser,
     fileName: string,
   ): Promise<void> {
-    await this.em.populate(submission, ["request.engagement.team.user"]);
-    const staff: NotifyRecipient[] = submission.request.engagement.team
-      .getItems()
-      .map((tm) => ({ userId: tm.user.id, email: tm.user.email ?? null }));
+    await this.em.populate(submission, ["request.engagement"]);
+    const staff = await engagementTeamRecipients(
+      this.em,
+      submission.request.engagement.id,
+    );
     await this.notifications.emit({
       recipients: staff,
       type: "submission.created",
@@ -288,8 +349,11 @@ export class SubmissionsService {
       submission.reviewedBy = this.em.getReference(UserEntity, user.userId);
       submission.reviewedAt = new Date();
       submission.reviewReason = reason ?? submission.reviewReason ?? null;
-    } else if (next === SubmissionStatus.Pending) {
-      // Replacement brought it back into the queue.
+    } else if (
+      next === SubmissionStatus.Pending ||
+      next === SubmissionStatus.UnderReview
+    ) {
+      // Still in the review queue.
       submission.reviewedBy = null;
       submission.reviewedAt = null;
       submission.reviewReason = null;
@@ -310,7 +374,7 @@ export class SubmissionsService {
     user: AuthenticatedUser,
   ) {
     const submission = await this.loadScoped(id, user);
-    this.assertCanAttach(submission, user);
+    this.assertCanAttach(submission, user, Boolean(dto.replacesFileId));
     return this.storage.presignUpload({
       keyPrefix: `submissions/${id}`,
       fileName: dto.fileName,
@@ -324,9 +388,7 @@ export class SubmissionsService {
     user: AuthenticatedUser,
   ) {
     const submission = await this.loadScoped(id, user);
-    // Multipart create may be a new attach or a replacement — allow Returned.
-    const replacing = submission.status === SubmissionStatus.Returned;
-    this.assertCanAttach(submission, user, replacing);
+    this.assertCanAttach(submission, user, Boolean(dto.replacesFileId));
     this.assertSizeCap(dto.sizeBytes);
     return this.storage.createMultipart({
       keyPrefix: `submissions/${id}`,
@@ -343,8 +405,8 @@ export class SubmissionsService {
     user: AuthenticatedUser,
   ) {
     const submission = await this.loadScoped(id, user);
-    const replacing = submission.status === SubmissionStatus.Returned;
-    this.assertCanAttach(submission, user, replacing);
+    // Parts are signed after create; createMultipart already validated attach rights.
+    this.assertCanAttach(submission, user, false);
     if (!storageKey.includes(`submissions/${id}`)) {
       throw new BadRequestException("Invalid storage key for this submission");
     }
@@ -401,13 +463,17 @@ export class SubmissionsService {
     user: AuthenticatedUser,
   ): Promise<{ ok: true }> {
     const submission = await this.loadScoped(id, user);
-    const replacing = submission.status === SubmissionStatus.Returned;
-    this.assertCanAttach(submission, user, replacing);
+    this.assertCanAttach(submission, user, false);
     await this.storage.abortMultipart(dto.storageKey, uploadId);
     return { ok: true };
   }
 
-  /** Confirm an uploaded file onto a submission (Draft, Pending, or replacement on Returned). */
+  /**
+   * Confirm an uploaded file onto a submission.
+   * Progressive publish: each confirmed file is Pending and visible to staff.
+   * The first file on a Draft promotes the response and notifies the team;
+   * further files notify that more content arrived.
+   */
   async confirmFile(
     id: string,
     dto: SubmissionFileConfirmDto,
@@ -434,6 +500,7 @@ export class SubmissionsService {
       this.assertOwner(submission, user);
     }
 
+    const wasDraft = submission.status === SubmissionStatus.Draft;
     const previewStatus = initialPreviewStatus(dto.mimeType, dto.fileName);
     const file = this.em.create(SubmissionFileEntity, {
       submission,
@@ -441,10 +508,7 @@ export class SubmissionsService {
       fileName: dto.fileName,
       mimeType: dto.mimeType ?? null,
       sizeBytes: dto.sizeBytes ?? null,
-      status:
-        submission.status === SubmissionStatus.Draft
-          ? SubmissionStatus.Draft
-          : SubmissionStatus.Pending,
+      status: SubmissionStatus.Pending,
       replacesFile: replaces,
       previewStatus,
     });
@@ -459,9 +523,24 @@ export class SubmissionsService {
       });
     }
 
-    if (replaces) {
+    if (wasDraft) {
+      submission.status = SubmissionStatus.Pending;
+      for (const existing of submission.files.getItems()) {
+        if (existing.status === SubmissionStatus.Draft) {
+          existing.status = SubmissionStatus.Pending;
+        }
+      }
+      await this.notifyStaffResponseCreated(submission, user);
+      await syncInferredRequestStage(this.em, submission.request.id, {
+        actorId: user.userId,
+      });
+    } else if (replaces) {
       await this.recomputeStatus(submission, user);
       await this.notifyStaffResubmit(submission, user, dto.fileName);
+    } else {
+      // Additional file on an already-visible response.
+      await this.recomputeStatus(submission, user);
+      await this.notifyStaffAdditionalFile(submission, user, dto.fileName);
     }
 
     await this.em.flush();
@@ -502,6 +581,31 @@ export class SubmissionsService {
     });
     await this.em.flush();
     return { accepted: true, jobId: job.id };
+  }
+
+  /**
+   * Mint a short-lived download URL for a previously built export zip.
+   * `storageKey` must belong to this submission's export prefix.
+   */
+  async exportDownloadUrl(
+    id: string,
+    storageKey: string,
+    fileName: string | undefined,
+    user: AuthenticatedUser,
+  ): Promise<{ url: string }> {
+    await this.loadScoped(id, user);
+    const marker = `exports/submissions/${id}/`;
+    if (!storageKey.includes(marker)) {
+      throw new ForbiddenException('Invalid export key');
+    }
+    const name =
+      fileName?.replace(/[\\/]/g, '') ||
+      storageKey.split('/').pop() ||
+      'response.zip';
+    const url = await this.storage.presignDownload(storageKey, name, {
+      disposition: 'attachment',
+    });
+    return { url };
   }
 
   async previewUrl(
@@ -663,7 +767,8 @@ export class SubmissionsService {
   }
 
   /**
-   * Client starts a response. Status is Draft until finalize — no staff notification yet.
+   * Client starts a response shell. Remains Draft (staff-hidden) until the first
+   * file is confirmed — then confirmFile promotes and notifies.
    */
   async create(
     requestId: string,
@@ -687,7 +792,8 @@ export class SubmissionsService {
   }
 
   /**
-   * Promote Draft → Pending and notify staff. Call only after file uploads succeed.
+   * Legacy batch promote. Prefer progressive confirmFile (first file auto-publishes).
+   * Still useful if any Draft-status files remain on a Draft shell.
    */
   async finalize(
     id: string,
@@ -696,7 +802,8 @@ export class SubmissionsService {
     const submission = await this.loadScoped(id, user);
     this.assertOwner(submission, user);
     if (submission.status !== SubmissionStatus.Draft) {
-      throw new BadRequestException("Only draft submissions can be finalized");
+      // Already published via progressive confirm — idempotent success.
+      return this.getOne(id, user);
     }
     if (submission.files.getItems().length === 0) {
       throw new BadRequestException(
@@ -710,31 +817,25 @@ export class SubmissionsService {
         file.status = SubmissionStatus.Pending;
     }
 
-    await this.em.populate(submission, ["request.engagement.team.user"]);
-    const staff: NotifyRecipient[] = submission.request.engagement.team
-      .getItems()
-      .map((tm) => ({ userId: tm.user.id, email: tm.user.email ?? null }));
-    await this.notifications.emit({
-      recipients: staff,
-      type: "submission.created",
-      title: "A client responded to a request",
-      body: submission.message.slice(0, 140),
-      entityType: "request",
-      entityId: submission.request.id,
-      link: `/requests/${submission.request.id}`,
-      excludeUserId: user.userId,
+    await this.notifyStaffResponseCreated(submission, user);
+    await syncInferredRequestStage(this.em, submission.request.id, {
+      actorId: user.userId,
     });
-
     await this.em.flush();
     return this.getOne(id, user);
   }
 
-  /** Discard an unfinished draft (owner only). Cascades submission files. */
+  /**
+   * Discard an unfinished draft shell (owner only). Cascades submission files.
+   * Once published (Pending+), discard is refused — staff may already be reviewing.
+   */
   async discardDraft(id: string, user: AuthenticatedUser): Promise<void> {
     const submission = await this.loadScoped(id, user);
     this.assertOwner(submission, user);
     if (submission.status !== SubmissionStatus.Draft) {
-      throw new BadRequestException("Only draft submissions can be discarded");
+      throw new BadRequestException(
+        "Only unpublished drafts can be discarded — this response is already visible to the team",
+      );
     }
     await this.em.removeAndFlush(submission);
   }
@@ -803,6 +904,48 @@ export class SubmissionsService {
     return this.toDto(submission);
   }
 
+  /**
+   * Claim a Pending file for review (Pending → UnderReview).
+   * Idempotent when already UnderReview. No client notification.
+   */
+  async startReview(
+    id: string,
+    fileId: string,
+    user: AuthenticatedUser,
+  ): Promise<SubmissionResponseDto> {
+    const submission = await this.loadScoped(id, user);
+    if (submission.status === SubmissionStatus.Draft) {
+      throw new BadRequestException("Cannot review a draft submission");
+    }
+
+    const file = submission.files.getItems().find((f) => f.id === fileId);
+    if (!file) throw new NotFoundException("File not found");
+    if (this.isSuperseded(file, submission)) {
+      throw new BadRequestException("Cannot review a superseded file");
+    }
+
+    if (file.status === SubmissionStatus.UnderReview) {
+      return this.getOne(id, user);
+    }
+    if (file.status !== SubmissionStatus.Pending) {
+      throw new BadRequestException(
+        `Only pending files can be marked under review (${file.status})`,
+      );
+    }
+
+    file.status = SubmissionStatus.UnderReview;
+    file.reviewedBy = this.em.getReference(UserEntity, user.userId);
+    file.reviewedAt = null;
+    file.reviewReason = null;
+
+    await this.recomputeStatus(submission, user);
+    await syncInferredRequestStage(this.em, submission.request.id, {
+      actorId: user.userId,
+    });
+    await this.em.flush();
+    return this.getOne(id, user);
+  }
+
   /** Per-file accept/return. Parent status is derived from current files. */
   async reviewFile(
     id: string,
@@ -825,7 +968,7 @@ export class SubmissionsService {
     if (this.isSuperseded(file, submission)) {
       throw new BadRequestException("Cannot review a superseded file");
     }
-    if (file.status !== SubmissionStatus.Pending) {
+    if (!this.isReviewable(file.status)) {
       throw new BadRequestException(`File already reviewed (${file.status})`);
     }
 
@@ -835,13 +978,55 @@ export class SubmissionsService {
     file.reviewedAt = new Date();
 
     await this.recomputeStatus(submission, user, dto.reason?.trim() || null);
+    await syncInferredRequestStage(this.em, submission.request.id, {
+      actorId: user.userId,
+    });
     await this.em.flush();
     return this.getOne(id, user);
   }
 
   /**
-   * Reopen an Accepted file for revision: Accepted → Returned with reason.
-   * Unlocks client replacement upload; notifies the submitter.
+   * Undo acceptance: Accepted → UnderReview. No client notify; no replacement unlock.
+   */
+  async undoAcceptFile(
+    id: string,
+    fileId: string,
+    user: AuthenticatedUser,
+  ): Promise<SubmissionResponseDto> {
+    const submission = await this.loadScoped(id, user);
+    if (submission.status === SubmissionStatus.Draft) {
+      throw new BadRequestException(
+        "Cannot undo acceptance on a draft submission",
+      );
+    }
+
+    const file = submission.files.getItems().find((f) => f.id === fileId);
+    if (!file) throw new NotFoundException("File not found");
+    if (this.isSuperseded(file, submission)) {
+      throw new BadRequestException("Cannot undo a superseded file");
+    }
+    if (file.status !== SubmissionStatus.Accepted) {
+      throw new BadRequestException(
+        "Only accepted files can have acceptance undone",
+      );
+    }
+
+    file.status = SubmissionStatus.UnderReview;
+    file.reviewReason = null;
+    file.reviewedBy = this.em.getReference(UserEntity, user.userId);
+    file.reviewedAt = null;
+
+    await this.recomputeStatus(submission, user);
+    await syncInferredRequestStage(this.em, submission.request.id, {
+      actorId: user.userId,
+    });
+    await this.em.flush();
+    return this.getOne(id, user);
+  }
+
+  /**
+   * Reopen an Accepted file for further review: Accepted → UnderReview with reason.
+   * Does not unlock client replacement (use Return for that). Notifies the submitter.
    */
   async reopenFile(
     id: string,
@@ -872,38 +1057,97 @@ export class SubmissionsService {
       );
     }
 
-    const previous = submission.status;
-    file.status = SubmissionStatus.Returned;
+    file.status = SubmissionStatus.UnderReview;
     file.reviewReason = reason;
     file.reviewedBy = this.em.getReference(UserEntity, user.userId);
-    file.reviewedAt = new Date();
+    file.reviewedAt = null;
 
-    await this.recomputeStatus(submission, user, reason);
-    // If parent was already Returned, recomputeStatus skips notify — still tell the client.
-    if (previous === SubmissionStatus.Returned) {
-      await this.notifications.emit({
-        recipients: [
-          {
-            userId: submission.submittedBy.id,
-            email: submission.submittedBy.email ?? null,
-          },
-        ],
-        type: "submission.reviewed",
-        title: `A file was reopened for revision: ${file.fileName}`,
-        body: reason,
-        entityType: "request",
-        entityId: submission.request.id,
-        link: `/requests/${submission.request.id}`,
-        excludeUserId: user.userId,
-      });
-    }
+    await this.recomputeStatus(submission, user);
+    await this.notifications.emit({
+      recipients: [
+        {
+          userId: submission.submittedBy.id,
+          email: submission.submittedBy.email ?? null,
+        },
+      ],
+      type: "submission.reviewed",
+      title: `A file was reopened for review: ${file.fileName}`,
+      body: reason,
+      entityType: "request",
+      entityId: submission.request.id,
+      link: `/requests/${submission.request.id}`,
+      excludeUserId: user.userId,
+    });
 
+    await syncInferredRequestStage(this.em, submission.request.id, {
+      actorId: user.userId,
+    });
     await this.em.flush();
     return this.getOne(id, user);
   }
 
   /**
-   * Bulk review: apply decision to all current Pending files, then recompute.
+   * Undo a file return: Returned → UnderReview with reason.
+   * Clears client replacement unlock for that file. Notifies the submitter.
+   */
+  async undoReturnFile(
+    id: string,
+    fileId: string,
+    dto: UndoReturnSubmissionFileDto,
+    user: AuthenticatedUser,
+  ): Promise<SubmissionResponseDto> {
+    const reason = dto.reason?.trim();
+    if (!reason) {
+      throw new BadRequestException("A reason is required to undo a return");
+    }
+
+    const submission = await this.loadScoped(id, user);
+    if (submission.status === SubmissionStatus.Draft) {
+      throw new BadRequestException(
+        "Cannot undo return on a draft submission",
+      );
+    }
+
+    const file = submission.files.getItems().find((f) => f.id === fileId);
+    if (!file) throw new NotFoundException("File not found");
+    if (this.isSuperseded(file, submission)) {
+      throw new BadRequestException("Cannot undo return on a superseded file");
+    }
+    if (file.status !== SubmissionStatus.Returned) {
+      throw new BadRequestException("Only returned files can have return undone");
+    }
+
+    file.status = SubmissionStatus.UnderReview;
+    file.reviewReason = reason;
+    file.reviewedBy = this.em.getReference(UserEntity, user.userId);
+    file.reviewedAt = null;
+
+    await this.recomputeStatus(submission, user);
+    await this.notifications.emit({
+      recipients: [
+        {
+          userId: submission.submittedBy.id,
+          email: submission.submittedBy.email ?? null,
+        },
+      ],
+      type: "submission.reviewed",
+      title: `A file return was undone: ${file.fileName}`,
+      body: reason,
+      entityType: "request",
+      entityId: submission.request.id,
+      link: `/requests/${submission.request.id}`,
+      excludeUserId: user.userId,
+    });
+
+    await syncInferredRequestStage(this.em, submission.request.id, {
+      actorId: user.userId,
+    });
+    await this.em.flush();
+    return this.getOne(id, user);
+  }
+
+  /**
+   * Bulk review: apply decision to all current Pending/UnderReview files, then recompute.
    * Kept for "Accept all" convenience.
    */
   async review(
@@ -919,15 +1163,15 @@ export class SubmissionsService {
       throw new BadRequestException("A reason is required when returning");
     }
 
-    const pending = this.currentFiles(submission).filter(
-      (f) => f.status === SubmissionStatus.Pending,
+    const reviewable = this.currentFiles(submission).filter((f) =>
+      this.isReviewable(f.status),
     );
-    if (pending.length === 0) {
+    if (reviewable.length === 0) {
       throw new BadRequestException("No pending files to review");
     }
 
     const now = new Date();
-    for (const file of pending) {
+    for (const file of reviewable) {
       file.status = dto.decision;
       file.reviewReason = dto.reason?.trim() || null;
       file.reviewedBy = this.em.getReference(UserEntity, user.userId);
@@ -935,6 +1179,9 @@ export class SubmissionsService {
     }
 
     await this.recomputeStatus(submission, user, dto.reason?.trim() || null);
+    await syncInferredRequestStage(this.em, submission.request.id, {
+      actorId: user.userId,
+    });
     await this.em.flush();
     return this.getOne(id, user);
   }

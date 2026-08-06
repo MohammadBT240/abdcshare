@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -15,6 +15,7 @@ import {
 import {
   CreateSubmissionDto,
   ReopenSubmissionFileDto,
+  UndoReturnSubmissionFileDto,
   ReviewSubmissionDto,
   ReviewSubmissionFileDto,
   SubmissionFileConfirmDto,
@@ -30,7 +31,7 @@ import {
 export class SubmissionsController {
   constructor(private readonly submissions: SubmissionsService) {}
 
-  /** Client starts a draft response (no staff notification until finalize). */
+  /** Client starts a response shell (Draft until first file confirms / publishes). */
   @Post('requests/:requestId/submissions')
   @RequirePermission('submission:respond')
   create(
@@ -60,7 +61,7 @@ export class SubmissionsController {
     return this.submissions.getOne(id, user);
   }
 
-  /** Promote draft → Pending and notify staff (after uploads succeed). */
+  /** Legacy batch publish. Prefer progressive confirm (first file auto-publishes). */
   @Post('submissions/:id/finalize')
   @RequirePermission('submission:respond')
   finalize(
@@ -70,7 +71,7 @@ export class SubmissionsController {
     return this.submissions.finalize(id, user);
   }
 
-  /** Discard an unfinished draft. */
+  /** Discard an unpublished draft shell (not allowed once visible to staff). */
   @Delete('submissions/:id')
   @HttpCode(204)
   @RequirePermission('submission:respond')
@@ -164,6 +165,21 @@ export class SubmissionsController {
     return this.submissions.requestExport(id, user);
   }
 
+  /** Fresh signed URL for a submission export zip (notification / toast Download). */
+  @Get('submissions/:id/exports/download')
+  @RequirePermission('request:view')
+  exportDownload(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('key') key: string | undefined,
+    @Query('name') name: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ url: string }> {
+    if (!key?.trim()) {
+      throw new BadRequestException('key query required');
+    }
+    return this.submissions.exportDownloadUrl(id, key.trim(), name, user);
+  }
+
   @Get('submissions/:id/files/:fileId/preview')
   @RequirePermission('request:view')
   previewFile(
@@ -198,6 +214,17 @@ export class SubmissionsController {
     return this.submissions.zipEntryUrl(id, fileId, entryPath ?? '', user);
   }
 
+  /** Claim a Pending file for review (Pending → UnderReview). */
+  @Post('submissions/:id/files/:fileId/start-review')
+  @RequirePermission('submission:review')
+  startReview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SubmissionResponseDto> {
+    return this.submissions.startReview(id, fileId, user);
+  }
+
   /** Per-file accept/return — parent status is derived from current files. */
   @Post('submissions/:id/files/:fileId/review')
   @RequirePermission('submission:review')
@@ -210,7 +237,18 @@ export class SubmissionsController {
     return this.submissions.reviewFile(id, fileId, dto, user);
   }
 
-  /** Reopen an Accepted file for revision (Accepted → Returned with reason). */
+  /** Undo acceptance (Accepted → UnderReview). No client notify. */
+  @Post('submissions/:id/files/:fileId/undo-accept')
+  @RequirePermission('submission:review')
+  undoAcceptFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SubmissionResponseDto> {
+    return this.submissions.undoAcceptFile(id, fileId, user);
+  }
+
+  /** Reopen an Accepted file into UnderReview with reason (does not unlock client replace). */
   @Post('submissions/:id/files/:fileId/reopen')
   @RequirePermission('submission:review')
   reopenFile(
@@ -222,7 +260,19 @@ export class SubmissionsController {
     return this.submissions.reopenFile(id, fileId, dto, user);
   }
 
-  /** Bulk: apply decision to all current Pending files (Accept all / Return all). */
+  /** Undo a file return (Returned → UnderReview) with reason. */
+  @Post('submissions/:id/files/:fileId/undo-return')
+  @RequirePermission('submission:review')
+  undoReturnFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Body() dto: UndoReturnSubmissionFileDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SubmissionResponseDto> {
+    return this.submissions.undoReturnFile(id, fileId, dto, user);
+  }
+
+  /** Bulk: apply decision to all current Pending/UnderReview files (Accept all / Return all). */
   @Post('submissions/:id/review')
   @RequirePermission('submission:review')
   review(

@@ -3,6 +3,10 @@ import { SubmissionStatus } from '@abdcshare/shared';
 import { SubmissionsService } from './submissions.service';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 
+jest.mock('../requests/request-stage-sync', () => ({
+  syncInferredRequestStage: jest.fn(async () => null),
+}));
+
 const reviewer = {
   userId: 'reviewer-1',
   email: '',
@@ -57,7 +61,10 @@ function submissionWithFiles(files: ReturnType<typeof file>[], status = Submissi
     submittedBy: { id: 'client-1', email: 'c@x.com' },
     request: {
       id: 'r1',
-      engagement: { team: { getItems: () => [{ user: { id: 'staff-1', email: 's@x.com' } }] } },
+      engagement: {
+        id: 'e1',
+        team: { getItems: () => [{ user: { id: 'staff-1', email: 's@x.com' } }] },
+      },
     },
     files: { getItems: () => files },
     reviewedBy: null,
@@ -86,7 +93,13 @@ describe('SubmissionsService.finalize', () => {
     const files = [file({ id: 'f1', status: SubmissionStatus.Draft })];
     const submission = submissionWithFiles(files, SubmissionStatus.Draft);
     const em = {
-      findOne: jest.fn(async () => submission),
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(submission)
+        .mockResolvedValueOnce({ createdBy: { id: 'creator-1', email: 'c@x.com' } }),
+      find: jest.fn(async () => [
+        { user: { id: 'staff-1', email: 's@x.com' } },
+      ]),
       populate: jest.fn(async () => undefined),
       flush: jest.fn(async () => undefined),
       getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
@@ -98,8 +111,31 @@ describe('SubmissionsService.finalize', () => {
 
     expect(submission.status).toBe(SubmissionStatus.Pending);
     expect(notifications.emit).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'submission.created' }),
+      expect.objectContaining({
+        type: 'submission.created',
+        recipients: expect.arrayContaining([
+          { userId: 'staff-1', email: 's@x.com' },
+          { userId: 'creator-1', email: 'c@x.com' },
+        ]),
+      }),
     );
+  });
+
+  it('finalize is idempotent when already Pending', async () => {
+    const files = [file({ id: 'f1', status: SubmissionStatus.Pending })];
+    const submission = submissionWithFiles(files, SubmissionStatus.Pending);
+    const em = {
+      findOne: jest.fn(async () => submission),
+      flush: jest.fn(),
+      populate: jest.fn(),
+      getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+    };
+    const service = new SubmissionsService(em as never, notifications as never, { enqueue: jest.fn() } as never, storageStub() as never);
+    jest.spyOn(service, 'getOne').mockResolvedValue({ id: 's1', status: SubmissionStatus.Pending } as never);
+
+    await service.finalize('s1', client);
+
+    expect(notifications.emit).not.toHaveBeenCalled();
   });
 
   it('create does not notify (draft is silent)', async () => {
@@ -124,6 +160,97 @@ describe('SubmissionsService.finalize', () => {
       expect.objectContaining({ status: SubmissionStatus.Draft }),
     );
     expect(notifications.emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('SubmissionsService.confirmFile progressive publish', () => {
+  beforeEach(() => notifications.emit.mockClear());
+
+  it('first file on Draft promotes to Pending and notifies staff', async () => {
+    const submission = submissionWithFiles([], SubmissionStatus.Draft);
+    const created: Record<string, unknown> = {};
+    const em = {
+      findOne: jest.fn(async (_entity: unknown, where: { id?: string }) => {
+        if (where?.id === 'e1') {
+          return { createdBy: { id: 'creator-1', email: 'c@x.com' } };
+        }
+        return submission;
+      }),
+      find: jest.fn(async () => [{ user: { id: 'staff-1', email: 's@x.com' } }]),
+      create: jest.fn((_e: unknown, data: Record<string, unknown>) => {
+        Object.assign(created, data, { id: 'new' });
+        const next = [
+          {
+            id: 'new',
+            status: SubmissionStatus.Pending,
+            fileName: data.fileName,
+            replacesFile: null,
+          },
+        ];
+        submission.files.getItems = () => next as never;
+        return created;
+      }),
+      getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+      flush: jest.fn(async () => undefined),
+      populate: jest.fn(async () => undefined),
+    };
+    const service = new SubmissionsService(em as never, notifications as never, { enqueue: jest.fn() } as never, storageStub() as never);
+    jest.spyOn(service, 'getOne').mockResolvedValue({ id: 's1', status: SubmissionStatus.Pending } as never);
+
+    await service.confirmFile(
+      's1',
+      { storageKey: 'k', fileName: 'first.pdf' },
+      client,
+    );
+
+    expect(submission.status).toBe(SubmissionStatus.Pending);
+    expect(created.status).toBe(SubmissionStatus.Pending);
+    expect(notifications.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'submission.created',
+        title: 'A client responded to a request',
+      }),
+    );
+  });
+
+  it('additional file on Pending notifies as added file', async () => {
+    const existing = file({ id: 'f1', status: SubmissionStatus.Pending });
+    const submission = submissionWithFiles([existing], SubmissionStatus.Pending);
+    const created: Record<string, unknown> = {};
+    const em = {
+      findOne: jest.fn(async (_entity: unknown, where: { id?: string }) => {
+        if (where?.id === 'e1') {
+          return { createdBy: { id: 'creator-1', email: 'c@x.com' } };
+        }
+        return submission;
+      }),
+      find: jest.fn(async () => [{ user: { id: 'staff-1', email: 's@x.com' } }]),
+      create: jest.fn((_e: unknown, data: Record<string, unknown>) => {
+        Object.assign(created, data, { id: 'f2' });
+        submission.files.getItems = () =>
+          [
+            existing,
+            { id: 'f2', status: SubmissionStatus.Pending, fileName: data.fileName, replacesFile: null },
+          ] as never;
+        return created;
+      }),
+      getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+      flush: jest.fn(async () => undefined),
+      populate: jest.fn(async () => undefined),
+    };
+    const service = new SubmissionsService(em as never, notifications as never, { enqueue: jest.fn() } as never, storageStub() as never);
+    jest.spyOn(service, 'getOne').mockResolvedValue({ id: 's1' } as never);
+
+    await service.confirmFile(
+      's1',
+      { storageKey: 'k2', fileName: 'second.pdf' },
+      client,
+    );
+
+    expect(created.status).toBe(SubmissionStatus.Pending);
+    expect(notifications.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Client added a file to a response' }),
+    );
   });
 });
 
@@ -193,9 +320,9 @@ describe('SubmissionsService.reviewFile / derived status', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('bulk review applies to all pending current files', async () => {
+  it('bulk review applies to all pending and under-review current files', async () => {
     const f1 = file({ id: 'f1' });
-    const f2 = file({ id: 'f2' });
+    const f2 = file({ id: 'f2', status: SubmissionStatus.UnderReview });
     const submission = submissionWithFiles([f1, f2]);
     const em = {
       findOne: jest.fn(async () => submission),
@@ -212,7 +339,81 @@ describe('SubmissionsService.reviewFile / derived status', () => {
     expect(submission.status).toBe(SubmissionStatus.Accepted);
   });
 
-  it('reopenFile moves Accepted → Returned with reason and notifies', async () => {
+  it('startReview moves Pending → UnderReview and is idempotent', async () => {
+    const f1 = file({ id: 'f1', status: SubmissionStatus.Pending });
+    const submission = submissionWithFiles([f1]);
+    const em = {
+      findOne: jest.fn(async () => submission),
+      getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+      flush: jest.fn(async () => undefined),
+    };
+    const service = new SubmissionsService(
+      em as never,
+      notifications as never,
+      { enqueue: jest.fn() } as never,
+      storageStub() as never,
+    );
+    jest.spyOn(service, 'getOne').mockResolvedValue({ id: 's1' } as never);
+
+    await service.startReview('s1', 'f1', reviewer);
+    expect(f1.status).toBe(SubmissionStatus.UnderReview);
+    expect(submission.status).toBe(SubmissionStatus.UnderReview);
+    expect(notifications.emit).not.toHaveBeenCalled();
+
+    await service.startReview('s1', 'f1', reviewer);
+    expect(f1.status).toBe(SubmissionStatus.UnderReview);
+  });
+
+  it('reviewFile accepts UnderReview files', async () => {
+    const f1 = file({ id: 'f1', status: SubmissionStatus.UnderReview });
+    const submission = submissionWithFiles([f1]);
+    const em = {
+      findOne: jest.fn(async () => submission),
+      getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+      flush: jest.fn(async () => undefined),
+    };
+    const service = new SubmissionsService(
+      em as never,
+      notifications as never,
+      { enqueue: jest.fn() } as never,
+      storageStub() as never,
+    );
+    jest.spyOn(service, 'getOne').mockResolvedValue({ id: 's1' } as never);
+
+    await service.reviewFile('s1', 'f1', { decision: SubmissionStatus.Accepted }, reviewer);
+    expect(f1.status).toBe(SubmissionStatus.Accepted);
+    expect(submission.status).toBe(SubmissionStatus.Accepted);
+  });
+
+  it('undoAcceptFile moves Accepted → UnderReview without notifying', async () => {
+    const f1 = file({
+      id: 'f1',
+      status: SubmissionStatus.Accepted,
+      reviewReason: 'ok',
+    });
+    const submission = submissionWithFiles([f1], SubmissionStatus.Accepted);
+    const em = {
+      findOne: jest.fn(async () => submission),
+      getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+      flush: jest.fn(async () => undefined),
+    };
+    const service = new SubmissionsService(
+      em as never,
+      notifications as never,
+      { enqueue: jest.fn() } as never,
+      storageStub() as never,
+    );
+    jest.spyOn(service, 'getOne').mockResolvedValue({ id: 's1' } as never);
+
+    await service.undoAcceptFile('s1', 'f1', reviewer);
+
+    expect(f1.status).toBe(SubmissionStatus.UnderReview);
+    expect(f1.reviewReason).toBeNull();
+    expect(submission.status).toBe(SubmissionStatus.UnderReview);
+    expect(notifications.emit).not.toHaveBeenCalled();
+  });
+
+  it('reopenFile moves Accepted → UnderReview with reason and notifies', async () => {
     const f1 = file({ id: 'f1', status: SubmissionStatus.Accepted, fileName: 'a.pdf' });
     const submission = submissionWithFiles([f1], SubmissionStatus.Accepted);
     const em = {
@@ -228,11 +429,11 @@ describe('SubmissionsService.reviewFile / derived status', () => {
     );
     jest.spyOn(service, 'getOne').mockResolvedValue({ id: 's1' } as never);
 
-    await service.reopenFile('s1', 'f1', { reason: 'Wrong version' }, reviewer);
+    await service.reopenFile('s1', 'f1', { reason: 'Need another look' }, reviewer);
 
-    expect(f1.status).toBe(SubmissionStatus.Returned);
-    expect(f1.reviewReason).toBe('Wrong version');
-    expect(submission.status).toBe(SubmissionStatus.Returned);
+    expect(f1.status).toBe(SubmissionStatus.UnderReview);
+    expect(f1.reviewReason).toBe('Need another look');
+    expect(submission.status).toBe(SubmissionStatus.UnderReview);
     expect(notifications.emit).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'submission.reviewed' }),
     );
@@ -256,6 +457,60 @@ describe('SubmissionsService.reviewFile / derived status', () => {
       service.reopenFile('s1', 'f1', { reason: 'oops' }, reviewer),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('undoReturnFile moves Returned → UnderReview with reason and notifies', async () => {
+    const f1 = file({
+      id: 'f1',
+      status: SubmissionStatus.Returned,
+      fileName: 'a.pdf',
+      reviewReason: 'Wrong version',
+    });
+    const submission = submissionWithFiles([f1], SubmissionStatus.Returned);
+    const em = {
+      findOne: jest.fn(async () => submission),
+      getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+      flush: jest.fn(async () => undefined),
+    };
+    const service = new SubmissionsService(
+      em as never,
+      notifications as never,
+      { enqueue: jest.fn() } as never,
+      storageStub() as never,
+    );
+    jest.spyOn(service, 'getOne').mockResolvedValue({ id: 's1' } as never);
+
+    await service.undoReturnFile('s1', 'f1', { reason: 'Return was a mistake' }, reviewer);
+
+    expect(f1.status).toBe(SubmissionStatus.UnderReview);
+    expect(f1.reviewReason).toBe('Return was a mistake');
+    expect(submission.status).toBe(SubmissionStatus.UnderReview);
+    expect(notifications.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'submission.reviewed' }),
+    );
+  });
+
+  it('UnderReview wins over Returned when deriving parent status', async () => {
+    const f1 = file({ id: 'f1', status: SubmissionStatus.Returned });
+    const f2 = file({ id: 'f2', status: SubmissionStatus.Pending });
+    const submission = submissionWithFiles([f1, f2], SubmissionStatus.Returned);
+    const em = {
+      findOne: jest.fn(async () => submission),
+      getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+      flush: jest.fn(async () => undefined),
+    };
+    const service = new SubmissionsService(
+      em as never,
+      notifications as never,
+      { enqueue: jest.fn() } as never,
+      storageStub() as never,
+    );
+    jest.spyOn(service, 'getOne').mockResolvedValue({ id: 's1' } as never);
+
+    await service.startReview('s1', 'f2', reviewer);
+
+    expect(f2.status).toBe(SubmissionStatus.UnderReview);
+    expect(submission.status).toBe(SubmissionStatus.UnderReview);
+  });
 });
 
 describe('SubmissionsService.confirmFile replacement', () => {
@@ -266,7 +521,13 @@ describe('SubmissionsService.confirmFile replacement', () => {
     const submission = submissionWithFiles([old], SubmissionStatus.Returned);
     const created: Record<string, unknown> = {};
     const em = {
-      findOne: jest.fn(async () => submission),
+      findOne: jest.fn(async (_entity: unknown, where: { id?: string }) => {
+        if (where?.id === 'e1') {
+          return { createdBy: { id: 'creator-1', email: 'c@x.com' } };
+        }
+        return submission;
+      }),
+      find: jest.fn(async () => [{ user: { id: 'staff-1', email: 's@x.com' } }]),
       create: jest.fn((_e: unknown, data: Record<string, unknown>) => {
         Object.assign(created, data, { id: 'new' });
         // Simulate collection update: add new file that replaces old
@@ -409,6 +670,21 @@ describe('SubmissionsService.download / preview / zip-entries', () => {
       'submission.export_requested',
       expect.objectContaining({ submissionId: 's1', actorUserId: reviewer.userId }),
     );
+  });
+
+  it('exportDownloadUrl rejects keys outside this submission prefix', async () => {
+    const f1 = file({ id: 'f1', storageKey: 'k', fileName: 'a.pdf' });
+    const submission = submissionWithFiles([f1]);
+    const em = { findOne: jest.fn(async () => submission) };
+    const service = new SubmissionsService(
+      em as never,
+      notifications as never,
+      { enqueue: jest.fn() } as never,
+      storageStub() as never,
+    );
+    await expect(
+      service.exportDownloadUrl('s1', 'abdcshare/exports/other/file.zip', 'x.zip', reviewer),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('downloadUrl returns scoped presigned URL', async () => {
