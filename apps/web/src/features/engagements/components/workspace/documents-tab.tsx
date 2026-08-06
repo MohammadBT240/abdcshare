@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -8,9 +8,11 @@ import {
   IconDownload,
   IconEye,
   IconTrash,
+  IconUpload,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data/data-table";
+import { StatusPill, formatStatusLabel, resolveStatusTone } from "@/components/data";
 import { FileTypeIcon } from "@/components/data/file-type-icon";
 import {
   AppSelect,
@@ -20,10 +22,12 @@ import {
   FormDialog,
   FormField,
   LoadingButton,
+  UPLOAD_MAX_BYTES,
+  formatMaxBytesLabel,
 } from "@/components/forms";
+import { MULTIPART_THRESHOLD_BYTES } from "@/lib/uploads/uppy-client";
 import { FileViewerDialog } from "@/components/files/file-viewer-dialog";
 import { useAuthContext } from "@/components/providers/auth-provider";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,6 +37,7 @@ import {
   type DocumentDetail,
   type DocumentListItem,
   type DocumentStatus,
+  type ReportReviewState,
   useCreateDocument,
   useDeleteDocument,
   useDocument,
@@ -48,18 +53,22 @@ import {
 } from "@/features/documents/hooks/use-documents";
 import type { EngagementWorkspace } from "@/features/engagements/hooks/use-engagements";
 import {
+  type ReportReviewStatus,
+  sendFinalReportToClient,
   useFirmReportReview,
   useOverrideFinalReport,
   useSendFinalReport,
 } from "@/features/report-reviews/hooks/use-report-reviews";
 import { useRequestsList } from "@/features/requests/hooks/use-requests";
 import { BffClientError } from "@/lib/bff/client";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 const CATEGORY_LABELS: Record<
   Extract<DocumentCategory, "WorkingPaper" | "FinalReport">,
@@ -85,6 +94,32 @@ function formatStatus(status: DocumentStatus): string {
   return status.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
+function firmClientReviewLabel(state?: ReportReviewState | null): string {
+  switch (state) {
+    case "AwaitingClient":
+      return "Awaiting client";
+    case "ChangesRequested":
+      return "Changes requested";
+    case "Locked":
+      return "Locked";
+    case "Approved":
+      return "Approved";
+    case "Overridden":
+      return "Issued";
+    case "NotSent":
+      return "Not sent";
+    default:
+      return state ? formatStatusLabel(state) : "—";
+  }
+}
+
+function formatWhen(iso?: string | Date | null): string {
+  if (!iso) return "—";
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
 interface DocumentsTabProps {
   engagementId: string;
   workspace: EngagementWorkspace;
@@ -98,10 +133,15 @@ export function DocumentsTab({ engagementId, workspace }: DocumentsTabProps) {
   const category = parseCategory(searchParams.get("category"));
   const classId = searchParams.get("classId") ?? "";
   const requestId = searchParams.get("requestId") ?? "";
+  const documentIdParam = searchParams.get("documentId") ?? "";
   const page = Number(searchParams.get("page") ?? "1") || 1;
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(documentIdParam);
   const exportDocuments = useExportDocuments();
+
+  useEffect(() => {
+    if (documentIdParam) setSelectedId(documentIdParam);
+  }, [documentIdParam]);
 
   const listQuery = useMemo(() => {
     const query = new URLSearchParams({
@@ -192,9 +232,28 @@ export function DocumentsTab({ engagementId, workspace }: DocumentsTabProps) {
         accessorKey: "status",
         header: "Status",
         cell: ({ row }) => (
-          <Badge variant="outline">{formatStatus(row.original.status)}</Badge>
+          <StatusPill tone={resolveStatusTone(row.original.status)}>
+            {formatStatusLabel(row.original.status)}
+          </StatusPill>
         ),
       },
+      ...(category === "FinalReport"
+        ? [
+            {
+              id: "clientReview",
+              header: "Client review",
+              cell: ({ row }) => (
+                <StatusPill
+                  tone={resolveStatusTone(
+                    row.original.clientReviewState ?? "NotSent",
+                  )}
+                >
+                  {firmClientReviewLabel(row.original.clientReviewState)}
+                </StatusPill>
+              ),
+            } satisfies ColumnDef<DocumentListItem, unknown>,
+          ]
+        : []),
       {
         accessorKey: "phase",
         header: "Phase",
@@ -329,6 +388,30 @@ export function DocumentsTab({ engagementId, workspace }: DocumentsTabProps) {
 }
 
 
+function formatUploadBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatUploadSpeed(bytesPerSecond: number | null): string | null {
+  if (bytesPerSecond == null || bytesPerSecond <= 0) return null;
+  if (bytesPerSecond < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytesPerSecond / 1024))} KB/s`;
+  }
+  return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
+type DocumentUploadProgress = {
+  percent: number;
+  bytesUploaded: number;
+  bytesTotal: number;
+  speedBps: number | null;
+};
+
 function UploadDocumentDialog({
   open,
   onOpenChange,
@@ -346,6 +429,7 @@ function UploadDocumentDialog({
 }) {
   const createDocument = useCreateDocument();
   const uploadFile = useUploadDocumentFile();
+  const queryClient = useQueryClient();
   const requests = useRequestsList(`engagementId=${engagementId}&pageSize=100`);
   const isWorkingPaper = category === "WorkingPaper";
   const [selectedClassId, setSelectedClassId] = useState(
@@ -355,7 +439,10 @@ function UploadDocumentDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
+  const [uploadProgress, setUploadProgress] =
+    useState<DocumentUploadProgress | null>(null);
+  const [sendingToClient, setSendingToClient] = useState(false);
+  const speedSampleRef = useRef<{ t: number; bytes: number } | null>(null);
 
   const requestOptions = useMemo(
     () =>
@@ -371,7 +458,12 @@ function UploadDocumentDialog({
         })),
     [requests.data, selectedClassId],
   );
-  const saving = createDocument.isPending || uploadFile.isPending;
+  const saving =
+    createDocument.isPending || uploadFile.isPending || sendingToClient;
+  const maxLabel = formatMaxBytesLabel(UPLOAD_MAX_BYTES);
+  const speedLabel = uploadProgress
+    ? formatUploadSpeed(uploadProgress.speedBps)
+    : null;
 
   async function submit() {
     if (!title.trim()) {
@@ -385,7 +477,13 @@ function UploadDocumentDialog({
     }
 
     try {
-      setUploadPercent(0);
+      speedSampleRef.current = null;
+      setUploadProgress({
+        percent: 0,
+        bytesUploaded: 0,
+        bytesTotal: file.size,
+        speedBps: null,
+      });
       const created = await createDocument.mutateAsync({
         engagementId,
         category,
@@ -400,11 +498,53 @@ function UploadDocumentDialog({
       await uploadFile.mutateAsync({
         documentId: created.id,
         file,
-        onProgress: setUploadPercent,
+        onBytesProgress: ({ percent, bytesUploaded, bytesTotal }) => {
+          const now = performance.now();
+          const prev = speedSampleRef.current;
+          let nextSpeed: number | null | undefined;
+          if (prev) {
+            const dt = (now - prev.t) / 1000;
+            if (dt >= 0.35) {
+              nextSpeed = Math.max(0, (bytesUploaded - prev.bytes) / dt);
+              speedSampleRef.current = { t: now, bytes: bytesUploaded };
+            }
+          } else {
+            speedSampleRef.current = { t: now, bytes: bytesUploaded };
+          }
+          setUploadProgress((current) => ({
+            percent,
+            bytesUploaded,
+            bytesTotal,
+            speedBps:
+              nextSpeed !== undefined
+                ? nextSpeed
+                : (current?.speedBps ?? null),
+          }));
+        },
       });
-      toast.success(
-        isWorkingPaper ? "Working paper uploaded" : "Final report uploaded",
-      );
+      if (!isWorkingPaper) {
+        setSendingToClient(true);
+        try {
+          await sendFinalReportToClient(created.id);
+          await queryClient.invalidateQueries({ queryKey: ["report-reviews"] });
+          await queryClient.invalidateQueries({
+            queryKey: ["documents", "detail", created.id],
+          });
+          toast.success("Final report uploaded and sent to the client");
+        } catch (sendError) {
+          toast.error(
+            sendError instanceof BffClientError
+              ? `Uploaded, but failed to send: ${sendError.message}`
+              : "Uploaded, but failed to send to the client",
+          );
+          onOpenChange(false);
+          return;
+        } finally {
+          setSendingToClient(false);
+        }
+      } else {
+        toast.success("Working paper uploaded");
+      }
       onOpenChange(false);
     } catch (error) {
       toast.error(
@@ -413,7 +553,9 @@ function UploadDocumentDialog({
           : "Failed to upload document",
       );
     } finally {
-      setUploadPercent(null);
+      speedSampleRef.current = null;
+      setUploadProgress(null);
+      setSendingToClient(false);
     }
   }
 
@@ -425,12 +567,12 @@ function UploadDocumentDialog({
       description={
         isWorkingPaper
           ? "Engagement-scoped. Request class and request link are optional."
-          : "Engagement deliverable for client review cycles. Super Admin only."
+          : "Uploads the file and sends it to the client for review automatically. Super Admin only."
       }
       maxWidthClass="sm:max-w-2xl"
       footer={
         <LoadingButton type="button" loading={saving} onClick={submit}>
-          Upload
+          {isWorkingPaper ? "Upload" : "Upload & send"}
         </LoadingButton>
       }
     >
@@ -488,23 +630,38 @@ function UploadDocumentDialog({
               }
             }}
             accept={ATTACHMENT_ACCEPT}
+            maxBytes={UPLOAD_MAX_BYTES}
             label="Choose document"
-            description="Upload one file (including zip), up to 100 MB. Large files upload in chunks with retries."
+            description={`PDF, Office, images, video, zip, and more — one file up to ${maxLabel}. Large files upload in chunks with retries.`}
             disabled={saving}
           />
         </FormField>
-        {uploadPercent != null && files[0] ? (
-          <div className="rounded-md border border-border bg-muted/20 px-3 py-2 space-y-1.5">
+        {uploadProgress != null && files[0] ? (
+          <div className="space-y-1.5 rounded-md border border-border bg-muted/20 px-3 py-2">
             <div className="flex justify-between gap-2 text-xs">
               <span className="min-w-0 truncate font-medium">{files[0].name}</span>
-              <span className="shrink-0 text-muted-foreground">{uploadPercent}%</span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">
+                {uploadProgress.percent}%
+                {speedLabel ? ` · ${speedLabel}` : ""}
+                {uploadProgress.bytesTotal > MULTIPART_THRESHOLD_BYTES
+                  ? " · multipart"
+                  : ""}
+              </span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full bg-primary transition-[width]"
-                style={{ width: `${uploadPercent}%` }}
+                className="h-full bg-primary transition-[width] duration-150"
+                style={{ width: `${uploadProgress.percent}%` }}
               />
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              {formatUploadBytes(uploadProgress.bytesUploaded)}
+              {" / "}
+              {formatUploadBytes(uploadProgress.bytesTotal)}
+              {uploadProgress.bytesTotal > MULTIPART_THRESHOLD_BYTES
+                ? " — large file, uploading in chunks"
+                : null}
+            </p>
           </div>
         ) : null}
       </div>
@@ -539,10 +696,20 @@ function DocumentDetailPanel({
   );
   const sendReport = useSendFinalReport(id);
   const overrideReport = useOverrideFinalReport(id);
+  const uploadRevision = useUploadDocumentFile();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  const [revisionOpen, setRevisionOpen] = useState(false);
+  const [revisionFiles, setRevisionFiles] = useState<File[]>([]);
+  const [revisionProgress, setRevisionProgress] = useState<{
+    percent: number;
+    bytesUploaded: number;
+    bytesTotal: number;
+    speedBps: number | null;
+  } | null>(null);
+  const revisionSpeedRef = useRef<{ t: number; bytes: number } | null>(null);
 
   if (document.isPending) {
     return (
@@ -573,6 +740,26 @@ function DocumentDetailPanel({
     latestFile?.mimeType === "application/zip" ||
     latestFile?.mimeType === "application/x-zip-compressed" ||
     Boolean(latestFile?.fileName?.toLowerCase().endsWith(".zip"));
+  const review: ReportReviewStatus | undefined = reportReview.data;
+  const lastCycle = review?.cycles.at(-1);
+  const latestFeedback = [...(review?.cycles ?? [])]
+    .reverse()
+    .find((c) => c.feedback && c.decision === "ChangesRequested")?.feedback;
+  const needsNewerVersion =
+    review?.reviewState === "ChangesRequested" &&
+    Boolean(lastCycle) &&
+    detail.currentVersion <= (lastCycle?.fileVersion ?? 0);
+  const canUploadRevision =
+    detail.category === "FinalReport" &&
+    canManageFinalReports &&
+    Boolean(review) &&
+    ["NotSent", "ChangesRequested"].includes(review!.reviewState);
+  /** Recovery if file uploaded but send failed before a cycle was created. */
+  const showSendRecovery =
+    detail.category === "FinalReport" &&
+    canManageReportReview &&
+    review?.reviewState === "NotSent" &&
+    detail.currentVersion >= 1;
 
   async function transitionStatus() {
     if (!nextStatus) return;
@@ -702,12 +889,24 @@ function DocumentDetailPanel({
                   <IconArrowRight className="ml-2 h-4 w-4" />
                 </LoadingButton>
               ) : null}
-              {detail.category === "FinalReport" &&
-              canManageReportReview &&
-              reportReview.data &&
-              ["NotSent", "ChangesRequested"].includes(
-                reportReview.data.reviewState,
-              ) ? (
+              {canUploadRevision ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setRevisionFiles([]);
+                    setRevisionProgress(null);
+                    setRevisionOpen(true);
+                  }}
+                >
+                  <IconUpload className="mr-2 h-4 w-4" />
+                  {review?.reviewState === "ChangesRequested"
+                    ? "Upload & send revision"
+                    : "Upload & send"}
+                </Button>
+              ) : null}
+              {showSendRecovery ? (
                 <LoadingButton
                   type="button"
                   size="sm"
@@ -719,7 +918,7 @@ function DocumentDetailPanel({
               ) : null}
               {detail.category === "FinalReport" &&
               canManageReportReview &&
-              reportReview.data?.reviewState === "Locked" ? (
+              review?.reviewState === "Locked" ? (
                 <Button
                   type="button"
                   size="sm"
@@ -747,7 +946,14 @@ function DocumentDetailPanel({
           </div>
 
           <div className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
-            <DetailField label="Status" value={formatStatus(detail.status)} />
+            <DetailField
+              label="Status"
+              value={
+                <StatusPill tone={resolveStatusTone(detail.status)}>
+                  {formatStatusLabel(detail.status)}
+                </StatusPill>
+              }
+            />
             <DetailField label="Phase" value={detail.phase || "—"} />
             <DetailField
               label="Updated"
@@ -792,25 +998,101 @@ function DocumentDetailPanel({
           ) : null}
 
           {detail.category === "FinalReport" && canManageReportReview ? (
-            <div className="mt-4 border-t border-border pt-4">
+            <div className="mt-4 space-y-4 border-t border-border pt-4">
               {reportReview.isPending ? (
                 <p className="text-sm text-muted-foreground">
                   Loading client review status…
                 </p>
-              ) : reportReview.data ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <DetailField
-                    label="Client review"
-                    value={reportReview.data.reviewState.replace(
-                      /([a-z])([A-Z])/g,
-                      "$1 $2",
+              ) : review ? (
+                <>
+                  <div
+                    className={cn(
+                      "rounded-lg border border-border px-4 py-3",
+                      review.reviewState === "ChangesRequested" &&
+                        "bg-amber-50 dark:bg-amber-950/30",
+                      review.reviewState === "Locked" &&
+                        "bg-destructive/5",
+                      review.reviewState === "AwaitingClient" &&
+                        "bg-sky-50 dark:bg-sky-950/30",
+                      (review.reviewState === "Approved" ||
+                        review.reviewState === "Overridden") &&
+                        "bg-emerald-50 dark:bg-emerald-950/30",
                     )}
-                  />
-                  <DetailField
-                    label="Review cycle"
-                    value={`${reportReview.data.reviewRound} of ${reportReview.data.maxRounds}`}
-                  />
-                </div>
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Client review
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusPill tone={resolveStatusTone(review.reviewState)}>
+                            {firmClientReviewLabel(review.reviewState)}
+                          </StatusPill>
+                          <span className="text-sm text-muted-foreground">
+                            Round {review.reviewRound} of {review.maxRounds}
+                            {" · "}v{detail.currentVersion}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    {review.reviewState === "ChangesRequested" && latestFeedback ? (
+                      <p className="mt-3 text-sm whitespace-pre-wrap">
+                        <span className="font-medium">Client feedback: </span>
+                        {latestFeedback}
+                      </p>
+                    ) : null}
+                    {review.reviewState === "ChangesRequested" && needsNewerVersion ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Upload a revised file to send round{" "}
+                        {(review.reviewRound ?? 0) + 1} to the client
+                        automatically.
+                      </p>
+                    ) : null}
+                    {review.reviewState === "Locked" ? (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Maximum review cycles used without approval. Override to
+                        issue the report, or keep revising offline.
+                      </p>
+                    ) : null}
+                    {review.reviewState === "Approved" ||
+                    review.reviewState === "Overridden" ? (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        This report is finalised and issued to the client.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  {review.cycles.length ? (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold">Review history</h3>
+                      <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+                        {review.cycles.map((cycle) => (
+                          <li key={cycle.id} className="space-y-1 p-3 text-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="font-medium">
+                                Round {cycle.roundNo} · v{cycle.fileVersion}
+                              </span>
+                              <StatusPill tone={resolveStatusTone(cycle.decision)}>
+                                {formatStatusLabel(cycle.decision)}
+                              </StatusPill>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Sent {formatWhen(cycle.sentAt)}
+                              {cycle.decidedAt
+                                ? ` · Decided ${formatWhen(cycle.decidedAt)}`
+                                : ""}
+                            </p>
+                            {cycle.feedback ? (
+                              <p className="text-muted-foreground whitespace-pre-wrap">
+                                {cycle.feedback}
+                              </p>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </>
               ) : (
                 <p className="text-sm text-destructive">
                   Failed to load client review status
@@ -829,6 +1111,124 @@ function DocumentDetailPanel({
             confirming={remove.isPending}
             onConfirm={deleteDocument}
           />
+          <FormDialog
+            open={revisionOpen}
+            onOpenChange={(open) => {
+              setRevisionOpen(open);
+              if (!open) {
+                setRevisionFiles([]);
+                setRevisionProgress(null);
+                revisionSpeedRef.current = null;
+              }
+            }}
+            title="Upload & send revised final report"
+            description="Uploads a new file version and sends it to the client for the next review round automatically."
+            maxWidthClass="sm:max-w-lg"
+            footer={
+              <LoadingButton
+                type="button"
+                loading={uploadRevision.isPending || sendReport.isPending}
+                disabled={revisionFiles.length === 0}
+                onClick={async () => {
+                  const file = revisionFiles[0];
+                  if (!file) return;
+                  try {
+                    revisionSpeedRef.current = null;
+                    setRevisionProgress({
+                      percent: 0,
+                      bytesUploaded: 0,
+                      bytesTotal: file.size,
+                      speedBps: null,
+                    });
+                    await uploadRevision.mutateAsync({
+                      documentId: detail.id,
+                      file,
+                      onBytesProgress: ({ percent, bytesUploaded, bytesTotal }) => {
+                        const now = performance.now();
+                        const prev = revisionSpeedRef.current;
+                        let nextSpeed: number | null | undefined;
+                        if (prev) {
+                          const dt = (now - prev.t) / 1000;
+                          if (dt >= 0.35) {
+                            nextSpeed = Math.max(0, (bytesUploaded - prev.bytes) / dt);
+                            revisionSpeedRef.current = { t: now, bytes: bytesUploaded };
+                          }
+                        } else {
+                          revisionSpeedRef.current = { t: now, bytes: bytesUploaded };
+                        }
+                        setRevisionProgress((current) => ({
+                          percent,
+                          bytesUploaded,
+                          bytesTotal,
+                          speedBps:
+                            nextSpeed !== undefined
+                              ? nextSpeed
+                              : (current?.speedBps ?? null),
+                        }));
+                      },
+                    });
+                    try {
+                      await sendReport.mutateAsync();
+                      toast.success("Revision uploaded and sent to the client");
+                    } catch (sendError) {
+                      toast.error(
+                        sendError instanceof BffClientError
+                          ? `Uploaded, but failed to send: ${sendError.message}`
+                          : "Uploaded, but failed to send to the client",
+                      );
+                    }
+                    setRevisionOpen(false);
+                    setRevisionFiles([]);
+                    setRevisionProgress(null);
+                  } catch (error) {
+                    toast.error(
+                      error instanceof BffClientError
+                        ? error.message
+                        : "Failed to upload revision",
+                    );
+                  } finally {
+                    revisionSpeedRef.current = null;
+                  }
+                }}
+              >
+                Upload & send
+              </LoadingButton>
+            }
+          >
+            <FormField label="File" required>
+              <FileUpload
+                files={revisionFiles}
+                onChange={setRevisionFiles}
+                accept={ATTACHMENT_ACCEPT}
+                maxBytes={UPLOAD_MAX_BYTES}
+                label="Choose revised document"
+                description={`PDF, Office, images, video, zip, and more — up to ${formatMaxBytesLabel(UPLOAD_MAX_BYTES)}.`}
+                disabled={uploadRevision.isPending}
+              />
+            </FormField>
+            {revisionProgress != null && revisionFiles[0] ? (
+              <div className="mt-3 space-y-1.5 rounded-md border border-border bg-muted/20 px-3 py-2">
+                <div className="flex justify-between gap-2 text-xs">
+                  <span className="min-w-0 truncate font-medium">
+                    {revisionFiles[0].name}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                    {revisionProgress.percent}%
+                    {revisionProgress.bytesTotal > MULTIPART_THRESHOLD_BYTES
+                      ? " · multipart"
+                      : ""}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full bg-primary transition-[width] duration-150"
+                    style={{ width: `${revisionProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </FormDialog>
+
           <FormDialog
             open={overrideOpen}
             onOpenChange={setOverrideOpen}
@@ -859,13 +1259,19 @@ function DocumentDetailPanel({
   );
 }
 
-function DetailField({ label, value }: { label: string; value: string }) {
+function DetailField({
+  label,
+  value,
+}: {
+  label: string;
+  value: ReactNode;
+}) {
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
-      <p className="text-sm">{value}</p>
+      <div className="text-sm">{value}</div>
     </div>
   );
 }

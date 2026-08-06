@@ -11,6 +11,13 @@ import { bffApi } from "@/lib/bff/client";
 
 export type DocumentCategory = "WorkingPaper" | "FinalReport" | "Supporting";
 export type DocumentStatus = "Draft" | "Ready" | "UnderReview" | "SignedOff";
+export type ReportReviewState =
+  | "NotSent"
+  | "AwaitingClient"
+  | "ChangesRequested"
+  | "Locked"
+  | "Approved"
+  | "Overridden";
 export type EngagementPhase = "Planning" | "Execution" | "Reporting";
 export type DocumentParticipantRole = "Auditor" | "Advisor" | "Staff";
 
@@ -42,6 +49,8 @@ export interface DocumentListItem {
   description?: string | null;
   status: DocumentStatus;
   currentVersion: number;
+  clientReviewState?: ReportReviewState;
+  clientReviewRound?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -121,14 +130,20 @@ export function useUploadDocumentFile() {
       documentId,
       file,
       onProgress,
+      onBytesProgress,
     }: {
       documentId: string;
       file: File;
       onProgress?: (percent: number) => void;
+      onBytesProgress?: (progress: {
+        percent: number;
+        bytesUploaded: number;
+        bytesTotal: number;
+      }) => void;
     }) => {
       const { uploadFilesWithUppy } = await import("@/lib/uploads/uppy-client");
       await uploadFilesWithUppy(
-        { kind: "document", parentId: documentId, onProgress },
+        { kind: "document", parentId: documentId, onProgress, onBytesProgress },
         [file],
       );
       return bffApi<DocumentDetail>(`/api/documents/${documentId}`);
