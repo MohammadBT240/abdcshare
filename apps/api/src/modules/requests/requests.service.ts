@@ -2,18 +2,40 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import { wrap, type FilterQuery } from "@mikro-orm/core";
 import { EntityManager } from "@mikro-orm/postgresql";
-import { hasPermission, phaseForStage, type Paginated } from "@abdcshare/shared";
+import {
+  computeRequestProgressPercent,
+  EVENT,
+  FilePreviewStatus,
+  hasPermission,
+  isRequestOverdue,
+  phaseForStage,
+  REQUEST_STAGE,
+  type Paginated,
+} from "@abdcshare/shared";
 import { pageParams, paginated } from "../../common/pagination/paginate";
+import { batchAcceptedFileCounts } from "../../common/metrics/accepted-file-counts";
+import { syncInferredRequestStage } from "./request-stage-sync";
 import {
   engagementScopeWhere,
   resolveScope,
 } from "../../common/security/access-scope";
 import type { AuthenticatedUser } from "../../common/interfaces/authenticated-user";
+import { STORAGE, type StoragePort } from "../../common/storage/storage.port";
+import { UPLOAD_MAX_BYTES } from "../../common/storage/upload.constants";
+import { presignAvatar } from "../../common/storage/presign-avatar";
+import {
+  initialPreviewStatus,
+  isBlockedPreviewType,
+  isNativePreviewable,
+  isOfficeMime,
+  isPreviewAllowlisted,
+} from "../../common/storage/preview.util";
 import { RequestEntity } from "./infrastructure/persistence/request.entity";
 import { RequestAssigneeEntity } from "./infrastructure/persistence/request-assignee.entity";
 import { RequestHistoryEntity } from "./infrastructure/persistence/request-history.entity";
@@ -27,14 +49,19 @@ import { UserEntity } from "../users/infrastructure/persistence/user.entity";
 import { ClientSubmissionEntity } from "../submissions/infrastructure/persistence/client-submission.entity";
 import { DocumentEntity } from "../documents/infrastructure/persistence/document.entity";
 import { NotificationsService } from "../notifications/notifications.service";
+import { OutboxService } from "../outbox/outbox.service";
 import {
   assigneesOrTeamRecipients,
+  engagementClientContactRecipients,
   engagementTeamRecipients,
+  mergeRecipients,
 } from "../notifications/recipient-helpers";
 import type {
   AssignRequestDto,
   BulkUpdateRequestsDto,
+  ConfirmRequestBriefDto,
   CreateRequestDto,
+  PresignRequestBriefDto,
   RequestListQueryDto,
   SetStageDto,
   SetStatusDto,
@@ -60,6 +87,8 @@ export class RequestsService {
   constructor(
     private readonly em: EntityManager,
     private readonly notifications: NotificationsService,
+    private readonly outbox: OutboxService,
+    @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
 
   private writeHistory(
@@ -107,7 +136,10 @@ export class RequestsService {
     return request;
   }
 
-  private toDto(r: RequestEntity): RequestResponseDto {
+  private async toDto(
+    r: RequestEntity,
+    acceptedFileCount = 0,
+  ): Promise<RequestResponseDto> {
     const requestClass = r.requestType.requestClass;
     const engagementReady = wrap(r.engagement).isInitialized();
     const engagement = engagementReady ? r.engagement : null;
@@ -117,6 +149,17 @@ export class RequestsService {
       engagement && wrap(engagement.department).isInitialized()
         ? engagement.department
         : null;
+    const expected = Math.max(1, r.expectedDocumentCount ?? 1);
+    const statusName = r.status ? r.status.name : null;
+    const assignees = r.assignees.isInitialized()
+      ? await Promise.all(
+          r.assignees.getItems().map(async (a) => ({
+            userId: a.user.id,
+            fullName: a.user.fullName,
+            avatarUrl: await presignAvatar(this.storage, a.user.avatarPath),
+          })),
+        )
+      : [];
     return {
       id: r.id,
       engagementId: r.engagement.id,
@@ -133,22 +176,41 @@ export class RequestsService {
       stageId: r.stage ? r.stage.id : null,
       stageName: r.stage ? r.stage.name : null,
       statusId: r.status ? r.status.id : null,
-      statusName: r.status ? r.status.name : null,
+      statusName,
       phase: r.phase ?? null,
       description: r.description,
       dueDate: r.dueDate ?? null,
+      expectedDocumentCount: expected,
+      acceptedFileCount,
+      progressPercent: computeRequestProgressPercent(
+        expected,
+        acceptedFileCount,
+        statusName,
+      ),
+      isOverdue: isRequestOverdue(r.dueDate, statusName),
+      brief: r.briefStorageKey
+        ? {
+            fileName: r.briefFileName ?? "brief",
+            contentType: r.briefContentType ?? null,
+            sizeBytes:
+              r.briefSizeBytes != null ? Number(r.briefSizeBytes) : null,
+            uploadedAt: r.briefUploadedAt ?? null,
+          }
+        : null,
       createdAt: r.createdAt,
-      assignees: r.assignees.isInitialized()
-        ? r.assignees.getItems().map((a) => ({
-            userId: a.user.id,
-            fullName: a.user.fullName,
-          }))
-        : [],
+      assignees,
     };
   }
 
-  private toDetailDto(r: RequestEntity): RequestDetailResponseDto {
-    return this.toDto(r);
+  private async toDetailDto(
+    r: RequestEntity,
+    acceptedFileCount = 0,
+  ): Promise<RequestDetailResponseDto> {
+    return this.toDto(r, acceptedFileCount);
+  }
+
+  private batchAcceptedFileCounts(requestIds: string[]) {
+    return batchAcceptedFileCounts(this.em, requestIds);
   }
 
   /** Lowest-sortOrder active stage/status — the default a new request opens in. */
@@ -208,9 +270,11 @@ export class RequestsService {
         `request class "${requestType.requestClass.name}" is not in scope for this engagement — add it first`,
       );
     }
-    const stage = dto.stageId
-      ? await this.em.findOne(RequestStageEntity, { id: dto.stageId })
-      : await this.firstStage();
+    const stage =
+      (await this.em.findOne(RequestStageEntity, {
+        name: REQUEST_STAGE.NotStarted,
+        isActive: true,
+      })) ?? (await this.firstStage());
     if (!stage)
       throw new BadRequestException(
         "No request stage available — configure stages first",
@@ -223,6 +287,14 @@ export class RequestsService {
         "No request status available — configure statuses first",
       );
 
+    const expectedDocumentCount = Math.min(
+      500,
+      Math.max(
+        1,
+        dto.expectedDocumentCount ?? requestType.expectedDocuments ?? 1,
+      ),
+    );
+
     const request = this.em.create(RequestEntity, {
       engagement,
       requestType,
@@ -231,8 +303,15 @@ export class RequestsService {
       phase: dto.phase ?? phaseForStage(engagement.stage),
       description: dto.description ?? "",
       dueDate: dto.dueDate ?? null,
+      expectedDocumentCount,
+      briefPreviewStatus: FilePreviewStatus.None,
       createdBy: this.em.getReference(UserEntity, userId),
     });
+
+    const clientContacts = await engagementClientContactRecipients(
+      this.em,
+      dto.engagementId,
+    );
 
     if (dto.assigneeIds && dto.assigneeIds.length > 0) {
       const unique = [...new Set(dto.assigneeIds)];
@@ -259,10 +338,23 @@ export class RequestsService {
         link: `/requests/${request.id}`,
         excludeUserId: userId,
       });
+      // Clients still learn about the new request (in-app / email per flags).
+      if (clientContacts.length) {
+        await this.notifications.emit({
+          recipients: clientContacts,
+          type: "request.created",
+          title: "New request on engagement",
+          body: (dto.description ?? requestType.name)?.slice(0, 140),
+          entityType: "request",
+          entityId: request.id,
+          link: `/requests/${request.id}`,
+          excludeUserId: userId,
+        });
+      }
     } else {
       const team = await engagementTeamRecipients(this.em, dto.engagementId);
       await this.notifications.emit({
-        recipients: team,
+        recipients: mergeRecipients(team, clientContacts),
         type: "request.created",
         title: "New request on engagement",
         body: (dto.description ?? requestType.name)?.slice(0, 140),
@@ -284,19 +376,65 @@ export class RequestsService {
     query: RequestListQueryDto,
     user?: AuthenticatedUser,
   ): Promise<Paginated<RequestResponseDto>> {
+    const csv = (value?: string) =>
+      (value ?? "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+    const csvInts = (value?: string) =>
+      csv(value)
+        .map((id) => Number(id))
+        .filter((n) => Number.isFinite(n));
+
     const where: Record<string, unknown> = {};
-    if (query.requestClassId)
-      where.requestType = { requestClass: query.requestClassId };
-    if (query.stageId) where.stage = query.stageId;
-    if (query.statusId) where.status = query.statusId;
-    if (query.phase) where.phase = query.phase;
-    if (query.assigneeId) where.assignees = { user: query.assigneeId };
+
+    const classIds = [
+      ...csvInts(query.requestClassIds),
+      ...(query.requestClassId != null ? [query.requestClassId] : []),
+    ];
+    if (classIds.length === 1) where.requestType = { requestClass: classIds[0] };
+    else if (classIds.length > 1)
+      where.requestType = { requestClass: { $in: classIds } };
+
+    const stageIds = [
+      ...csvInts(query.stageIds),
+      ...(query.stageId != null ? [query.stageId] : []),
+    ];
+    if (stageIds.length === 1) where.stage = stageIds[0];
+    else if (stageIds.length > 1) where.stage = { $in: stageIds };
+
+    const statusIds = [
+      ...csvInts(query.statusIds),
+      ...(query.statusId != null ? [query.statusId] : []),
+    ];
+    if (statusIds.length === 1) where.status = statusIds[0];
+    else if (statusIds.length > 1) where.status = { $in: statusIds };
+
+    const phases = [
+      ...csv(query.phases),
+      ...(query.phase ? [query.phase] : []),
+    ];
+    if (phases.length === 1) where.phase = phases[0];
+    else if (phases.length > 1) where.phase = { $in: phases };
+
+    const assigneeIds = [
+      ...csv(query.assigneeIds),
+      ...(query.assigneeId ? [query.assigneeId] : []),
+    ];
+    if (assigneeIds.length === 1) where.assignees = { user: assigneeIds[0] };
+    else if (assigneeIds.length > 1)
+      where.assignees = { user: { $in: assigneeIds } };
+
     if (query.due) {
       const startOfToday = new Date();
       startOfToday.setHours(0, 0, 0, 0);
       const startOfTomorrow = new Date(startOfToday);
       startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-      if (query.due === "overdue") where.dueDate = { $lt: startOfToday };
+      if (query.due === "overdue") {
+        where.dueDate = { $lt: startOfToday };
+        // Seeded done statuses; aliases (Complete/Done) are rare and filtered in app code if needed.
+        where.status = { name: { $nin: ["Accepted", "Closed"] } };
+      }
       if (query.due === "today") {
         where.dueDate = { $gte: startOfToday, $lt: startOfTomorrow };
       }
@@ -306,14 +444,54 @@ export class RequestsService {
         where.dueDate = { $gte: startOfToday, $lt: end };
       }
       if (query.due === "noDue") where.dueDate = null;
+    } else if (query.dueDate) {
+      const dayStart = new Date(query.dueDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      where.dueDate = { $gte: dayStart, $lt: dayEnd };
     }
-    if (query.q) where.description = { $ilike: `%${query.q}%` };
-    // Row-level scope (Client → own engagements; Staff → engagements they're on)
-    // merged with an optional engagementId filter, both nested under `engagement`.
+
+    const q = query.q?.trim();
+    if (q) {
+      const term = `%${q}%`;
+      where.$or = [
+        { description: { $ilike: term } },
+        { requestType: { name: { $ilike: term } } },
+        { requestType: { requestClass: { name: { $ilike: term } } } },
+        { engagement: { title: { $ilike: term } } },
+        { engagement: { referenceCode: { $ilike: term } } },
+        { engagement: { client: { name: { $ilike: term } } } },
+        { assignees: { user: { fullName: { $ilike: term } } } },
+        { stage: { name: { $ilike: term } } },
+        { status: { name: { $ilike: term } } },
+      ];
+    }
+
+    // Row-level scope (Client → assigned engagements; Staff → team membership)
+    // merged with optional engagement / client filters under `engagement`.
+    const scope = resolveScope(user);
     const engWhere: Record<string, unknown> = {
-      ...engagementScopeWhere(resolveScope(user)),
+      ...engagementScopeWhere(scope),
     };
-    if (query.engagementId) engWhere.id = query.engagementId;
+    const engagementIds = [
+      ...csv(query.engagementIds),
+      ...(query.engagementId ? [query.engagementId] : []),
+    ];
+    if (engagementIds.length === 1) engWhere.id = engagementIds[0];
+    else if (engagementIds.length > 1) engWhere.id = { $in: engagementIds };
+
+    const clientIds = csv(query.clientIds);
+    if (clientIds.length > 0) {
+      if (scope.kind === "client") {
+        // Client membership scope already applied; reject filters outside their org.
+        if (!clientIds.includes(scope.clientId)) {
+          engWhere.id = "__no_match__";
+        }
+      } else {
+        engWhere.client = { id: { $in: clientIds } };
+      }
+    }
     if (Object.keys(engWhere).length) where.engagement = engWhere;
 
     const { page, pageSize, limit, offset } = pageParams(query);
@@ -334,8 +512,13 @@ export class RequestsService {
         offset,
       },
     );
+    const acceptedCounts = await this.batchAcceptedFileCounts(
+      rows.map((r) => r.id),
+    );
     return paginated(
-      rows.map((r) => this.toDto(r)),
+      await Promise.all(
+        rows.map((r) => this.toDto(r, acceptedCounts.get(r.id) ?? 0)),
+      ),
       total,
       page,
       pageSize,
@@ -346,6 +529,11 @@ export class RequestsService {
     id: string,
     user?: AuthenticatedUser,
   ): Promise<RequestDetailResponseDto> {
+    await syncInferredRequestStage(this.em, id, {
+      actorId: user?.userId ?? null,
+    });
+    await this.em.flush();
+
     const request = await this.findScoped(id, user, [
       "requestType.requestClass",
       "stage",
@@ -354,7 +542,8 @@ export class RequestsService {
       "engagement.client",
       "engagement.department",
     ]);
-    return this.toDetailDto(request);
+    const acceptedCounts = await this.batchAcceptedFileCounts([id]);
+    return this.toDetailDto(request, acceptedCounts.get(id) ?? 0);
   }
 
   async getHistory(
@@ -367,17 +556,20 @@ export class RequestsService {
       { request: id } as FilterQuery<RequestHistoryEntity>,
       { populate: ["actor"], orderBy: { createdAt: "desc" } },
     );
-    return rows.map((h) => ({
-      id: h.id,
-      eventType: h.eventType,
-      module: h.module,
-      fromValue: h.fromValue ?? null,
-      toValue: h.toValue ?? null,
-      note: h.note ?? null,
-      actorId: h.actor ? h.actor.id : null,
-      actorName: h.actor ? h.actor.fullName : null,
-      createdAt: h.createdAt,
-    }));
+    return Promise.all(
+      rows.map(async (h) => ({
+        id: h.id,
+        eventType: h.eventType,
+        module: h.module,
+        fromValue: h.fromValue ?? null,
+        toValue: h.toValue ?? null,
+        note: h.note ?? null,
+        actorId: h.actor ? h.actor.id : null,
+        actorName: h.actor ? h.actor.fullName : null,
+        actorAvatarUrl: await presignAvatar(this.storage, h.actor?.avatarPath),
+        createdAt: h.createdAt,
+      })),
+    );
   }
 
   async update(
@@ -390,6 +582,12 @@ export class RequestsService {
     ]);
     if (dto.description != null) request.description = dto.description;
     if (dto.dueDate !== undefined) request.dueDate = dto.dueDate ?? null;
+    if (dto.expectedDocumentCount != null) {
+      request.expectedDocumentCount = Math.min(
+        500,
+        Math.max(1, dto.expectedDocumentCount),
+      );
+    }
     this.writeHistory(request, user.userId, REQUEST_EVENT.Updated);
     const recipients = await assigneesOrTeamRecipients(this.em, {
       requestId: id,
@@ -438,16 +636,19 @@ export class RequestsService {
     ) {
       throw new BadRequestException("Provide at least one field to update");
     }
+    if (dto.stageId != null && dto.statusId == null && dto.assigneeUserId == null) {
+      throw new BadRequestException(
+        "Request stage is inferred from activity and cannot be set manually",
+      );
+    }
 
-    // Stage / status / assignees bulk changes require catalogue:view (Super Admin).
+    // Status / assignees bulk changes require catalogue:view (Super Admin).
     if (
-      (dto.stageId != null ||
-        dto.statusId != null ||
-        dto.assigneeUserId != null) &&
+      (dto.statusId != null || dto.assigneeUserId != null) &&
       !hasPermission(user.role, "catalogue:view", user.partnerDesignation)
     ) {
       throw new ForbiddenException(
-        "Only Super Admin can bulk-update stage, status, or assignees",
+        "Only Super Admin can bulk-update status or assignees",
       );
     }
 
@@ -472,10 +673,7 @@ export class RequestsService {
         "One or more requests were not found or are not accessible",
       );
     }
-    const [stage, status, assignee] = await Promise.all([
-      dto.stageId != null
-        ? this.em.findOne(RequestStageEntity, { id: dto.stageId })
-        : Promise.resolve(null),
+    const [status, assignee] = await Promise.all([
       dto.statusId != null
         ? this.em.findOne(RequestStatusEntity, { id: dto.statusId })
         : Promise.resolve(null),
@@ -483,22 +681,12 @@ export class RequestsService {
         ? this.em.findOne(UserEntity, { id: dto.assigneeUserId })
         : Promise.resolve(null),
     ]);
-    if (dto.stageId != null && !stage)
-      throw new NotFoundException("Request stage not found");
     if (dto.statusId != null && !status)
       throw new NotFoundException("Request status not found");
     if (dto.assigneeUserId && !assignee)
       throw new NotFoundException("Assignee not found");
 
     for (const request of requests) {
-      if (stage) {
-        this.writeHistory(request, user.userId, REQUEST_EVENT.StageChanged, {
-          fromValue: request.stage?.name ?? null,
-          toValue: stage.name,
-          note: "Bulk update",
-        });
-        request.stage = stage;
-      }
       if (status) {
         this.writeHistory(request, user.userId, REQUEST_EVENT.StatusChanged, {
           fromValue: request.status?.name ?? null,
@@ -523,45 +711,23 @@ export class RequestsService {
       }
     }
     await this.em.flush();
+    for (const request of requests) {
+      await syncInferredRequestStage(this.em, request.id, {
+        actorId: user.userId,
+      });
+    }
+    await this.em.flush();
     return { updated: requests.length };
   }
 
   async setStage(
-    id: string,
-    dto: SetStageDto,
-    user: AuthenticatedUser,
+    _id: string,
+    _dto: SetStageDto,
+    _user: AuthenticatedUser,
   ): Promise<RequestDetailResponseDto> {
-    const request = await this.findScoped(id, user, [
-      "stage",
-      "requestType.requestClass",
-    ]);
-    const stage = await this.em.findOne(RequestStageEntity, {
-      id: dto.stageId,
-    });
-    if (!stage) throw new NotFoundException("Request stage not found");
-    const fromValue = request.stage ? request.stage.name : null;
-    request.stage = stage;
-    this.writeHistory(request, user.userId, REQUEST_EVENT.StageChanged, {
-      fromValue,
-      toValue: stage.name,
-      note: dto.note ?? null,
-    });
-    const recipients = await assigneesOrTeamRecipients(this.em, {
-      requestId: id,
-      engagementId: request.engagement.id,
-    });
-    await this.notifications.emit({
-      recipients,
-      type: "request.stage_changed",
-      title: `Request stage: ${stage.name}`,
-      body: fromValue ? `${fromValue} → ${stage.name}` : stage.name,
-      entityType: "request",
-      entityId: id,
-      link: `/requests/${id}`,
-      excludeUserId: user.userId,
-    });
-    await this.em.flush();
-    return this.getOne(id, user);
+    throw new BadRequestException(
+      "Request stage is inferred from activity and cannot be set manually",
+    );
   }
 
   async setStatus(
@@ -595,6 +761,7 @@ export class RequestsService {
       link: `/requests/${id}`,
       excludeUserId: user.userId,
     });
+    await syncInferredRequestStage(this.em, id, { actorId: user.userId });
     await this.em.flush();
     return this.getOne(id, user);
   }
@@ -664,6 +831,247 @@ export class RequestsService {
       excludeUserId: user.userId,
     });
     await this.em.remove(existing).flush();
+    return this.getOne(id, user);
+  }
+
+  private briefKeyPrefix(request: RequestEntity): string {
+    return `requests/${request.engagement.id}/${request.id}/brief`;
+  }
+
+  async presignBrief(
+    id: string,
+    dto: PresignRequestBriefDto,
+    user: AuthenticatedUser,
+  ) {
+    const request = await this.findScoped(id, user);
+    if (dto.sizeBytes != null && dto.sizeBytes > UPLOAD_MAX_BYTES) {
+      throw new BadRequestException(
+        `File exceeds maximum size of ${Math.floor(UPLOAD_MAX_BYTES / (1024 * 1024))} MB`,
+      );
+    }
+    return this.storage.presignUpload({
+      keyPrefix: this.briefKeyPrefix(request),
+      fileName: dto.fileName,
+      contentType: dto.contentType,
+    });
+  }
+
+  async confirmBrief(
+    id: string,
+    dto: ConfirmRequestBriefDto,
+    user: AuthenticatedUser,
+  ): Promise<RequestDetailResponseDto> {
+    const request = await this.findScoped(id, user);
+    const prefix = this.briefKeyPrefix(request);
+    if (!dto.storageKey.includes(prefix)) {
+      throw new BadRequestException("Invalid storage key for this request brief");
+    }
+    if (dto.sizeBytes > UPLOAD_MAX_BYTES) {
+      throw new BadRequestException(
+        `File exceeds maximum size of ${Math.floor(UPLOAD_MAX_BYTES / (1024 * 1024))} MB`,
+      );
+    }
+    const head = await this.storage.head(dto.storageKey);
+    if (!head) throw new BadRequestException("Uploaded object not found");
+    if (dto.sizeBytes > 0 && head.sizeBytes !== dto.sizeBytes) {
+      throw new BadRequestException(
+        `Uploaded size mismatch (expected ${dto.sizeBytes}, got ${head.sizeBytes})`,
+      );
+    }
+    request.briefStorageKey = dto.storageKey;
+    request.briefFileName = dto.fileName;
+    request.briefContentType = dto.contentType;
+    request.briefSizeBytes = head.sizeBytes;
+    request.briefUploadedAt = new Date();
+    request.briefPreviewStorageKey = null;
+    request.briefPreviewError = null;
+    const previewStatus = initialPreviewStatus(dto.contentType, dto.fileName);
+    request.briefPreviewStatus = previewStatus;
+    if (previewStatus === FilePreviewStatus.Pending) {
+      this.outbox.enqueue(EVENT.FilePreviewRequested, {
+        entityType: "request_brief",
+        fileId: request.id,
+        storageKey: dto.storageKey,
+        fileName: dto.fileName,
+        mimeType: dto.contentType ?? null,
+      });
+    }
+    this.writeHistory(request, user.userId, REQUEST_EVENT.Updated, {
+      note: "Expectation brief uploaded",
+    });
+    await this.em.flush();
+    return this.getOne(id, user);
+  }
+
+  async downloadBrief(
+    id: string,
+    user: AuthenticatedUser,
+  ): Promise<{ downloadUrl: string; fileName: string }> {
+    const request = await this.findScoped(id, user);
+    if (!request.briefStorageKey || !request.briefFileName) {
+      throw new NotFoundException("No expectation brief on this request");
+    }
+    const downloadUrl = await this.storage.presignDownload(
+      request.briefStorageKey,
+      request.briefFileName,
+    );
+    return { downloadUrl, fileName: request.briefFileName };
+  }
+
+  /**
+   * In-app preview for the expectation brief — same pipeline as submission files
+   * (native inline types, or LibreOffice→PDF for Office).
+   */
+  async previewBrief(
+    id: string,
+    user: AuthenticatedUser,
+    opts?: { retryFailed?: boolean },
+  ): Promise<{
+    url: string | null;
+    mode: "native" | "converted" | "unavailable";
+    previewStatus: FilePreviewStatus;
+    reason?: "pending" | "failed" | "unsupported";
+  }> {
+    const request = await this.findScoped(id, user);
+    if (!request.briefStorageKey || !request.briefFileName) {
+      throw new NotFoundException("No expectation brief on this request");
+    }
+    const mime = request.briefContentType ?? null;
+    const name = request.briefFileName;
+
+    if (isBlockedPreviewType(mime, name)) {
+      return {
+        url: null,
+        mode: "unavailable",
+        previewStatus: FilePreviewStatus.None,
+        reason: "unsupported",
+      };
+    }
+
+    if (
+      request.briefPreviewStatus === FilePreviewStatus.Ready &&
+      request.briefPreviewStorageKey
+    ) {
+      const url = await this.storage.presignDownload(
+        request.briefPreviewStorageKey,
+        `${name}.pdf`,
+        { disposition: "inline" },
+      );
+      return {
+        url,
+        mode: "converted",
+        previewStatus: request.briefPreviewStatus,
+      };
+    }
+
+    if (isNativePreviewable(mime, name)) {
+      const url = await this.storage.presignDownload(
+        request.briefStorageKey,
+        name,
+        { disposition: "inline" },
+      );
+      return {
+        url,
+        mode: "native",
+        previewStatus: FilePreviewStatus.Ready,
+      };
+    }
+
+    if (
+      opts?.retryFailed &&
+      request.briefPreviewStatus === FilePreviewStatus.Failed &&
+      isOfficeMime(mime, name)
+    ) {
+      request.briefPreviewStatus = FilePreviewStatus.Pending;
+      request.briefPreviewError = null;
+      this.outbox.enqueue(EVENT.FilePreviewRequested, {
+        entityType: "request_brief",
+        fileId: request.id,
+        storageKey: request.briefStorageKey,
+        fileName: name,
+        mimeType: mime,
+      });
+      await this.em.flush();
+      return {
+        url: null,
+        mode: "unavailable",
+        previewStatus: FilePreviewStatus.Pending,
+        reason: "pending",
+      };
+    }
+
+    // Lazy-enqueue for existing Office briefs uploaded before this pipeline.
+    if (
+      isOfficeMime(mime, name) &&
+      (request.briefPreviewStatus === FilePreviewStatus.None ||
+        request.briefPreviewStatus === FilePreviewStatus.Pending)
+    ) {
+      if (request.briefPreviewStatus === FilePreviewStatus.None) {
+        request.briefPreviewStatus = FilePreviewStatus.Pending;
+        request.briefPreviewError = null;
+        this.outbox.enqueue(EVENT.FilePreviewRequested, {
+          entityType: "request_brief",
+          fileId: request.id,
+          storageKey: request.briefStorageKey,
+          fileName: name,
+          mimeType: mime,
+        });
+        await this.em.flush();
+      }
+      return {
+        url: null,
+        mode: "unavailable",
+        previewStatus: FilePreviewStatus.Pending,
+        reason: "pending",
+      };
+    }
+
+    if (request.briefPreviewStatus === FilePreviewStatus.Failed) {
+      return {
+        url: null,
+        mode: "unavailable",
+        previewStatus: FilePreviewStatus.Failed,
+        reason: "failed",
+      };
+    }
+
+    if (!isPreviewAllowlisted(mime, name)) {
+      return {
+        url: null,
+        mode: "unavailable",
+        previewStatus: request.briefPreviewStatus,
+        reason: "unsupported",
+      };
+    }
+
+    return {
+      url: null,
+      mode: "unavailable",
+      previewStatus: request.briefPreviewStatus,
+      reason: "unsupported",
+    };
+  }
+
+  async removeBrief(
+    id: string,
+    user: AuthenticatedUser,
+  ): Promise<RequestDetailResponseDto> {
+    const request = await this.findScoped(id, user);
+    if (!request.briefStorageKey) {
+      throw new NotFoundException("No expectation brief on this request");
+    }
+    request.briefStorageKey = null;
+    request.briefFileName = null;
+    request.briefContentType = null;
+    request.briefSizeBytes = null;
+    request.briefUploadedAt = null;
+    request.briefPreviewStorageKey = null;
+    request.briefPreviewStatus = FilePreviewStatus.None;
+    request.briefPreviewError = null;
+    this.writeHistory(request, user.userId, REQUEST_EVENT.Updated, {
+      note: "Expectation brief removed",
+    });
+    await this.em.flush();
     return this.getOne(id, user);
   }
 }

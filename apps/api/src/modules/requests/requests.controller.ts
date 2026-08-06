@@ -17,7 +17,9 @@ import { RequestsService } from './requests.service';
 import {
   AssignRequestDto,
   BulkUpdateRequestsDto,
+  ConfirmRequestBriefDto,
   CreateRequestDto,
+  PresignRequestBriefDto,
   RequestDetailResponseDto,
   RequestHistoryItemDto,
   RequestListQueryDto,
@@ -78,6 +80,56 @@ export class RequestsController {
     return this.requests.getOne(id, user);
   }
 
+  @Post(':id/brief/presign')
+  @RequirePermission('request:update')
+  presignBrief(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PresignRequestBriefDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.requests.presignBrief(id, dto, user);
+  }
+
+  @Post(':id/brief/confirm')
+  @RequirePermission('request:update')
+  confirmBrief(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmRequestBriefDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RequestDetailResponseDto> {
+    return this.requests.confirmBrief(id, dto, user);
+  }
+
+  @Post(':id/brief/download')
+  @RequirePermission('request:view')
+  downloadBrief(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.requests.downloadBrief(id, user);
+  }
+
+  @Get(':id/brief/preview')
+  @RequirePermission('request:view')
+  previewBrief(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('retryFailed') retryFailed: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.requests.previewBrief(id, user, {
+      retryFailed: retryFailed === '1' || retryFailed === 'true',
+    });
+  }
+
+  @Delete(':id/brief')
+  @RequirePermission('request:update')
+  removeBrief(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RequestDetailResponseDto> {
+    return this.requests.removeBrief(id, user);
+  }
+
   /** Edit / delete / stage / status — Super Admin (request:update + catalogue:view). */
   @Patch(':id')
   @RequirePermission('request:update', 'catalogue:view')
@@ -98,6 +150,7 @@ export class RequestsController {
     return this.requests.remove(id, user);
   }
 
+  /** Stage is inferred from activity — manual changes are rejected. */
   @Post(':id/stage')
   @RequirePermission('request:update', 'catalogue:view')
   setStage(
