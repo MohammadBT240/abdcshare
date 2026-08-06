@@ -6,7 +6,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { IconPlus } from '@tabler/icons-react';
-import { FormDialog, FormField, LoadingButton, AppSelect, Combobox } from '@/components/forms';
+import {
+  FormDialog,
+  FormField,
+  LoadingButton,
+  AppSelect,
+  Combobox,
+  MultiCombobox,
+} from '@/components/forms';
 import { DatePicker } from '@/components/forms/date-picker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +22,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BffClientError } from '@/lib/bff/client';
 import { useCreateEngagement } from '@/features/engagements/hooks/use-engagements';
-import { useClientsList } from '@/features/clients/hooks/use-clients';
+import {
+  useClientContacts,
+  useClientsList,
+} from '@/features/clients/hooks/use-clients';
 import {
   useCatalogueList,
   useCatalogueMutations,
@@ -55,6 +65,9 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
   const [selectedRequestClassIds, setSelectedRequestClassIds] = useState<number[]>([]);
   const [creatingType, setCreatingType] = useState(false);
   const [pendingTypeLabel, setPendingTypeLabel] = useState<string | null>(null);
+  const [contactUserIds, setContactUserIds] = useState<string[]>([]);
+  const [mainContactUserId, setMainContactUserId] = useState('');
+  const [emailContactUserIds, setEmailContactUserIds] = useState<string[]>([]);
 
   const form = useForm<CreateEngagementFormValues>({
     resolver: zodResolver(createEngagementSchema),
@@ -62,6 +75,8 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
   });
 
   const clients = useClientsList('pageSize=100&isActive=true');
+  const clientId = form.watch('clientId');
+  const clientContacts = useClientContacts(clientId);
   const engagementTypes = useCatalogueList('engagement-types', 'pageSize=100&isActive=true');
   const departments = useCatalogueList('departments', 'pageSize=100&isActive=true');
   const requestClasses = useCatalogueList('request-classes', 'pageSize=100&isActive=true');
@@ -70,6 +85,16 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
   const selectedEngagementType = useMemo(() => {
     return engagementTypes.data?.data.find((et) => String(et.id) === engagementTypeId);
   }, [engagementTypes.data, engagementTypeId]);
+
+  const activeContacts = useMemo(
+    () => (clientContacts.data ?? []).filter((c) => c.isActive),
+    [clientContacts.data],
+  );
+
+  const selectedContacts = useMemo(
+    () => activeContacts.filter((c) => contactUserIds.includes(c.id)),
+    [activeContacts, contactUserIds],
+  );
 
   const allRequestClasses = requestClasses.data?.data ?? [];
   const suggestedIds = selectedEngagementType?.suggestedRequestClassIds ?? [];
@@ -117,6 +142,9 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
       setSelectedRequestClassIds([]);
       setCreatingType(false);
       setPendingTypeLabel(null);
+      setContactUserIds([]);
+      setMainContactUserId('');
+      setEmailContactUserIds([]);
     }
   }, [open, form]);
 
@@ -129,6 +157,39 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
       suggestedKey ? suggestedKey.split(',').map((id) => Number(id)) : [],
     );
   }, [engagementTypeId, suggestedKey]);
+
+  // When client changes, default assigned/main/email to primary (or first active).
+  useEffect(() => {
+    if (!clientId || !activeContacts.length) {
+      setContactUserIds([]);
+      setMainContactUserId('');
+      setEmailContactUserIds([]);
+      return;
+    }
+    const primary = activeContacts.find((c) => c.isPrimary) ?? activeContacts[0]!;
+    setContactUserIds([primary.id]);
+    setMainContactUserId(primary.id);
+    setEmailContactUserIds([primary.id]);
+  }, [clientId, activeContacts]);
+
+  useEffect(() => {
+    // Keep main/email within the selected set.
+    if (contactUserIds.length === 0) {
+      setMainContactUserId('');
+      setEmailContactUserIds([]);
+      return;
+    }
+    if (!contactUserIds.includes(mainContactUserId)) {
+      setMainContactUserId(contactUserIds[0]!);
+    }
+    setEmailContactUserIds((prev) => {
+      const next = prev.filter((id) => contactUserIds.includes(id));
+      if (next.length === 0) {
+        return [contactUserIds.includes(mainContactUserId) ? mainContactUserId : contactUserIds[0]!];
+      }
+      return next;
+    });
+  }, [contactUserIds, mainContactUserId]);
 
   async function handleCreateType(name: string) {
     setCreatingType(true);
@@ -148,6 +209,18 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
   }
 
   async function handleSubmit(values: CreateEngagementFormValues) {
+    if (contactUserIds.length === 0) {
+      toast.error('Select at least one client contact');
+      return;
+    }
+    if (!mainContactUserId || !contactUserIds.includes(mainContactUserId)) {
+      toast.error('Select a main client contact');
+      return;
+    }
+    if (emailContactUserIds.length === 0) {
+      toast.error('Enable email for at least one contact');
+      return;
+    }
     try {
       const payload = {
         clientId: values.clientId,
@@ -158,6 +231,9 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
         startDate: values.startDate || undefined,
         targetCompletionDate: values.targetCompletionDate || undefined,
         requestClassIds: selectedRequestClassIds.length > 0 ? selectedRequestClassIds : undefined,
+        clientContactUserIds: contactUserIds,
+        mainClientContactUserId: mainContactUserId,
+        emailClientContactUserIds: emailContactUserIds,
       };
 
       const result = await create.mutateAsync(payload);
@@ -216,6 +292,69 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
               value={form.watch('clientId')}
             />
           </FormField>
+
+          {clientId ? (
+            <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+              <FormField
+                label="Client contacts"
+                required
+                description="Assigned contacts can see this engagement. Main is the default owner."
+              >
+                <MultiCombobox
+                  options={activeContacts.map((c) => ({
+                    value: c.id,
+                    label: c.isPrimary ? `${c.fullName} (Primary)` : c.fullName,
+                    description: c.email,
+                  }))}
+                  values={contactUserIds}
+                  onValuesChange={setContactUserIds}
+                  placeholder="Select contacts…"
+                  searchPlaceholder="Search contacts…"
+                  emptyMessage={
+                    clientContacts.isPending ? 'Loading…' : 'No contacts for this client'
+                  }
+                />
+              </FormField>
+
+              {selectedContacts.length > 0 ? (
+                <>
+                  <FormField label="Main contact" required>
+                    <AppSelect
+                      options={selectedContacts.map((c) => ({
+                        value: c.id,
+                        label: c.fullName,
+                      }))}
+                      value={mainContactUserId}
+                      onValueChange={setMainContactUserId}
+                      placeholder="Select main"
+                    />
+                  </FormField>
+                  <div className="space-y-2">
+                    <Label>Email notifications</Label>
+                    <p className="text-xs text-muted-foreground">
+                      At least one contact must receive email. All assigned get in-app.
+                    </p>
+                    {selectedContacts.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={emailContactUserIds.includes(c.id)}
+                          onCheckedChange={(checked) => {
+                            setEmailContactUserIds((prev) => {
+                              if (checked === true) {
+                                return prev.includes(c.id) ? prev : [...prev, c.id];
+                              }
+                              return prev.filter((id) => id !== c.id);
+                            });
+                          }}
+                        />
+                        {c.fullName}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
 
           <FormField
             label="Engagement type"

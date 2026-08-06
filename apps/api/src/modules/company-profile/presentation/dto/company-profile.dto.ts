@@ -28,3 +28,12 @@ export class CompanyProfileResponseDto {
 export class CompanyProfileDownloadDto {
   @ApiProperty() url!: string;
 }
+
+export class CompanyProfilePreviewDto {
+  @ApiPropertyOptional({ nullable: true }) url!: string | null;
+  @ApiProperty({ enum: ['native', 'converted', 'unavailable'] })
+  mode!: 'native' | 'converted' | 'unavailable';
+  @ApiProperty() previewStatus!: string;
+  @ApiPropertyOptional({ enum: ['pending', 'failed', 'unsupported'] })
+  reason?: 'pending' | 'failed' | 'unsupported';
+}

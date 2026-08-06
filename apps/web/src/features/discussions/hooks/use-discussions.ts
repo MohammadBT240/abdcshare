@@ -11,14 +11,25 @@ export interface DiscussionAttachment {
   sizeBytes?: number | null;
 }
 
+export interface DiscussionFileRef {
+  id: string;
+  submissionFileId?: string | null;
+  fileName: string;
+  /** File status at the moment the message was posted. */
+  statusAtPost: string;
+  submissionId?: string | null;
+}
+
 export interface DiscussionMessage {
   id: string;
   authorId: string;
   authorName?: string | null;
+  authorAvatarUrl?: string | null;
   parentMessageId?: string | null;
   body: string;
   mentionUserIds: string[];
   attachments: DiscussionAttachment[];
+  referencedFiles: DiscussionFileRef[];
   editedAt?: string | null;
   createdAt: string;
 }
@@ -33,6 +44,7 @@ export interface PostMessageInput {
   body: string;
   parentMessageId?: string;
   mentionUserIds?: string[];
+  referencedFileIds?: string[];
 }
 
 export interface EditMessageInput {
@@ -144,20 +156,8 @@ export function confirmMessageAttachment(
   });
 }
 
-export async function uploadMessageAttachment(messageId: string, file: File) {
-  const presigned = await presignMessageAttachment(messageId, file);
-  const upload = await fetch(presigned.uploadUrl, {
-    method: presigned.method,
-    headers: presigned.headers,
-    body: file,
-  });
-  if (!upload.ok) {
-    throw new Error(`Failed to upload ${file.name}`);
-  }
-  return confirmMessageAttachment(messageId, {
-    storageKey: presigned.storageKey,
-    fileName: file.name,
-    mimeType: file.type || undefined,
-    sizeBytes: file.size,
-  });
+/** Upload attachment via Uppy (multipart for large files). Confirms into the message. */
+export async function uploadMessageAttachment(messageId: string, file: File): Promise<void> {
+  const { uploadFilesWithUppy } = await import('@/lib/uploads/uppy-client');
+  await uploadFilesWithUppy({ kind: 'message', parentId: messageId }, [file]);
 }

@@ -667,10 +667,12 @@
           "length": null,
           "precision": null,
           "scale": null,
-          "default": "'Pending'",
+          "default": "'Draft'",
           "comment": null,
           "enumItems": [
+            "Draft",
             "Pending",
+            "UnderReview",
             "Accepted",
             "Returned"
           ],
@@ -1599,6 +1601,167 @@
     },
     {
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": true,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "submission_file_id": {
+          "name": "submission_file_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "file_name": {
+          "name": "file_name",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "status_at_post": {
+          "name": "status_at_post",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [
+            "Draft",
+            "Pending",
+            "UnderReview",
+            "Accepted",
+            "Returned"
+          ],
+          "mappedType": "enum"
+        },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        }
+      },
+      "name": "discussion_file_refs",
+      "schema": "public",
+      "indexes": [
+        {
+          "columnNames": [
+            "message_id"
+          ],
+          "composite": false,
+          "constraint": false,
+          "keyName": "discussion_file_refs_message_id_index",
+          "unique": false,
+          "primary": false
+        },
+        {
+          "columnNames": [
+            "id"
+          ],
+          "composite": false,
+          "constraint": false,
+          "keyName": "discussion_file_refs_pkey",
+          "unique": true,
+          "primary": true
+        }
+      ],
+      "checks": [],
+      "foreignKeys": {
+        "discussion_file_refs_message_id_foreign": {
+          "columnNames": [
+            "message_id"
+          ],
+          "constraintName": "discussion_file_refs_message_id_foreign",
+          "localTableName": "public.discussion_file_refs",
+          "referencedTableName": "public.discussion_messages",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "cascade",
+          "deleteRule": "cascade"
+        },
+        "discussion_file_refs_submission_file_id_foreign": {
+          "columnNames": [
+            "submission_file_id"
+          ],
+          "constraintName": "discussion_file_refs_submission_file_id_foreign",
+          "localTableName": "public.discussion_file_refs",
+          "referencedTableName": "public.submission_files",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "cascade",
+          "deleteRule": "set null"
+        }
+      },
+      "nativeEnums": {},
+      "comment": null
+    },
+    {
+      "columns": {
         "message_id": {
           "name": "message_id",
           "type": "uuid",
@@ -2141,6 +2304,59 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
+        },
+        "preview_storage_key": {
+          "name": "preview_storage_key",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "preview_status": {
+          "name": "preview_status",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'None'",
+          "comment": null,
+          "enumItems": [
+            "None",
+            "Pending",
+            "Ready",
+            "Failed"
+          ],
+          "mappedType": "enum"
+        },
+        "preview_error": {
+          "name": "preview_error",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
         }
       },
       "name": "document_files",
@@ -2695,6 +2911,176 @@
           ],
           "updateRule": "cascade",
           "deleteRule": "set null"
+        }
+      },
+      "nativeEnums": {},
+      "comment": null
+    },
+    {
+      "columns": {
+        "engagement_id": {
+          "name": "engagement_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": true,
+          "nullable": false,
+          "unique": true,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": true,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "is_main": {
+          "name": "is_main",
+          "type": "bool",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "false",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "boolean"
+        },
+        "receive_email": {
+          "name": "receive_email",
+          "type": "bool",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "false",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "boolean"
+        },
+        "assigned_by_id": {
+          "name": "assigned_by_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "assigned_at": {
+          "name": "assigned_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": "now()",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        }
+      },
+      "name": "engagement_client_contacts",
+      "schema": "public",
+      "indexes": [
+        {
+          "columnNames": [
+            "engagement_id"
+          ],
+          "composite": false,
+          "constraint": false,
+          "keyName": "engagement_client_contacts_one_main",
+          "unique": true,
+          "primary": false,
+          "expression": "CREATE UNIQUE INDEX engagement_client_contacts_one_main ON public.engagement_client_contacts USING btree (engagement_id) WHERE (is_main = true)"
+        },
+        {
+          "columnNames": [
+            "engagement_id",
+            "user_id"
+          ],
+          "composite": true,
+          "constraint": false,
+          "keyName": "engagement_client_contacts_pkey",
+          "unique": true,
+          "primary": true
+        }
+      ],
+      "checks": [],
+      "foreignKeys": {
+        "engagement_client_contacts_assigned_by_id_foreign": {
+          "columnNames": [
+            "assigned_by_id"
+          ],
+          "constraintName": "engagement_client_contacts_assigned_by_id_foreign",
+          "localTableName": "public.engagement_client_contacts",
+          "referencedTableName": "public.users",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "cascade",
+          "deleteRule": "set null"
+        },
+        "engagement_client_contacts_engagement_id_foreign": {
+          "columnNames": [
+            "engagement_id"
+          ],
+          "constraintName": "engagement_client_contacts_engagement_id_foreign",
+          "localTableName": "public.engagement_client_contacts",
+          "referencedTableName": "public.engagements",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "cascade",
+          "deleteRule": "cascade"
+        },
+        "engagement_client_contacts_user_id_foreign": {
+          "columnNames": [
+            "user_id"
+          ],
+          "constraintName": "engagement_client_contacts_user_id_foreign",
+          "localTableName": "public.engagement_client_contacts",
+          "referencedTableName": "public.users",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "cascade",
+          "deleteRule": "no action"
         }
       },
       "nativeEnums": {},
@@ -4461,19 +4847,19 @@
         },
         "link": {
           "name": "link",
-          "type": "varchar(255)",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
           "nullable": true,
           "unique": false,
-          "length": 255,
+          "length": null,
           "precision": null,
           "scale": null,
           "default": null,
           "comment": null,
           "enumItems": [],
-          "mappedType": "string"
+          "mappedType": "text"
         },
         "is_read": {
           "name": "is_read",
@@ -7260,6 +7646,155 @@
             "Reporting"
           ],
           "mappedType": "enum"
+        },
+        "expected_document_count": {
+          "name": "expected_document_count",
+          "type": "int4",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": 32,
+          "scale": 0,
+          "default": "1",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "brief_storage_key": {
+          "name": "brief_storage_key",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "brief_file_name": {
+          "name": "brief_file_name",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "brief_content_type": {
+          "name": "brief_content_type",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "brief_size_bytes": {
+          "name": "brief_size_bytes",
+          "type": "int8",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": 64,
+          "scale": 0,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "bigint"
+        },
+        "brief_uploaded_at": {
+          "name": "brief_uploaded_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
+        "brief_preview_storage_key": {
+          "name": "brief_preview_storage_key",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "brief_preview_status": {
+          "name": "brief_preview_status",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'None'",
+          "comment": null,
+          "enumItems": [
+            "None",
+            "Pending",
+            "Ready",
+            "Failed"
+          ],
+          "mappedType": "enum"
+        },
+        "brief_preview_error": {
+          "name": "brief_preview_error",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
         }
       },
       "name": "requests",
@@ -7887,7 +8422,9 @@
           "default": "'Pending'",
           "comment": null,
           "enumItems": [
+            "Draft",
             "Pending",
+            "UnderReview",
             "Accepted",
             "Returned"
           ],
@@ -7908,6 +8445,123 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
+        },
+        "review_reason": {
+          "name": "review_reason",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
+        "reviewed_by_id": {
+          "name": "reviewed_by_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
+        "replaces_file_id": {
+          "name": "replaces_file_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "preview_storage_key": {
+          "name": "preview_storage_key",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "preview_status": {
+          "name": "preview_status",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'None'",
+          "comment": null,
+          "enumItems": [
+            "None",
+            "Pending",
+            "Ready",
+            "Failed"
+          ],
+          "mappedType": "enum"
+        },
+        "preview_error": {
+          "name": "preview_error",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
         }
       },
       "name": "submission_files",
@@ -7926,6 +8580,32 @@
       ],
       "checks": [],
       "foreignKeys": {
+        "submission_files_replaces_file_id_foreign": {
+          "columnNames": [
+            "replaces_file_id"
+          ],
+          "constraintName": "submission_files_replaces_file_id_foreign",
+          "localTableName": "public.submission_files",
+          "referencedTableName": "public.submission_files",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "cascade",
+          "deleteRule": "cascade"
+        },
+        "submission_files_reviewed_by_id_foreign": {
+          "columnNames": [
+            "reviewed_by_id"
+          ],
+          "constraintName": "submission_files_reviewed_by_id_foreign",
+          "localTableName": "public.submission_files",
+          "referencedTableName": "public.users",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "updateRule": "cascade",
+          "deleteRule": "set null"
+        },
         "submission_files_submission_id_foreign": {
           "columnNames": [
             "submission_id"

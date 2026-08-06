@@ -3,25 +3,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
-import {
-  IconPlus,
-  IconAlertCircle,
-  IconHistory,
-  IconExternalLink,
-} from "@tabler/icons-react";
+import { IconPlus, IconHistory, IconExternalLink } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  AvatarStack,
+  CircularProgress,
   DataTable,
+  DualDateCell,
   EntityCell,
   FilterBar,
   RowActions,
-  snColumn,
-  UserAvatar,
+  StatusPill,
+  resolveStatusTone,
   type RowActionItem,
 } from "@/components/data";
-import { AppSelect } from "@/components/forms";
+import { AppSelect, MultiCombobox } from "@/components/forms";
 import { CreateRequestDialog } from "@/features/requests/components/create-request-dialog";
 import { RequestHistoryDialog } from "@/features/requests/components/request-history-dialog";
 import { ClassFilterRail } from "@/features/engagements/components/workspace/class-filter-rail";
@@ -60,7 +58,7 @@ export function WorkTab({
   const [phase, setPhase] = useState<PhaseFilter>("All");
   const [stageId, setStageId] = useState("");
   const [statusId, setStatusId] = useState("");
-  const [assigneeId, setAssigneeId] = useState("");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [due, setDue] = useState("");
   const [page, setPage] = useState(1);
   const [historyRequest, setHistoryRequest] = useState<{
@@ -84,7 +82,7 @@ export function WorkTab({
 
   useEffect(() => {
     setPage(1);
-  }, [phase, stageId, statusId, assigneeId, due]);
+  }, [phase, stageId, statusId, assigneeIds, due]);
 
   const queryString = useMemo(() => {
     const sp = new URLSearchParams();
@@ -96,7 +94,9 @@ export function WorkTab({
       sp.set("requestClassId", String(selectedClassId));
     if (stageId) sp.set("stageId", stageId);
     if (statusId) sp.set("statusId", statusId);
-    if (assigneeId) sp.set("assigneeId", assigneeId);
+    if (assigneeIds.length === 1) sp.set("assigneeId", assigneeIds[0]!);
+    else if (assigneeIds.length > 1)
+      sp.set("assigneeIds", assigneeIds.join(","));
     if (due) sp.set("due", due);
     return sp.toString();
   }, [
@@ -106,7 +106,7 @@ export function WorkTab({
     selectedClassId,
     stageId,
     statusId,
-    assigneeId,
+    assigneeIds,
     due,
   ]);
 
@@ -145,15 +145,14 @@ export function WorkTab({
   const assigneeOptions = (workspace.team ?? []).map((member) => ({
     value: member.userId,
     label: member.fullName,
+    description: member.memberRole,
+    avatarUrl: member.avatarUrl,
   }));
 
   const columns = useMemo<ColumnDef<RequestListItem, unknown>[]>(() => {
-    const currentPage = meta?.page ?? page;
-    const pageSize = meta?.pageSize ?? PAGE_SIZE;
     const showClass = selectedClassId === "all";
 
     return [
-      snColumn<RequestListItem>(currentPage, pageSize),
       {
         id: "request",
         header: "Request",
@@ -166,14 +165,6 @@ export function WorkTab({
             />
           );
         },
-      },
-      {
-        header: "Type",
-        cell: ({ row }) => (
-          <Badge variant="secondary" className="font-normal">
-            {row.original.requestTypeName}
-          </Badge>
-        ),
       },
       ...(showClass
         ? [
@@ -190,48 +181,45 @@ export function WorkTab({
         ),
       },
       { header: "Stage", accessorKey: "stage" },
-      { header: "Status", accessorKey: "status" },
       {
-        header: "Due date",
-        cell: ({ row }) => {
-          const { dueDate, isOverdue } = row.original;
-          if (!dueDate) return "—";
-          return (
-            <div className="flex items-center gap-1.5">
-              {isOverdue ? (
-                <IconAlertCircle className="h-4 w-4 text-destructive" />
-              ) : null}
-              <span className={isOverdue ? "text-destructive" : ""}>
-                {new Date(dueDate).toLocaleDateString()}
-              </span>
-            </div>
-          );
-        },
+        header: "Status",
+        cell: ({ row }) =>
+          row.original.status ? (
+            <StatusPill tone={resolveStatusTone(row.original.status)}>
+              {row.original.status}
+            </StatusPill>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        id: "progress",
+        header: "Progress",
+        cell: ({ row }) => (
+          <CircularProgress value={row.original.progressPercent ?? 0} />
+        ),
+      },
+      {
+        id: "dates",
+        header: "Started date",
+        cell: ({ row }) => (
+          <DualDateCell
+            start={row.original.createdAt}
+            deadline={row.original.dueDate}
+          />
+        ),
       },
       {
         header: "Assignees",
-        cell: ({ row }) => {
-          const { assignees } = row.original;
-          if (assignees.length === 0) return "—";
-          return (
-            <div className="flex -space-x-2">
-              {assignees.slice(0, 3).map((a) => (
-                <UserAvatar
-                  key={a.userId}
-                  src={a.avatarUrl}
-                  initials={a.fullName.slice(0, 2)}
-                  size="sm"
-                  className="ring-2 ring-background"
-                />
-              ))}
-              {assignees.length > 3 ? (
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium ring-2 ring-background">
-                  +{assignees.length - 3}
-                </div>
-              ) : null}
-            </div>
-          );
-        },
+        cell: ({ row }) => (
+          <AvatarStack
+            people={row.original.assignees.map((a) => ({
+              id: a.userId,
+              fullName: a.fullName,
+              avatarUrl: a.avatarUrl,
+            }))}
+          />
+        ),
       },
       {
         id: "actions",
@@ -258,7 +246,7 @@ export function WorkTab({
         },
       },
     ];
-  }, [meta?.page, meta?.pageSize, page, selectedClassId, router]);
+  }, [selectedClassId, router]);
 
   if (rollups.length === 0) {
     return (
@@ -339,7 +327,10 @@ export function WorkTab({
                   <TabsTrigger key={p} value={p} className="h-8 text-xs">
                     {p}
                     {p !== "All" ? (
-                      <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px]">
+                      <Badge
+                        variant="secondary"
+                        className="ml-1.5 px-1.5 py-0 text-[10px]"
+                      >
                         {phaseCounts[p]}
                       </Badge>
                     ) : null}
@@ -350,43 +341,48 @@ export function WorkTab({
           </Tabs>
 
           <FilterBar>
-            <AppSelect
-              value={stageId}
-              onValueChange={setStageId}
-              options={[{ value: "", label: "All stages" }, ...stageOptions]}
-              placeholder="All stages"
-              className="h-9 w-44"
-            />
-            <AppSelect
-              value={statusId}
-              onValueChange={setStatusId}
-              options={[{ value: "", label: "All statuses" }, ...statusOptions]}
-              placeholder="All statuses"
-              className="h-9 w-44"
-            />
-            <AppSelect
-              value={assigneeId}
-              onValueChange={setAssigneeId}
-              options={[
-                { value: "", label: "All assignees" },
-                ...assigneeOptions,
-              ]}
-              placeholder="All assignees"
-              className="h-9 w-48"
-            />
-            <AppSelect
-              value={due}
-              onValueChange={setDue}
-              options={[
-                { value: "", label: "Any due date" },
-                { value: "overdue", label: "Overdue" },
-                { value: "today", label: "Due today" },
-                { value: "next7Days", label: "Due in 7 days" },
-                { value: "noDue", label: "No due date" },
-              ]}
-              placeholder="Any due date"
-              className="h-9 w-44"
-            />
+            <div className="grid w-full grid-cols-2 gap-2 sm:contents">
+              <AppSelect
+                value={stageId}
+                onValueChange={setStageId}
+                options={[{ value: "", label: "All stages" }, ...stageOptions]}
+                placeholder="All stages"
+                className="h-9 w-full min-w-0 sm:w-44"
+              />
+              <AppSelect
+                value={statusId}
+                onValueChange={setStatusId}
+                options={[
+                  { value: "", label: "All statuses" },
+                  ...statusOptions,
+                ]}
+                placeholder="All statuses"
+                className="h-9 w-full min-w-0 sm:w-44"
+              />
+              <MultiCombobox
+                values={assigneeIds}
+                onValuesChange={setAssigneeIds}
+                options={assigneeOptions}
+                placeholder="All assignees"
+                searchPlaceholder="Search assignees…"
+                emptyMessage="No matching assignees"
+                className="min-h-9 w-full min-w-0 sm:w-56"
+                maxChips={1}
+              />
+              <AppSelect
+                value={due}
+                onValueChange={setDue}
+                options={[
+                  { value: "", label: "Any due date" },
+                  { value: "overdue", label: "Overdue" },
+                  { value: "today", label: "Due today" },
+                  { value: "next7Days", label: "Due in 7 days" },
+                  { value: "noDue", label: "No due date" },
+                ]}
+                placeholder="Any due date"
+                className="h-9 w-full min-w-0 sm:w-44"
+              />
+            </div>
           </FilterBar>
 
           <DataTable

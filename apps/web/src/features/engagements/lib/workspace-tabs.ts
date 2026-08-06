@@ -1,10 +1,11 @@
 import type { EngagementStage } from '@/features/engagements/lib/stage-styles';
 
-export type WorkspaceTab = 'overview' | 'requests' | 'settings';
+export type WorkspaceTab = 'overview' | 'requests' | 'documents' | 'settings';
 
 export const WORKSPACE_TABS: { id: WorkspaceTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'requests', label: 'Requests' },
+  { id: 'documents', label: 'Documents' },
   { id: 'settings', label: 'Settings' },
 ];
 
@@ -15,7 +16,12 @@ export function defaultTabForStage(stage: EngagementStage): WorkspaceTab {
 
 /** Accepts current ids plus legacy `planning` / `work` / `admin` query values. */
 export function parseWorkspaceTab(value: string | null | undefined): WorkspaceTab | null {
-  if (value === 'overview' || value === 'requests' || value === 'settings') {
+  if (
+    value === 'overview' ||
+    value === 'requests' ||
+    value === 'documents' ||
+    value === 'settings'
+  ) {
     return value;
   }
   if (value === 'planning') return 'overview';

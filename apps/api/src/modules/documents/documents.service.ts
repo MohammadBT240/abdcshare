@@ -12,11 +12,24 @@ import {
   DocumentStatus,
   EngagementPhase,
   EVENT,
+  FilePreviewStatus,
   hasPermission,
   phaseForStage,
   ReportReviewState,
   type Paginated,
 } from "@abdcshare/shared";
+import {
+  initialPreviewStatus,
+  isNativePreviewable,
+  isOfficeMime,
+  isPreviewAllowlisted,
+  isZipMime,
+} from "../../common/storage/preview.util";
+import {
+  extractZipEntryFromSource,
+  listZipEntriesFromSource,
+  type ZipByteSource,
+} from "../../common/storage/zip-entries.util";
 import { pageParams, paginated } from "../../common/pagination/paginate";
 import {
   engagementScopeWhere,
@@ -24,6 +37,12 @@ import {
 } from "../../common/security/access-scope";
 import type { AuthenticatedUser } from "../../common/interfaces/authenticated-user";
 import { STORAGE, type StoragePort } from "../../common/storage/storage.port";
+import type {
+  MultipartAbortDto,
+  MultipartCompleteDto,
+  MultipartCreateDto,
+  MultipartSignPartsDto,
+} from "../../common/storage/multipart.dto";
 import { OutboxService } from "../outbox/outbox.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { engagementTeamRecipients } from "../notifications/recipient-helpers";
@@ -35,7 +54,10 @@ import { EngagementRequestClassEntity } from "../engagements/infrastructure/pers
 import { RequestClassEntity } from "../request-classes/infrastructure/persistence/request-class.entity";
 import { RequestEntity } from "../requests/infrastructure/persistence/request.entity";
 import { UserEntity } from "../users/infrastructure/persistence/user.entity";
-import { DOCUMENT_MAX_BYTES } from "./documents.constants";
+import {
+  DOCUMENT_MAX_BYTES,
+  formatDocumentMaxBytesLabel,
+} from "./documents.constants";
 import type {
   AddDocumentParticipantDto,
   ConfirmUploadDto,
@@ -70,17 +92,36 @@ export class DocumentsService {
     return Object.keys(eng).length ? { id, engagement: eng } : { id };
   }
 
+  private isClient(user?: AuthenticatedUser | null): boolean {
+    return user?.role === "Client";
+  }
+
+  /** Clients may only access Supporting (planning) documents — never WP / FinalReport. */
+  private assertClientSupportingCategory(
+    category: DocumentCategory,
+    user?: AuthenticatedUser | null,
+  ): void {
+    if (this.isClient(user) && category !== DocumentCategory.Supporting) {
+      throw new ForbiddenException(
+        "Clients may only access supporting (planning) documents",
+      );
+    }
+  }
+
   private async findScoped(
     id: string,
     user: AuthenticatedUser | undefined,
     populate?: string[],
   ): Promise<DocumentEntity> {
+    const fields = new Set(populate ?? []);
+    fields.add("createdBy");
     const doc = await this.em.findOne(
       DocumentEntity,
       this.scopedWhere(id, user) as FilterQuery<DocumentEntity>,
-      populate ? { populate: populate as never } : undefined,
+      { populate: [...fields] as never },
     );
     if (!doc) throw new NotFoundException("Document not found");
+    this.assertClientSupportingCategory(doc.category, user);
     return doc;
   }
 
@@ -98,6 +139,9 @@ export class DocumentsService {
       description: d.description ?? null,
       status: d.status,
       currentVersion: d.currentVersion,
+      clientReviewState: d.clientReviewState,
+      clientReviewRound: d.clientReviewRound,
+      createdById: d.createdBy?.id ?? null,
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
     };
@@ -209,21 +253,31 @@ export class DocumentsService {
     return this.getOne(doc.id, user);
   }
 
-  /** Permission for create: Supporting → engagement:update; WorkingPaper → working-paper:upload; FinalReport → final-report:upload. */
+  /** Permission for create: Supporting → engagement:update or supporting:upload; WorkingPaper → working-paper:upload; FinalReport → final-report:upload. */
   private assertCreatePermission(
     category: DocumentCategory,
     user: AuthenticatedUser,
   ): void {
     if (category === DocumentCategory.Supporting) {
-      if (
-        !hasPermission(user.role, "engagement:update", user.partnerDesignation)
-      ) {
+      const canManage = hasPermission(
+        user.role,
+        "engagement:update",
+        user.partnerDesignation,
+      );
+      const canSupporting = hasPermission(
+        user.role,
+        "supporting:upload",
+        user.partnerDesignation,
+      );
+      if (!canManage && !canSupporting) {
         throw new ForbiddenException(
-          "engagement:update is required to create supporting documents",
+          "engagement:update or supporting:upload is required to create supporting documents",
         );
       }
       return;
     }
+    // Clients never create firm document categories.
+    this.assertClientSupportingCategory(category, user);
     if (category === DocumentCategory.FinalReport) {
       if (
         !hasPermission(
@@ -247,6 +301,21 @@ export class DocumentsService {
     }
   }
 
+  private assertCanDelete(doc: DocumentEntity, user: AuthenticatedUser): void {
+    if (hasPermission(user.role, "document:delete", user.partnerDesignation)) {
+      return;
+    }
+    const ownSupporting =
+      doc.category === DocumentCategory.Supporting &&
+      doc.createdBy?.id === user.userId &&
+      hasPermission(user.role, "supporting:upload", user.partnerDesignation);
+    if (!ownSupporting) {
+      throw new ForbiddenException(
+        "You do not have permission to delete this document",
+      );
+    }
+  }
+
   /** Permission for file upload / mutate on an existing document, based on its category. */
   private assertUploadPermission(
     category: DocumentCategory,
@@ -262,7 +331,19 @@ export class DocumentsService {
     const where: Record<string, unknown> = {};
     if (query.requestClassId) where.requestClass = query.requestClassId;
     if (query.requestId) where.request = query.requestId;
-    if (query.category) where.category = query.category;
+    if (this.isClient(user)) {
+      if (
+        query.category != null &&
+        query.category !== DocumentCategory.Supporting
+      ) {
+        throw new ForbiddenException(
+          "Clients may only list supporting (planning) documents",
+        );
+      }
+      where.category = DocumentCategory.Supporting;
+    } else if (query.category) {
+      where.category = query.category;
+    }
     if (query.status) where.status = query.status;
     if (query.phase) where.phase = query.phase;
     if (query.q) where.title = { $ilike: `%${query.q}%` };
@@ -278,7 +359,7 @@ export class DocumentsService {
       DocumentEntity,
       where as FilterQuery<DocumentEntity>,
       {
-        populate: ["requestClass", "request", "department"],
+        populate: ["requestClass", "request", "department", "createdBy"],
         orderBy: { createdAt: "desc", id: "asc" },
         limit,
         offset,
@@ -296,6 +377,9 @@ export class DocumentsService {
     dto: ExportDocumentsDto,
     user: AuthenticatedUser,
   ): Promise<{ accepted: true; jobId: string }> {
+    if (this.isClient(user)) {
+      throw new ForbiddenException("Clients may not export documents");
+    }
     await this.accessibleEngagement(dto.engagementId, user);
     const job = this.outbox.enqueue(EVENT.DocumentExportRequested, {
       engagementId: dto.engagementId,
@@ -305,6 +389,35 @@ export class DocumentsService {
     });
     await this.em.flush();
     return { accepted: true, jobId: job.id };
+  }
+
+  /**
+   * Fresh signed URL for an engagement document export zip.
+   * `storageKey` must live under this engagement's export prefix.
+   */
+  async exportDownloadUrl(
+    engagementId: string,
+    storageKey: string,
+    fileName: string | undefined,
+    user: AuthenticatedUser,
+  ): Promise<{ url: string }> {
+    if (this.isClient(user)) {
+      throw new ForbiddenException("Clients may not export documents");
+    }
+    await this.accessibleEngagement(engagementId, user);
+    const marker = `exports/${engagementId}/`;
+    // Keys are like `abdcshare/exports/{engagementId}/…` or `exports/{engagementId}/…`
+    if (!storageKey.includes(marker)) {
+      throw new ForbiddenException("Invalid export key");
+    }
+    const name =
+      fileName?.replace(/[\\/]/g, "") ||
+      storageKey.split("/").pop() ||
+      "documents.zip";
+    const url = await this.storage.presignDownload(storageKey, name, {
+      disposition: "attachment",
+    });
+    return { url };
   }
 
   async getOne(
@@ -335,9 +448,10 @@ export class DocumentsService {
     return this.getOne(id, user);
   }
 
-  /** Delete a document (Super Admin) — cascades files + participants. */
+  /** Delete a document — SA (`document:delete`) or Client own Supporting. Cascades files + participants. */
   async remove(id: string, user: AuthenticatedUser): Promise<{ ok: true }> {
-    const doc = await this.findScoped(id, user);
+    const doc = await this.findScoped(id, user, ["createdBy"]);
+    this.assertCanDelete(doc, user);
     // NOTE: object-storage cleanup of the files is left to the storage layer /
     // a future worker sweep; the DB rows cascade via the FK delete rules.
     await this.em.removeAndFlush(doc);
@@ -358,6 +472,89 @@ export class DocumentsService {
       contentType: dto.contentType,
     });
     return { ...presigned };
+  }
+
+  async createMultipart(id: string, dto: MultipartCreateDto, user: AuthenticatedUser) {
+    const doc = await this.findScoped(id, user, ["requestClass"]);
+    this.assertUploadPermission(doc.category, user);
+    if (dto.sizeBytes != null && dto.sizeBytes > DOCUMENT_MAX_BYTES) {
+      throw new BadRequestException(
+        `File exceeds maximum size of ${formatDocumentMaxBytesLabel()}`,
+      );
+    }
+    return this.storage.createMultipart({
+      keyPrefix: `documents/${doc.engagement.id}`,
+      fileName: dto.fileName,
+      contentType: dto.contentType,
+    });
+  }
+
+  async signMultipartParts(
+    id: string,
+    uploadId: string,
+    dto: MultipartSignPartsDto,
+    user: AuthenticatedUser,
+  ) {
+    const doc = await this.findScoped(id, user, ["requestClass"]);
+    this.assertUploadPermission(doc.category, user);
+    if (!dto.storageKey.includes(`documents/${doc.engagement.id}`)) {
+      throw new BadRequestException("Invalid storage key for this document");
+    }
+    const parts = await Promise.all(
+      dto.partNumbers.map(async (partNumber) => {
+        const { url } = await this.storage.presignPart(dto.storageKey, uploadId, partNumber);
+        return { partNumber, url };
+      }),
+    );
+    return { parts };
+  }
+
+  async completeMultipart(
+    id: string,
+    uploadId: string,
+    dto: MultipartCompleteDto,
+    user: AuthenticatedUser,
+  ): Promise<DocumentDetailResponseDto> {
+    const doc = await this.findScoped(id, user, ["requestClass"]);
+    this.assertUploadPermission(doc.category, user);
+    if (dto.sizeBytes > DOCUMENT_MAX_BYTES) {
+      throw new BadRequestException(
+        `File exceeds maximum size of ${formatDocumentMaxBytesLabel()}`,
+      );
+    }
+    if (!dto.storageKey.includes(`documents/${doc.engagement.id}`)) {
+      throw new BadRequestException("Invalid storage key for this document");
+    }
+    await this.storage.completeMultipart(dto.storageKey, uploadId, dto.parts);
+    const head = await this.storage.head(dto.storageKey);
+    if (!head) throw new BadRequestException("Uploaded object not found");
+    if (dto.sizeBytes > 0 && head.sizeBytes !== dto.sizeBytes) {
+      throw new BadRequestException(
+        `Uploaded size mismatch (expected ${dto.sizeBytes}, got ${head.sizeBytes})`,
+      );
+    }
+    return this.confirmUpload(
+      id,
+      {
+        storageKey: dto.storageKey,
+        fileName: dto.fileName,
+        mimeType: dto.mimeType,
+        sizeBytes: head.sizeBytes,
+      },
+      user,
+    );
+  }
+
+  async abortMultipart(
+    id: string,
+    uploadId: string,
+    dto: MultipartAbortDto,
+    user: AuthenticatedUser,
+  ): Promise<{ ok: true }> {
+    const doc = await this.findScoped(id, user, ["requestClass"]);
+    this.assertUploadPermission(doc.category, user);
+    await this.storage.abortMultipart(dto.storageKey, uploadId);
+    return { ok: true };
   }
 
   /** Bulk presign: one presigned upload per file (no DB write). */
@@ -391,6 +588,7 @@ export class DocumentsService {
     const fileIds: string[] = [];
     for (const dto of files) {
       version += 1;
+      const previewStatus = initialPreviewStatus(dto.mimeType, dto.fileName);
       const file = this.em.create(DocumentFileEntity, {
         document: doc,
         version,
@@ -399,8 +597,18 @@ export class DocumentsService {
         mimeType: dto.mimeType ?? null,
         sizeBytes: dto.sizeBytes ?? null,
         uploadedBy: this.em.getReference(UserEntity, user.userId),
+        previewStatus,
       });
       fileIds.push(file.id);
+      if (previewStatus === FilePreviewStatus.Pending) {
+        this.outbox.enqueue(EVENT.FilePreviewRequested, {
+          entityType: "document_file",
+          fileId: file.id,
+          storageKey: dto.storageKey,
+          fileName: dto.fileName,
+          mimeType: dto.mimeType ?? null,
+        });
+      }
     }
     doc.currentVersion = version;
     if (doc.status === DocumentStatus.Draft) doc.status = DocumentStatus.Ready;
@@ -433,6 +641,7 @@ export class DocumentsService {
     const doc = await this.findScoped(id, user, ["requestClass"]);
     this.assertUploadPermission(doc.category, user);
     const version = doc.currentVersion + 1;
+    const previewStatus = initialPreviewStatus(dto.mimeType, dto.fileName);
     const file = this.em.create(DocumentFileEntity, {
       document: doc,
       version,
@@ -441,6 +650,7 @@ export class DocumentsService {
       mimeType: dto.mimeType ?? null,
       sizeBytes: dto.sizeBytes ?? null,
       uploadedBy: this.em.getReference(UserEntity, user.userId),
+      previewStatus,
     });
     doc.currentVersion = version;
     if (doc.status === DocumentStatus.Draft) doc.status = DocumentStatus.Ready;
@@ -449,6 +659,15 @@ export class DocumentsService {
       fileId: file.id,
       version,
     });
+    if (previewStatus === FilePreviewStatus.Pending) {
+      this.outbox.enqueue(EVENT.FilePreviewRequested, {
+        entityType: "document_file",
+        fileId: file.id,
+        storageKey: dto.storageKey,
+        fileName: dto.fileName,
+        mimeType: dto.mimeType ?? null,
+      });
+    }
     const team = await engagementTeamRecipients(this.em, doc.engagement.id);
     await this.notifications.emit({
       recipients: team,
@@ -480,7 +699,9 @@ export class DocumentsService {
     if (!file?.buffer?.length)
       throw new BadRequestException("A file is required");
     if (file.size > DOCUMENT_MAX_BYTES) {
-      throw new BadRequestException("File must be 100 MB or smaller");
+      throw new BadRequestException(
+        `File must be ${formatDocumentMaxBytesLabel()} or smaller`,
+      );
     }
     const { storageKey } = await this.storage.upload({
       keyPrefix: `documents/${doc.engagement.id}`,
@@ -516,6 +737,158 @@ export class DocumentsService {
       file.fileName,
     );
     return { url };
+  }
+
+  async previewUrl(
+    id: string,
+    fileId: string,
+    user: AuthenticatedUser,
+    opts?: { retryFailed?: boolean },
+  ): Promise<{
+    url: string | null;
+    mode: "native" | "converted" | "unavailable";
+    previewStatus: FilePreviewStatus;
+    reason?: "pending" | "failed" | "unsupported";
+  }> {
+    await this.findScoped(id, user);
+    const file = await this.em.findOne(DocumentFileEntity, {
+      id: fileId,
+      document: id,
+    });
+    if (!file) throw new NotFoundException("File not found");
+
+    if (file.previewStatus === FilePreviewStatus.Ready && file.previewStorageKey) {
+      const url = await this.storage.presignDownload(
+        file.previewStorageKey,
+        `${file.fileName}.pdf`,
+        { disposition: "inline" },
+      );
+      return { url, mode: "converted", previewStatus: file.previewStatus };
+    }
+    if (isNativePreviewable(file.mimeType, file.fileName)) {
+      const url = await this.storage.presignDownload(file.storageKey, file.fileName, {
+        disposition: "inline",
+      });
+      return { url, mode: "native", previewStatus: FilePreviewStatus.Ready };
+    }
+    if (
+      opts?.retryFailed &&
+      file.previewStatus === FilePreviewStatus.Failed &&
+      isOfficeMime(file.mimeType, file.fileName)
+    ) {
+      file.previewStatus = FilePreviewStatus.Pending;
+      file.previewError = null;
+      this.outbox.enqueue(EVENT.FilePreviewRequested, {
+        entityType: "document_file",
+        fileId: file.id,
+        storageKey: file.storageKey,
+        fileName: file.fileName,
+        mimeType: file.mimeType ?? null,
+      });
+      await this.em.flush();
+      return {
+        url: null,
+        mode: "unavailable",
+        previewStatus: FilePreviewStatus.Pending,
+        reason: "pending",
+      };
+    }
+    if (file.previewStatus === FilePreviewStatus.Pending) {
+      return {
+        url: null,
+        mode: "unavailable",
+        previewStatus: FilePreviewStatus.Pending,
+        reason: "pending",
+      };
+    }
+    if (file.previewStatus === FilePreviewStatus.Failed) {
+      return {
+        url: null,
+        mode: "unavailable",
+        previewStatus: FilePreviewStatus.Failed,
+        reason: "failed",
+      };
+    }
+    if (isOfficeMime(file.mimeType, file.fileName)) {
+      return {
+        url: null,
+        mode: "unavailable",
+        previewStatus: FilePreviewStatus.Pending,
+        reason: "pending",
+      };
+    }
+    if (!isPreviewAllowlisted(file.mimeType, file.fileName)) {
+      return {
+        url: null,
+        mode: "unavailable",
+        previewStatus: file.previewStatus,
+        reason: "unsupported",
+      };
+    }
+    return {
+      url: null,
+      mode: "unavailable",
+      previewStatus: file.previewStatus,
+      reason: "unsupported",
+    };
+  }
+
+  private zipSource(storageKey: string): ZipByteSource {
+    return {
+      size: async () => {
+        const head = await this.storage.head(storageKey);
+        if (!head) throw new NotFoundException("Stored file not found");
+        return head.sizeBytes;
+      },
+      read: (start, endInclusive) =>
+        this.storage.getObjectRange(storageKey, start, endInclusive),
+    };
+  }
+
+  async zipEntries(id: string, fileId: string, user: AuthenticatedUser) {
+    await this.findScoped(id, user);
+    const file = await this.em.findOne(DocumentFileEntity, {
+      id: fileId,
+      document: id,
+    });
+    if (!file) throw new NotFoundException("File not found");
+    if (!isZipMime(file.mimeType, file.fileName)) {
+      throw new BadRequestException("File is not a zip archive");
+    }
+    return { entries: await listZipEntriesFromSource(this.zipSource(file.storageKey)) };
+  }
+
+  async zipEntryUrl(
+    id: string,
+    fileId: string,
+    entryPath: string,
+    user: AuthenticatedUser,
+  ): Promise<{ url: string; fileName: string; mimeType: string }> {
+    await this.findScoped(id, user);
+    const file = await this.em.findOne(DocumentFileEntity, {
+      id: fileId,
+      document: id,
+    });
+    if (!file) throw new NotFoundException("File not found");
+    if (!isZipMime(file.mimeType, file.fileName)) {
+      throw new BadRequestException("File is not a zip archive");
+    }
+    const extracted = await extractZipEntryFromSource(
+      this.zipSource(file.storageKey),
+      entryPath,
+    );
+    const { storageKey } = await this.storage.upload({
+      keyPrefix: `temp/zip-entries/${id}`,
+      fileName: extracted.name,
+      contentType: extracted.mimeType,
+      body: extracted.data,
+    });
+    const url = await this.storage.presignDownload(storageKey, extracted.name, {
+      disposition: isPreviewAllowlisted(extracted.mimeType, extracted.name)
+        ? "inline"
+        : "attachment",
+    });
+    return { url, fileName: extracted.name, mimeType: extracted.mimeType };
   }
 
   async addParticipant(

@@ -22,6 +22,7 @@ export interface SupportingDocument {
   description?: string | null;
   status: string;
   currentVersion: number;
+  createdById?: string | null;
   createdAt: string;
   files?: SupportingDocumentFile[];
 }

@@ -113,8 +113,8 @@ export function TransitionEngagementDialog({
         <div className="rounded-md bg-muted p-3 text-sm">
           <p className="font-medium">Current stage: {workspace.stage}</p>
           <p className="text-muted-foreground">
-            Progress: {workspace.progressPercent}% • {workspace.requestCount} requests •{' '}
-            {workspace.overdueCount} overdue
+            Progress: {workspace.progressPercent}% · {workspace.requestCount} request
+            {workspace.requestCount === 1 ? '' : 's'} · {workspace.overdueCount} overdue
           </p>
         </div>
       </div>

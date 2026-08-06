@@ -3,9 +3,18 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { type ColumnDef } from '@tanstack/react-table';
-import { IconEye, IconPlus, IconUserOff } from '@tabler/icons-react';
+import {
+  IconBuilding,
+  IconEye,
+  IconKey,
+  IconPlus,
+  IconSearch,
+  IconToggleLeft,
+  IconUserOff,
+} from '@tabler/icons-react';
 import { toast } from 'sonner';
 import {
+  ChecklistFilter,
   DataTable,
   EntityCell,
   FilterBar,
@@ -15,7 +24,7 @@ import {
   useListParams,
   type RowActionItem,
 } from '@/components/data';
-import { AppSelect, ConfirmDialog } from '@/components/forms';
+import { ConfirmDialog } from '@/components/forms';
 import { PageToolbar } from '@/components/layout/page-toolbar';
 import { DataTableSkeleton } from '@/components/skeletons';
 import { Button } from '@/components/ui/button';
@@ -25,6 +34,7 @@ import { AddClientDialog } from '@/features/clients/components/add-client-dialog
 import {
   useClientsList,
   useDeactivateClient,
+  useResetClientContactPassword,
   type ClientRecord,
 } from '@/features/clients/hooks/use-clients';
 import { useLookup } from '@/features/users/hooks/use-users';
@@ -38,9 +48,11 @@ function ClientsListInner() {
   const [searchDraft, setSearchDraft] = useState(params.q);
   const [addOpen, setAddOpen] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<ClientRecord | null>(null);
+  const [resetTarget, setResetTarget] = useState<ClientRecord | null>(null);
   const list = useClientsList(queryString);
   const clientTypes = useLookup('client-types');
   const deactivate = useDeactivateClient();
+  const resetContactPassword = useResetClientContactPassword();
 
   useEffect(() => {
     setSearchDraft(params.q);
@@ -104,6 +116,12 @@ function ClientsListInner() {
           ];
           if (canManage && record.isActive) {
             items.push({
+              label: 'Reset & email password',
+              icon: <IconKey className="h-4 w-4" />,
+              onClick: () => setResetTarget(record),
+              separatorBefore: true,
+            });
+            items.push({
               label: 'Deactivate',
               icon: <IconUserOff className="h-4 w-4" />,
               onClick: () => setDeactivateTarget(record),
@@ -128,6 +146,18 @@ function ClientsListInner() {
     }
   }
 
+  async function confirmReset() {
+    if (!resetTarget) return;
+    try {
+      await resetContactPassword.mutateAsync(resetTarget.id);
+      const email = resetTarget.primaryContactEmail ?? resetTarget.email ?? 'the contact';
+      toast.success(`New temporary password emailed to ${email}`);
+      setResetTarget(null);
+    } catch (err) {
+      toast.error(err instanceof BffClientError ? err.message : 'Password reset failed');
+    }
+  }
+
   return (
     <div className="w-full min-w-0">
       <PageToolbar
@@ -149,40 +179,37 @@ function ClientsListInner() {
       <AddClientDialog open={addOpen} onOpenChange={setAddOpen} />
 
       <FilterBar>
-        <AppSelect
-          size="sm"
-          className="w-[9.5rem] sm:w-44"
-          triggerClassName="h-9"
-          value={params.extra.clientTypeId ?? 'all'}
-          onValueChange={(v) =>
-            setParams({ extra: { clientTypeId: v === 'all' ? undefined : v } })
-          }
-          options={[{ value: 'all', label: 'All types' }, ...typeOptions]}
-          placeholder="Type"
-          isLoading={clientTypes.isPending}
+        <div className="relative min-w-0 flex-1 basis-56 max-w-sm">
+          <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchDraft}
+            onChange={(e) => {
+              const q = e.target.value;
+              setSearchDraft(q);
+              setSearchQueryDebounced(q);
+            }}
+            placeholder="Search clients…"
+            className="h-10 rounded-lg pl-9"
+          />
+        </div>
+        <ChecklistFilter
+          label="Type"
+          icon={<IconBuilding className="h-4 w-4" />}
+          options={typeOptions}
+          value={params.extra.clientTypeId || undefined}
+          onChange={(value) => setParams({ extra: { clientTypeId: value } })}
+          searchPlaceholder="Types"
         />
-        <AppSelect
-          size="sm"
-          className="w-[9.5rem] sm:w-40"
-          triggerClassName="h-9"
-          value={params.extra.isActive ?? 'all'}
-          onValueChange={(v) => setParams({ extra: { isActive: v === 'all' ? undefined : v } })}
+        <ChecklistFilter
+          label="Status"
+          icon={<IconToggleLeft className="h-4 w-4" />}
           options={[
-            { value: 'all', label: 'All statuses' },
             { value: 'true', label: 'Active' },
             { value: 'false', label: 'Inactive' },
           ]}
-          placeholder="Status"
-        />
-        <Input
-          value={searchDraft}
-          onChange={(e) => {
-            const q = e.target.value;
-            setSearchDraft(q);
-            setSearchQueryDebounced(q);
-          }}
-          placeholder="Search clients…"
-          className="h-9 min-w-[10rem] flex-1 basis-40 sm:max-w-xs"
+          value={params.extra.isActive || undefined}
+          onChange={(value) => setParams({ extra: { isActive: value } })}
+          searchPlaceholder="Status"
         />
       </FilterBar>
 
@@ -192,6 +219,8 @@ function ClientsListInner() {
         meta={list.data?.meta}
         isPending={list.isPending}
         onPageChange={(page) => setParams({ page })}
+        pageSize={params.pageSize}
+        onPageSizeChange={(pageSize) => setParams({ pageSize, page: 1 })}
         onRowClick={(row) => router.push(`/admin/clients/${row.id}`)}
         emptyMessage="No clients found"
       />
@@ -207,6 +236,18 @@ function ClientsListInner() {
         variant="destructive"
         confirming={deactivate.isPending}
         onConfirm={() => void confirmDeactivate()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(resetTarget)}
+        onOpenChange={(open) => {
+          if (!open) setResetTarget(null);
+        }}
+        title="Reset contact password and email credentials?"
+        description={`A new temporary password will be emailed to ${resetTarget?.primaryContactEmail ?? resetTarget?.email ?? 'the primary contact'}. They must change it on next login.`}
+        confirmLabel="Reset & email"
+        confirming={resetContactPassword.isPending}
+        onConfirm={() => void confirmReset()}
       />
     </div>
   );

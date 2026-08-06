@@ -20,6 +20,8 @@ export const NOTIFICATION_TYPES = [
   'discussion.message',
   'submission.created',
   'submission.reviewed',
+  'submission.export_ready',
+  'submission.export_failed',
   'review.requested',
   'review.decided',
   'report.review_requested',
@@ -159,6 +161,18 @@ export const NOTIFICATION_TYPE_CATALOG: NotificationTypeMeta[] = [
     type: 'submission.reviewed',
     label: 'Submission reviewed',
     description: 'When your submission is accepted or returned',
+    category: 'collaboration',
+  },
+  {
+    type: 'submission.export_ready',
+    label: 'Submission download ready',
+    description: 'When a requested archive of a client response is ready to download',
+    category: 'collaboration',
+  },
+  {
+    type: 'submission.export_failed',
+    label: 'Submission download failed',
+    description: 'When building a client-response archive fails',
     category: 'collaboration',
   },
   {

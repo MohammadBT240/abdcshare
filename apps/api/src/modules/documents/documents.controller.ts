@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -18,6 +19,12 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { DocumentsService } from './documents.service';
 import { DOCUMENT_MAX_BYTES } from './documents.constants';
+import {
+  MultipartAbortDto,
+  MultipartCompleteDto,
+  MultipartCreateDto,
+  MultipartSignPartsDto,
+} from '../../common/storage/multipart.dto';
 import {
   AddDocumentParticipantDto,
   ConfirmBatchDto,
@@ -47,7 +54,7 @@ export class DocumentsController {
 
   /**
    * Create a document. Permission is category-scoped in the service:
-   * Supporting → engagement:update; WorkingPaper → working-paper:upload; FinalReport → final-report:upload.
+   * Supporting → engagement:update or supporting:upload; WorkingPaper → working-paper:upload; FinalReport → final-report:upload.
    */
   @Post()
   create(
@@ -75,6 +82,20 @@ export class DocumentsController {
     return this.documents.exportDocuments(dto, user);
   }
 
+  @Get('exports/download')
+  @RequirePermission('document:view')
+  exportDownload(
+    @Query('engagementId', ParseUUIDPipe) engagementId: string,
+    @Query('key') key: string | undefined,
+    @Query('name') name: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ url: string }> {
+    if (!key?.trim()) {
+      throw new BadRequestException('key query required');
+    }
+    return this.documents.exportDownloadUrl(engagementId, key.trim(), name, user);
+  }
+
   @Get(':id')
   @RequirePermission('document:view')
   getOne(
@@ -93,8 +114,8 @@ export class DocumentsController {
     return this.documents.update(id, dto, user);
   }
 
+  /** Authz in service: document:delete, or own Supporting with supporting:upload. */
   @Delete(':id')
-  @RequirePermission('document:delete')
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -118,6 +139,45 @@ export class DocumentsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DocumentDetailResponseDto> {
     return this.documents.confirmUpload(id, dto, user);
+  }
+
+  @Post(':id/files/multipart')
+  createMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MultipartCreateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.createMultipart(id, dto, user);
+  }
+
+  @Post(':id/files/multipart/:uploadId/parts')
+  signMultipartParts(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartSignPartsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.signMultipartParts(id, uploadId, dto, user);
+  }
+
+  @Post(':id/files/multipart/:uploadId/complete')
+  completeMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartCompleteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<DocumentDetailResponseDto> {
+    return this.documents.completeMultipart(id, uploadId, dto, user);
+  }
+
+  @Post(':id/files/multipart/:uploadId/abort')
+  abortMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartAbortDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.abortMultipart(id, uploadId, dto, user);
   }
 
   /** Server-side multipart upload (category permission enforced in service). */
@@ -176,6 +236,40 @@ export class DocumentsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DownloadUrlResponseDto> {
     return this.documents.downloadUrl(id, fileId, user);
+  }
+
+  @Get(':id/files/:fileId/preview')
+  @RequirePermission('document:view')
+  preview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Query('retryFailed') retryFailed: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.previewUrl(id, fileId, user, {
+      retryFailed: retryFailed === '1' || retryFailed === 'true',
+    });
+  }
+
+  @Get(':id/files/:fileId/zip-entries')
+  @RequirePermission('document:view')
+  zipEntries(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.zipEntries(id, fileId, user);
+  }
+
+  @Get(':id/files/:fileId/zip-entry')
+  @RequirePermission('document:view')
+  zipEntry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Query('path') entryPath: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.zipEntryUrl(id, fileId, entryPath ?? '', user);
   }
 
   @Post(':id/participants')

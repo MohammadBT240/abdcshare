@@ -49,6 +49,12 @@ describe("RequestsService", () => {
       const service = new RequestsService(
         em as never,
         { emit: jest.fn() } as never,
+        { enqueue: jest.fn() } as never,
+        {
+          presignUpload: jest.fn(),
+          presignDownload: jest.fn(),
+          head: jest.fn(),
+        } as never,
       );
       await expect(
         service.create(
@@ -78,6 +84,9 @@ describe("RequestsService", () => {
               requestClass: { id: 5, name: "Cash" },
             };
           if (entity === EngagementRequestClassEntity) return { id: "scope-1" };
+          if (entity === RequestStageEntity)
+            return { id: 1, name: "Not Started" };
+          if (entity === RequestStatusEntity) return { id: 1, name: "Open" };
           return null;
         }),
         count: jest.fn(async (entity: unknown) =>
@@ -91,14 +100,21 @@ describe("RequestsService", () => {
         getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
         persistAndFlush: jest.fn(async () => undefined),
         find: jest.fn(async (entity: unknown) => {
-          if (entity === RequestStageEntity) return [{ id: 1, name: "Open" }];
           if (entity === RequestStatusEntity) return [{ id: 1, name: "Open" }];
+          if (entity === RequestStageEntity)
+            return [{ id: 1, name: "Not Started" }];
           return [];
         }),
       };
       const service = new RequestsService(
         em as never,
         { emit: jest.fn() } as never,
+        { enqueue: jest.fn() } as never,
+        {
+          presignUpload: jest.fn(),
+          presignDownload: jest.fn(),
+          head: jest.fn(),
+        } as never,
       );
       jest.spyOn(service, "getOne").mockResolvedValue({ id: "r-new" } as never);
 
@@ -115,77 +131,21 @@ describe("RequestsService", () => {
   });
 
   describe("setStage", () => {
-    it("sets the new stage and records a StageChanged history row", async () => {
-      const request = {
-        engagement: { id: "eng-1" },
-        requestType: { requestClass: { id: 5 } },
-        stage: { id: 1, name: "Open" },
-      };
-      const newStage = { id: 2, name: "In Progress" };
-      const created: Array<{ entity: unknown; data: Record<string, unknown> }> =
-        [];
-      const em = {
-        // findScoped loads the request; the stage lookup returns the new stage.
-        findOne: jest.fn(async (entity: unknown) => {
-          if (entity === RequestEntity) return request;
-          if (entity === RequestStageEntity) return newStage;
-          return null;
-        }),
-        getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
-        create: jest.fn((entity: unknown, data: Record<string, unknown>) => {
-          created.push({ entity, data });
-          return data;
-        }),
-        flush: jest.fn(async () => undefined),
-        count: jest.fn(async () => 0),
-        find: jest.fn(async () => []),
-      };
+    it("rejects manual stage changes", async () => {
       const service = new RequestsService(
-        em as never,
+        {} as never,
         { emit: jest.fn() } as never,
+        { enqueue: jest.fn() } as never,
+        {
+          presignUpload: jest.fn(),
+          presignDownload: jest.fn(),
+          head: jest.fn(),
+        } as never,
       );
-      jest.spyOn(service, "getOne").mockResolvedValue({ id: "r1" } as never);
 
-      await service.setStage("r1", { stageId: 2, note: "moving on" }, admin);
-
-      expect(request.stage).toBe(newStage);
-      const history = created.find(
-        (c) => c.entity === RequestHistoryEntity,
-      )?.data;
-      expect(history?.eventType).toBe(REQUEST_EVENT.StageChanged);
-      expect(history?.fromValue).toBe("Open");
-      expect(history?.toValue).toBe("In Progress");
-    });
-
-    it("allows a stage change even after the request class is signed off", async () => {
-      const request = {
-        engagement: { id: "eng-1" },
-        requestType: { requestClass: { id: 5 } },
-        stage: { id: 1, name: "Open" },
-      };
-      const newStage = { id: 2, name: "In Progress" };
-      const em = {
-        findOne: jest.fn(async (entity: unknown) => {
-          if (entity === RequestEntity) return request;
-          if (entity === RequestStageEntity) return newStage;
-          return null;
-        }),
-        count: jest.fn(async (entity: unknown) =>
-          entity === EngagementSignOffEntity ? 1 : 0,
-        ),
-        getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
-        create: jest.fn((_e: unknown, data: Record<string, unknown>) => data),
-        flush: jest.fn(async () => undefined),
-        find: jest.fn(async () => []),
-      };
-      const service = new RequestsService(
-        em as never,
-        { emit: jest.fn() } as never,
-      );
-      jest.spyOn(service, "getOne").mockResolvedValue({ id: "r1" } as never);
-
-      await service.setStage("r1", { stageId: 2 }, admin);
-      expect(request.stage).toBe(newStage);
+      await expect(
+        service.setStage("r1", { stageId: 2, note: "moving on" }, admin),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
@@ -204,6 +164,12 @@ describe("RequestsService", () => {
       const service = new RequestsService(
         em as never,
         { emit: jest.fn() } as never,
+        { enqueue: jest.fn() } as never,
+        {
+          presignUpload: jest.fn(),
+          presignDownload: jest.fn(),
+          head: jest.fn(),
+        } as never,
       );
 
       await expect(service.remove("r1", admin)).rejects.toBeInstanceOf(
@@ -223,6 +189,12 @@ describe("RequestsService", () => {
       const service = new RequestsService(
         em as never,
         { emit: jest.fn() } as never,
+        { enqueue: jest.fn() } as never,
+        {
+          presignUpload: jest.fn(),
+          presignDownload: jest.fn(),
+          head: jest.fn(),
+        } as never,
       );
 
       await expect(service.remove("r1", admin)).resolves.toEqual({ ok: true });
@@ -248,7 +220,6 @@ describe("RequestsService", () => {
           requestType: { requestClass: { id: 1 } },
         },
       ];
-      const stage = { id: 2, name: "In progress" };
       const status = { id: 3, name: "Active" };
       const assignee = { id: "u2", fullName: "User Two", email: null };
       const em = {
@@ -256,8 +227,10 @@ describe("RequestsService", () => {
           entity === RequestEntity ? requests : [],
         ),
         findOne: jest.fn(async (entity: unknown) => {
-          if (entity === RequestStageEntity) return stage;
           if (entity === RequestStatusEntity) return status;
+          if (entity === RequestEntity) return requests[0];
+          if (entity === RequestStageEntity)
+            return { id: 1, name: "Not Started" };
           return assignee;
         }),
         nativeDelete: jest.fn(async () => 0),
@@ -269,22 +242,25 @@ describe("RequestsService", () => {
       const service = new RequestsService(
         em as never,
         { emit: jest.fn() } as never,
+        { enqueue: jest.fn() } as never,
+        {
+          presignUpload: jest.fn(),
+          presignDownload: jest.fn(),
+          head: jest.fn(),
+        } as never,
       );
 
       await expect(
         service.bulkUpdate(
           {
             ids: ["r1", "r2"],
-            stageId: 2,
             statusId: 3,
             assigneeUserId: "u2",
           },
           admin,
         ),
       ).resolves.toEqual({ updated: 2 });
-      expect(
-        requests.every((r) => r.stage === stage && r.status === status),
-      ).toBe(true);
+      expect(requests.every((r) => r.status === status)).toBe(true);
       expect(em.create).toHaveBeenCalledWith(
         RequestAssigneeEntity,
         expect.objectContaining({ user: assignee }),

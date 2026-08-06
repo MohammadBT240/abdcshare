@@ -22,6 +22,7 @@ import { COMPANY_PROFILE_MAX_BYTES } from './company-profile.constants';
 import {
   CompanyProfileDownloadDto,
   CompanyProfileListQueryDto,
+  CompanyProfilePreviewDto,
   CompanyProfileResponseDto,
   RenameCompanyProfileDto,
 } from './presentation/dto/company-profile.dto';
@@ -70,6 +71,12 @@ export class CompanyProfileController {
   @RequirePermission('company-profile:view')
   download(@Param('id', ParseUUIDPipe) id: string): Promise<CompanyProfileDownloadDto> {
     return this.companyProfile.download(id);
+  }
+
+  @Get(':id/preview')
+  @RequirePermission('company-profile:view')
+  preview(@Param('id', ParseUUIDPipe) id: string): Promise<CompanyProfilePreviewDto> {
+    return this.companyProfile.preview(id);
   }
 
   @Post(':id/file')

@@ -7,6 +7,8 @@ import { ReportReviewsService } from './report-reviews.service';
 import {
   ClientPendingReportListDto,
   DownloadUrlResponseDto,
+  FirmReportListDto,
+  FirmReportListQueryDto,
   OverrideReportDto,
   PendingReportListQueryDto,
   ReportReviewStatusDto,
@@ -65,6 +67,15 @@ export class FinalReportReviewClientController {
     return this.reviews.listPendingForClient(user, query);
   }
 
+  @Get('firm')
+  @RequirePermission('report-review:manage')
+  firmList(
+    @Query() query: FirmReportListQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<FirmReportListDto> {
+    return this.reviews.listForFirm(user, query);
+  }
+
   @Get(':id')
   @RequirePermission('report-review:respond')
   getOne(
@@ -81,6 +92,50 @@ export class FinalReportReviewClientController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DownloadUrlResponseDto> {
     return this.reviews.downloadForClient(id, user);
+  }
+
+  @Get(':id/files/:fileId/download')
+  @RequirePermission('report-review:respond')
+  downloadFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<DownloadUrlResponseDto> {
+    return this.reviews.downloadFile(id, fileId, user);
+  }
+
+  @Get(':id/files/:fileId/preview')
+  @RequirePermission('report-review:respond')
+  previewFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Query('retryFailed') retryFailed: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.reviews.previewFile(id, fileId, user, {
+      retryFailed: retryFailed === '1' || retryFailed === 'true',
+    });
+  }
+
+  @Get(':id/files/:fileId/zip-entries')
+  @RequirePermission('report-review:respond')
+  zipEntries(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.reviews.zipEntries(id, fileId, user);
+  }
+
+  @Get(':id/files/:fileId/zip-entry')
+  @RequirePermission('report-review:respond')
+  zipEntry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Query('path') entryPath: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.reviews.zipEntryUrl(id, fileId, entryPath, user);
   }
 
   @Post(':id/respond')

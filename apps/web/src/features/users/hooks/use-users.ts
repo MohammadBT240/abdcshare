@@ -105,6 +105,20 @@ export function useDeactivateUser() {
   });
 }
 
+export function useResetUserPassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      bffApi<UserRecord>(`/api/users/${id}/reset-password`, { method: 'POST' }),
+    onSuccess: async (_data, id) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['users'] }),
+        qc.invalidateQueries({ queryKey: ['users', id] }),
+      ]);
+    },
+  });
+}
+
 export function useAssignDesignation(id?: string) {
   const qc = useQueryClient();
   return useMutation({

@@ -12,8 +12,12 @@ describe('resolveScope', () => {
     expect(resolveScope(undefined)).toEqual({ kind: 'all' });
   });
 
-  it('scopes a Client to its own client', () => {
-    expect(resolveScope(u({ role: 'Client', clientId: 'c9' }))).toEqual({ kind: 'client', clientId: 'c9' });
+  it('scopes a Client to its org + user id (membership filter)', () => {
+    expect(resolveScope(u({ role: 'Client', clientId: 'c9', userId: 'u9' }))).toEqual({
+      kind: 'client',
+      clientId: 'c9',
+      userId: 'u9',
+    });
   });
 
   it('scopes a Staff to itself (team membership)', () => {
@@ -28,7 +32,9 @@ describe('resolveScope', () => {
 describe('engagementScopeWhere', () => {
   it('maps each scope to the right engagement filter', () => {
     expect(engagementScopeWhere({ kind: 'all' })).toEqual({});
-    expect(engagementScopeWhere({ kind: 'client', clientId: 'c1' })).toEqual({ client: 'c1' });
+    expect(engagementScopeWhere({ kind: 'client', clientId: 'c1', userId: 'u1' })).toEqual({
+      clientContacts: { user: 'u1' },
+    });
     expect(engagementScopeWhere({ kind: 'staff', userId: 's1' })).toEqual({ team: { user: 's1' } });
   });
 });

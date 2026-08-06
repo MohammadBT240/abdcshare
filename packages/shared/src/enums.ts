@@ -149,7 +149,11 @@ export enum PartnerReportInviteStatus {
 }
 
 export enum SubmissionStatus {
+  /** Client is still uploading files; not visible to staff; no notification yet. */
+  Draft = 'Draft',
   Pending = 'Pending',
+  /** Staff has opened / claimed the file; still awaiting Accept/Return. File-level only. */
+  UnderReview = 'UnderReview',
   Accepted = 'Accepted',
   Returned = 'Returned',
 }
@@ -164,5 +168,13 @@ export enum OutboxStatus {
   Pending = 'Pending',
   Queued = 'Queued',
   Sent = 'Sent',
+  Failed = 'Failed',
+}
+
+/** Office→PDF preview pipeline status on uploaded files. */
+export enum FilePreviewStatus {
+  None = 'None',
+  Pending = 'Pending',
+  Ready = 'Ready',
   Failed = 'Failed',
 }

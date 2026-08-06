@@ -19,13 +19,16 @@ import { UploadPlanningDocumentDialog } from './upload-planning-document-dialog'
 interface PlanningDocumentsPanelProps {
   engagementId: string;
   canUpload: boolean;
-  canDelete: boolean;
+  /** Super Admin (or anyone with document:delete) may delete any planning doc. */
+  canDeleteAny: boolean;
+  currentUserId?: string | null;
 }
 
 export function PlanningDocumentsPanel({
   engagementId,
   canUpload,
-  canDelete,
+  canDeleteAny,
+  currentUserId,
 }: PlanningDocumentsPanelProps) {
   const docs = useSupportingDocuments(engagementId);
   const remove = useDeleteSupportingDocument(engagementId);
@@ -81,6 +84,9 @@ export function PlanningDocumentsPanel({
           <ul className="divide-y divide-border rounded-md border border-border">
             {rows.map((doc) => {
               const latest = doc.files?.[0];
+              const canDeleteThis =
+                canDeleteAny ||
+                (Boolean(currentUserId) && doc.createdById === currentUserId);
               return (
               <li
                 key={doc.id}
@@ -114,7 +120,7 @@ export function PlanningDocumentsPanel({
                   >
                     <IconDownload className="h-3.5 w-3.5" />
                   </Button>
-                  {canDelete ? (
+                  {canDeleteThis ? (
                     <Button
                       type="button"
                       variant="ghost"

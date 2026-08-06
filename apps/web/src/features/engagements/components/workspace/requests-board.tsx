@@ -13,6 +13,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { UserAvatar } from '@/components/data/user-avatar';
+import { StatusPill, resolveStatusTone } from '@/components/data';
 import { CreateRequestDialog } from '@/features/requests/components/create-request-dialog';
 import { useRequestsList } from '@/features/requests/hooks/use-requests';
 import type { EngagementWorkspace } from '@/features/engagements/hooks/use-engagements';
@@ -141,7 +142,13 @@ export function RequestsBoard({ workspace, canCreateRequest }: RequestsBoardProp
                                   <span>•</span>
                                   <div className="flex items-center gap-1">
                                     <span className="font-medium">Status:</span>
-                                    <span>{req.status}</span>
+                                    {req.status ? (
+                                      <StatusPill tone={resolveStatusTone(req.status)}>
+                                        {req.status}
+                                      </StatusPill>
+                                    ) : (
+                                      <span>—</span>
+                                    )}
                                   </div>
                                   {req.dueDate ? (
                                     <>

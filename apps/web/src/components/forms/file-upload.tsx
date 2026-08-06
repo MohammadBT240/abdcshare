@@ -5,7 +5,11 @@ import { IconX } from '@tabler/icons-react';
 import { Button } from '@/components/ui/button';
 import { FileTypeIcon } from '@/components/data/file-type-icon';
 import { cn } from '@/lib/utils';
-import { DOCUMENT_MAX_BYTES, validateFile } from '@/components/forms/file-validation';
+import {
+  DOCUMENT_MAX_BYTES,
+  formatMaxBytesLabel,
+  validateFile,
+} from '@/components/forms/file-validation';
 
 export interface FileUploadProps {
   files: File[];
@@ -18,6 +22,8 @@ export interface FileUploadProps {
   className?: string;
   label?: string;
   description?: string;
+  /** When true, only the dropzone is shown — caller renders its own file list. */
+  hideFileList?: boolean;
 }
 
 export function FileUpload({
@@ -31,6 +37,7 @@ export function FileUpload({
   className,
   label = 'Upload files',
   description = 'Drag and drop or click to browse.',
+  hideFileList = false,
 }: FileUploadProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -54,7 +61,7 @@ export function FileUpload({
           const sizeErr = file.size > maxBytes ? validateFile(file, { allowedTypes: new Set(['*/*']), maxBytes }) : null;
           // size-only when no mime set
           if (file.size > maxBytes) {
-            setError(`File must be ${Math.round(maxBytes / (1024 * 1024))} MB or smaller`);
+            setError(`File must be ${formatMaxBytesLabel(maxBytes)} or smaller`);
             return;
           }
           void sizeErr;
@@ -115,7 +122,7 @@ export function FileUpload({
         />
       </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      {files.length > 0 ? (
+      {!hideFileList && files.length > 0 ? (
         <ul className="space-y-1">
           {files.map((file, i) => (
             <li

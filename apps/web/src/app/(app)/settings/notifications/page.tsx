@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react';
 import { toast } from 'sonner';
-import { PageToolbar } from '@/components/layout/page-toolbar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BffClientError } from '@/lib/bff/client';
 import {
@@ -64,15 +63,13 @@ export default function NotificationPreferencesPage() {
   }
 
   return (
-    <div className="space-y-5">
-      <PageToolbar
-        title="Notification preferences"
-        breadcrumbs={[
-          { label: 'Home', href: '/dashboard' },
-          { label: 'Notification preferences' },
-        ]}
-        description="Choose which events send in-app alerts and email. Both are on by default."
-      />
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-base font-semibold">Notifications</h2>
+        <p className="text-sm text-muted-foreground">
+          Choose which events send in-app alerts and email. Both are on by default.
+        </p>
+      </div>
 
       {catalog.isPending || prefs.isPending ? (
         <p className="text-sm text-muted-foreground">Loading preferences…</p>
@@ -82,9 +79,9 @@ export default function NotificationPreferencesPage() {
         <div className="space-y-6">
           {[...grouped.entries()].map(([category, items]) => (
             <section key={category} className="space-y-3">
-              <h2 className="text-sm font-semibold">
+              <h3 className="text-sm font-semibold">
                 {CATEGORY_LABELS[category] ?? category}
-              </h2>
+              </h3>
               <ul className="divide-y divide-border rounded-lg border border-border bg-card">
                 {items.map((item) => {
                   const current = prefMap.get(item.type) ?? {

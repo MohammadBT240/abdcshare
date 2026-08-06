@@ -1,20 +1,23 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   IconArrowBackUp,
   IconAt,
+  IconMessage,
   IconPaperclip,
   IconPencil,
   IconSend,
   IconX,
-} from '@tabler/icons-react';
-import { toast } from 'sonner';
-import { UserAvatar } from '@/components/data/user-avatar';
-import { FileTypeIcon } from '@/components/data/file-type-icon';
-import { FormDialog, LoadingButton } from '@/components/forms';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+} from "@tabler/icons-react";
+import { toast } from "sonner";
+import { SubmissionStatus } from "@abdcshare/shared";
+import { UserAvatar } from "@/components/data/user-avatar";
+import { FileTypeIcon } from "@/components/data/file-type-icon";
+import { StatusPill, formatStatusLabel, resolveStatusTone } from "@/components/data";
+import { FormDialog, LoadingButton } from "@/components/forms";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -22,32 +25,44 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from '@/components/ui/command';
+} from "@/components/ui/command";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import { Textarea } from '@/components/ui/textarea';
-import type { EngagementTeamMember } from '@/features/engagements/hooks/use-engagements';
-import type { RequestListItem } from '@/features/requests/hooks/use-requests';
+} from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
+import type { EngagementTeamMember } from "@/features/engagements/hooks/use-engagements";
+import type { RequestListItem } from "@/features/requests/hooks/use-requests";
 import {
+  type DiscussionFileRef,
   type DiscussionMessage,
   uploadMessageAttachment,
   useEditMessage,
   useMarkRead,
   useMessages,
   usePostMessage,
-} from '@/features/discussions/hooks/use-discussions';
-import { BffClientError } from '@/lib/bff/client';
+} from "@/features/discussions/hooks/use-discussions";
+import { BffClientError } from "@/lib/bff/client";
+import { cn } from "@/lib/utils";
+
+export interface DiscussFileSeed {
+  id: string;
+  fileName: string;
+  status: SubmissionStatus;
+  submissionId: string;
+}
 
 interface RequestDiscussionTabProps {
   requestId: string;
   teamMembers: EngagementTeamMember[];
-  assignees: RequestListItem['assignees'];
+  assignees: RequestListItem["assignees"];
   currentUserId?: string;
   canParticipate: boolean;
   active: boolean;
+  /** Prefill composer with a tagged submission file (from Submissions tab). */
+  initialReferencedFile?: DiscussFileSeed | null;
+  onInitialReferencedFileConsumed?: () => void;
 }
 
 interface MentionCandidate {
@@ -77,27 +92,42 @@ export function RequestDiscussionTab({
   currentUserId,
   canParticipate,
   active,
+  initialReferencedFile,
+  onInitialReferencedFileConsumed,
 }: RequestDiscussionTabProps) {
   const messages = useMessages(requestId, canParticipate && active);
   const postMessage = usePostMessage();
   const editMessage = useEditMessage();
   const markRead = useMarkRead();
-  const [body, setBody] = useState('');
+  const [body, setBody] = useState("");
   const [replyTo, setReplyTo] = useState<DiscussionMessage | null>(null);
   const [selectedMentionIds, setSelectedMentionIds] = useState<string[]>([]);
+  const [referencedFiles, setReferencedFiles] = useState<DiscussFileSeed[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [editing, setEditing] = useState<DiscussionMessage | null>(null);
-  const [editBody, setEditBody] = useState('');
+  const [editBody, setEditBody] = useState("");
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef(new Map<string, HTMLElement>());
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!initialReferencedFile) return;
+    setReferencedFiles((prev) =>
+      prev.some((f) => f.id === initialReferencedFile.id)
+        ? prev
+        : [...prev, initialReferencedFile],
+    );
+    onInitialReferencedFileConsumed?.();
+  }, [initialReferencedFile, onInitialReferencedFileConsumed]);
 
   const thread = useMemo(
     () =>
       [...(messages.data?.data ?? [])].sort(
         (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() ||
-          a.id.localeCompare(b.id),
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+          b.id.localeCompare(a.id),
       ),
     [messages.data?.data],
   );
@@ -105,7 +135,7 @@ export function RequestDiscussionTab({
     () => new Map(thread.map((message) => [message.id, message])),
     [thread],
   );
-  const latestMessageId = thread.at(-1)?.id;
+  const latestMessageId = thread[0]?.id;
 
   const mentionCandidates = useMemo(() => {
     const candidates = new Map<string, MentionCandidate>();
@@ -128,24 +158,39 @@ export function RequestDiscussionTab({
   }, [assignees, teamMembers]);
 
   useEffect(() => {
-    if (active && thread.length > 0) {
-      endRef.current?.scrollIntoView({ block: 'end' });
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
+
+  function scrollToMessage(messageId: string) {
+    const target = messageRefs.current.get(messageId);
+    if (!target) {
+      toast.error("Original message is not available in this view");
+      return;
     }
-  }, [active, thread.length]);
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(messageId);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedId(null);
+      highlightTimerRef.current = null;
+    }, 1800);
+  }
 
   useEffect(() => {
     if (!active || !canParticipate) return;
     const markLatestRead = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         markRead.mutate({ requestId, lastReadMessageId: latestMessageId });
       }
     };
     markLatestRead();
-    window.addEventListener('focus', markLatestRead);
-    document.addEventListener('visibilitychange', markLatestRead);
+    window.addEventListener("focus", markLatestRead);
+    document.addEventListener("visibilitychange", markLatestRead);
     return () => {
-      window.removeEventListener('focus', markLatestRead);
-      document.removeEventListener('visibilitychange', markLatestRead);
+      window.removeEventListener("focus", markLatestRead);
+      document.removeEventListener("visibilitychange", markLatestRead);
     };
     // The mutation is intentionally repeated when the latest message changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -157,7 +202,7 @@ export function RequestDiscussionTab({
     );
     setBody(
       (value) =>
-        `${value}${value && !value.endsWith(' ') ? ' ' : ''}@${candidate.fullName} `,
+        `${value}${value && !value.endsWith(" ") ? " " : ""}@${candidate.fullName} `,
     );
     setMentionOpen(false);
   }
@@ -165,7 +210,7 @@ export function RequestDiscussionTab({
   async function handlePost() {
     const trimmed = body.trim();
     if (!trimmed) {
-      toast.error('Enter a message');
+      toast.error("Enter a message");
       return;
     }
     try {
@@ -176,11 +221,15 @@ export function RequestDiscussionTab({
         mentionUserIds: selectedMentionIds.length
           ? selectedMentionIds
           : undefined,
+        referencedFileIds: referencedFiles.length
+          ? referencedFiles.map((f) => f.id)
+          : undefined,
       });
       const pendingFiles = files;
-      setBody('');
+      setBody("");
       setReplyTo(null);
       setSelectedMentionIds([]);
+      setReferencedFiles([]);
       setFiles([]);
 
       if (pendingFiles.length > 0) {
@@ -188,17 +237,17 @@ export function RequestDiscussionTab({
           pendingFiles.map((file) => uploadMessageAttachment(created.id, file)),
         );
         const failed = results.filter(
-          (result) => result.status === 'rejected',
+          (result) => result.status === "rejected",
         ).length;
         if (failed > 0) {
           toast.error(
-            `${failed} attachment${failed === 1 ? '' : 's'} failed to upload`,
+            `${failed} attachment${failed === 1 ? "" : "s"} failed to upload`,
           );
         }
         await messages.refetch();
       }
     } catch (error) {
-      toast.error(errorMessage(error, 'Failed to post message'));
+      toast.error(errorMessage(error, "Failed to post message"));
     }
   }
 
@@ -211,9 +260,9 @@ export function RequestDiscussionTab({
         body: editBody.trim(),
       });
       setEditing(null);
-      toast.success('Message updated');
+      toast.success("Message updated");
     } catch (error) {
-      toast.error(errorMessage(error, 'Failed to update message'));
+      toast.error(errorMessage(error, "Failed to update message"));
     }
   }
 
@@ -238,57 +287,21 @@ export function RequestDiscussionTab({
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <div className="max-h-[34rem] min-h-64 overflow-y-auto px-4 py-2 sm:px-5">
-          {messages.isPending ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              Loading discussion…
-            </p>
-          ) : messages.isError ? (
-            <p className="py-10 text-center text-sm text-destructive">
-              {errorMessage(messages.error, 'Failed to load discussion')}
-            </p>
-          ) : thread.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-sm font-medium">Start the discussion</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Post the first message or mention someone who can help.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {thread.map((message) => (
-                <MessageRow
-                  key={message.id}
-                  message={message}
-                  parent={
-                    message.parentMessageId
-                      ? byId.get(message.parentMessageId)
-                      : undefined
-                  }
-                  ownMessage={message.authorId === currentUserId}
-                  onReply={() => setReplyTo(message)}
-                  onEdit={() => {
-                    setEditing(message);
-                    setEditBody(message.body);
-                  }}
-                />
-              ))}
-              <div ref={endRef} />
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-border bg-muted/30 p-3 sm:p-4">
+        <div className="border-b border-border bg-muted/30 p-3 sm:p-4">
           {replyTo ? (
             <div className="mb-3 flex items-start justify-between gap-3 rounded-md border border-border bg-card px-3 py-2">
-              <div className="min-w-0">
+              <button
+                type="button"
+                className="min-w-0 flex-1 rounded-sm text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => scrollToMessage(replyTo.id)}
+              >
                 <p className="text-xs font-medium">
-                  Replying to {replyTo.authorName || 'Unknown user'}
+                  Replying to {replyTo.authorName || "Unknown user"}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {replyTo.body}
                 </p>
-              </div>
+              </button>
               <Button
                 type="button"
                 variant="ghost"
@@ -328,6 +341,39 @@ export function RequestDiscussionTab({
             </div>
           ) : null}
 
+          {referencedFiles.length > 0 ? (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {referencedFiles.map((file) => (
+                <Badge
+                  key={file.id}
+                  variant="outline"
+                  className="gap-1.5 pr-1 font-normal"
+                >
+                  <FileTypeIcon fileName={file.fileName} size={14} />
+                  <span className="max-w-[10rem] truncate">{file.fileName}</span>
+                  <StatusPill
+                    tone={resolveStatusTone(file.status)}
+                    className="h-4 px-1.5 text-[9px]"
+                  >
+                    {formatStatusLabel(file.status)}
+                  </StatusPill>
+                  <button
+                    type="button"
+                    className="rounded-sm p-0.5 hover:bg-muted"
+                    aria-label={`Remove file tag ${file.fileName}`}
+                    onClick={() =>
+                      setReferencedFiles((prev) =>
+                        prev.filter((f) => f.id !== file.id),
+                      )
+                    }
+                  >
+                    <IconX className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+
           {files.length > 0 ? (
             <div className="mb-2 flex flex-wrap gap-2">
               {files.map((file, index) => (
@@ -362,7 +408,7 @@ export function RequestDiscussionTab({
             value={body}
             onChange={(event) => setBody(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                 event.preventDefault();
                 void handlePost();
               }
@@ -390,7 +436,7 @@ export function RequestDiscussionTab({
                         {mentionCandidates.map((candidate) => (
                           <CommandItem
                             key={candidate.userId}
-                            value={`${candidate.fullName} ${candidate.email ?? ''}`}
+                            value={`${candidate.fullName} ${candidate.email ?? ""}`}
                             onSelect={() => selectMention(candidate)}
                           >
                             <UserAvatar
@@ -420,13 +466,14 @@ export function RequestDiscussionTab({
                 ref={fileInputRef}
                 type="file"
                 multiple
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.zip,.mp4,.mov,application/pdf,application/zip,application/x-zip-compressed,image/*,video/*,text/*"
                 className="hidden"
                 onChange={(event) => {
                   setFiles((items) => [
                     ...items,
                     ...Array.from(event.target.files ?? []),
                   ]);
-                  event.target.value = '';
+                  event.target.value = "";
                 }}
               />
               <Button
@@ -450,6 +497,55 @@ export function RequestDiscussionTab({
               Post
             </LoadingButton>
           </div>
+        </div>
+
+        <div className="max-h-[34rem] min-h-64 overflow-y-auto px-4 py-2 sm:px-5">
+          {messages.isPending ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              Loading discussion…
+            </p>
+          ) : messages.isError ? (
+            <p className="py-10 text-center text-sm text-destructive">
+              {errorMessage(messages.error, "Failed to load discussion")}
+            </p>
+          ) : thread.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-sm font-medium">Start the discussion</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Post the first message or mention someone who can help.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {thread.map((message) => (
+                <MessageRow
+                  key={message.id}
+                  message={message}
+                  parent={
+                    message.parentMessageId
+                      ? byId.get(message.parentMessageId)
+                      : undefined
+                  }
+                  ownMessage={message.authorId === currentUserId}
+                  highlighted={highlightedId === message.id}
+                  registerRef={(node) => {
+                    if (node) messageRefs.current.set(message.id, node);
+                    else messageRefs.current.delete(message.id);
+                  }}
+                  onReply={() => setReplyTo(message)}
+                  onEdit={() => {
+                    setEditing(message);
+                    setEditBody(message.body);
+                  }}
+                  onJumpToParent={
+                    message.parentMessageId
+                      ? () => scrollToMessage(message.parentMessageId!)
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -479,23 +575,59 @@ export function RequestDiscussionTab({
   );
 }
 
+function ReferencedFileChip({ fileRef }: { fileRef: DiscussionFileRef }) {
+  return (
+    <div
+      className="flex max-w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-xs"
+      title={`Status when discussed: ${formatStatusLabel(fileRef.statusAtPost)}`}
+    >
+      <IconMessage className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <FileTypeIcon fileName={fileRef.fileName} size={16} />
+      <span className="min-w-0 truncate font-medium">{fileRef.fileName}</span>
+      <StatusPill
+        tone={resolveStatusTone(fileRef.statusAtPost)}
+        className="h-5 shrink-0 px-2 text-[10px]"
+      >
+        {formatStatusLabel(fileRef.statusAtPost)}
+      </StatusPill>
+      <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">
+        at post
+      </span>
+    </div>
+  );
+}
+
 function MessageRow({
   message,
   parent,
   ownMessage,
+  highlighted,
+  registerRef,
   onReply,
   onEdit,
+  onJumpToParent,
 }: {
   message: DiscussionMessage;
   parent?: DiscussionMessage;
   ownMessage: boolean;
+  highlighted: boolean;
+  registerRef: (node: HTMLElement | null) => void;
   onReply: () => void;
   onEdit: () => void;
+  onJumpToParent?: () => void;
 }) {
-  const authorName = message.authorName || 'Unknown user';
+  const authorName = message.authorName || "Unknown user";
   return (
-    <article className="group flex gap-3 py-4">
+    <article
+      ref={registerRef}
+      data-message-id={message.id}
+      className={cn(
+        "group flex gap-3 rounded-md px-1 py-4 transition-colors duration-500",
+        highlighted && "bg-primary/10 ring-1 ring-primary/25",
+      )}
+    >
       <UserAvatar
+        src={message.authorAvatarUrl}
         initials={authorName.slice(0, 2)}
         size="sm"
         className="shrink-0"
@@ -513,23 +645,37 @@ function MessageRow({
             <span className="text-xs text-muted-foreground">(edited)</span>
           ) : null}
         </div>
-        {parent ? (
-          <div className="mt-2 border-l-2 border-border pl-3 text-xs text-muted-foreground">
-            <span className="font-medium">
-              {parent.authorName || 'Unknown user'}:{' '}
+        {parent && onJumpToParent ? (
+          <button
+            type="button"
+            onClick={onJumpToParent}
+            className="mt-2 w-full rounded-md border border-border bg-muted/40 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Jump to message from ${parent.authorName || "Unknown user"}`}
+          >
+            <span className="font-medium text-foreground/80">
+              {parent.authorName || "Unknown user"}:{" "}
             </span>
             <span className="line-clamp-2 whitespace-pre-wrap">
               {parent.body}
             </span>
-          </div>
+          </button>
         ) : message.parentMessageId ? (
-          <p className="mt-2 border-l-2 border-border pl-3 text-xs text-muted-foreground">
+          <p className="mt-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             Reply to an earlier message
           </p>
         ) : null}
         <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">
           {message.body}
         </p>
+        {(message.referencedFiles?.length ?? 0) > 0 ? (
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {message.referencedFiles.map((ref) => (
+              <li key={ref.id}>
+                <ReferencedFileChip fileRef={ref} />
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {message.attachments.length > 0 ? (
           <ul className="mt-3 flex flex-wrap gap-2">
             {message.attachments.map((attachment) => (

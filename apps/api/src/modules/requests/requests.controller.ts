@@ -17,7 +17,9 @@ import { RequestsService } from './requests.service';
 import {
   AssignRequestDto,
   BulkUpdateRequestsDto,
+  ConfirmRequestBriefDto,
   CreateRequestDto,
+  PresignRequestBriefDto,
   RequestDetailResponseDto,
   RequestHistoryItemDto,
   RequestListQueryDto,
@@ -78,8 +80,59 @@ export class RequestsController {
     return this.requests.getOne(id, user);
   }
 
-  @Patch(':id')
+  @Post(':id/brief/presign')
   @RequirePermission('request:update')
+  presignBrief(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PresignRequestBriefDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.requests.presignBrief(id, dto, user);
+  }
+
+  @Post(':id/brief/confirm')
+  @RequirePermission('request:update')
+  confirmBrief(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmRequestBriefDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RequestDetailResponseDto> {
+    return this.requests.confirmBrief(id, dto, user);
+  }
+
+  @Post(':id/brief/download')
+  @RequirePermission('request:view')
+  downloadBrief(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.requests.downloadBrief(id, user);
+  }
+
+  @Get(':id/brief/preview')
+  @RequirePermission('request:view')
+  previewBrief(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('retryFailed') retryFailed: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.requests.previewBrief(id, user, {
+      retryFailed: retryFailed === '1' || retryFailed === 'true',
+    });
+  }
+
+  @Delete(':id/brief')
+  @RequirePermission('request:update')
+  removeBrief(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RequestDetailResponseDto> {
+    return this.requests.removeBrief(id, user);
+  }
+
+  /** Edit / delete / stage / status — Super Admin (request:update + catalogue:view). */
+  @Patch(':id')
+  @RequirePermission('request:update', 'catalogue:view')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRequestDto,
@@ -89,7 +142,7 @@ export class RequestsController {
   }
 
   @Delete(':id')
-  @RequirePermission('request:update')
+  @RequirePermission('request:update', 'catalogue:view')
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -97,8 +150,9 @@ export class RequestsController {
     return this.requests.remove(id, user);
   }
 
+  /** Stage is inferred from activity — manual changes are rejected. */
   @Post(':id/stage')
-  @RequirePermission('request:update')
+  @RequirePermission('request:update', 'catalogue:view')
   setStage(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetStageDto,
@@ -108,7 +162,7 @@ export class RequestsController {
   }
 
   @Post(':id/status')
-  @RequirePermission('request:update')
+  @RequirePermission('request:update', 'catalogue:view')
   setStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetStatusDto,
@@ -117,8 +171,9 @@ export class RequestsController {
     return this.requests.setStatus(id, dto, user);
   }
 
+  /** Assignees — Super Admin (request:assign + catalogue:view). */
   @Post(':id/assignees')
-  @RequirePermission('request:assign')
+  @RequirePermission('request:assign', 'catalogue:view')
   assign(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AssignRequestDto,
@@ -128,7 +183,7 @@ export class RequestsController {
   }
 
   @Delete(':id/assignees/:userId')
-  @RequirePermission('request:assign')
+  @RequirePermission('request:assign', 'catalogue:view')
   unassign(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) memberUserId: string,

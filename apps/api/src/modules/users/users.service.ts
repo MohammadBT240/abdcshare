@@ -1,10 +1,24 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { EVENT, type Paginated, type PartnerDesignation } from '@abdcshare/shared';
+import {
+  EVENT,
+  hasPermission,
+  type Paginated,
+  type PartnerDesignation,
+} from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
 import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
+import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
+import { TokenService } from '../auth/application/token.service';
 import { OutboxService } from '../outbox/outbox.service';
 import { UserEntity } from './infrastructure/persistence/user.entity';
 import { RoleEntity } from '../roles/infrastructure/persistence/role.entity';
@@ -34,6 +48,7 @@ export class UsersService {
   constructor(
     private readonly em: EntityManager,
     private readonly outbox: OutboxService,
+    private readonly tokens: TokenService,
     @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
 
@@ -88,6 +103,28 @@ export class UsersService {
     user.fullName = buildFullName(user.firstName, user.middleName, user.surname);
     await this.em.flush();
     return this.toMeDto(user);
+  }
+
+  /**
+   * Platform Admin (`user:manage`) may set any user's avatar.
+   * Super Admin (`client:manage` only) may set avatars for Client-role contacts.
+   */
+  async assertCanManageAvatar(actor: AuthenticatedUser, targetUserId: string): Promise<void> {
+    if (hasPermission(actor.role, 'user:manage', actor.partnerDesignation)) return;
+
+    if (!hasPermission(actor.role, 'client:manage', actor.partnerDesignation)) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    const target = await this.em.findOne(
+      UserEntity,
+      { id: targetUserId },
+      { populate: ['role'] },
+    );
+    if (!target) throw new NotFoundException('User not found');
+    if (target.role.roleName !== 'Client') {
+      throw new ForbiddenException('Only Client contact avatars can be updated with client:manage');
+    }
   }
 
   async avatarPresignUpload(userId: string, dto: AvatarPresignDto) {
@@ -285,6 +322,32 @@ export class UsersService {
 
   async deactivate(id: string): Promise<UserResponseDto> {
     return this.update(id, { isActive: false });
+  }
+
+  /**
+   * Admin password reset (B-4): mint a new temporary password, force change on next
+   * login, revoke sessions, and email credentials via the existing `user.created` worker path.
+   */
+  async resetPassword(id: string): Promise<UserResponseDto> {
+    const user = await this.em.findOne(
+      UserEntity,
+      { id },
+      { populate: ['role', 'department', 'title', 'gender', 'maritalStatus', 'client'] },
+    );
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.isActive) throw new BadRequestException('Cannot reset password for an inactive user');
+
+    const tempPassword = randomBytes(9).toString('base64url');
+    user.passwordHash = await bcrypt.hash(tempPassword, 12);
+    user.mustChangePassword = true;
+    this.outbox.enqueue(EVENT.UserCreated, {
+      userId: user.id,
+      email: user.email,
+      tempPassword,
+    });
+    await this.em.flush();
+    await this.tokens.revokeAllForUser(user.id);
+    return this.toDto(user, { includeAvatar: true });
   }
 
   /** Assign/clear a Super Admin's partner designation. At most one PrincipalPartner. */

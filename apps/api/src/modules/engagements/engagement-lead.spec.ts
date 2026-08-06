@@ -38,8 +38,9 @@ describe('Engagement Lead capabilities', () => {
   describe('create / clone auto-Lead', () => {
     it('adds the creator as Lead on create', async () => {
       const created: Array<{ entity: unknown; data: Record<string, unknown> }> = [];
+      const { UserEntity } = await import('../users/infrastructure/persistence/user.entity');
       const em = {
-        findOne: jest.fn(async () => ({ id: 1, name: 'X' })),
+        findOne: jest.fn(async () => ({ id: 1, name: 'X', primaryContact: { id: 'contact-1' } })),
         count: jest.fn(async () => 0),
         getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
         create: jest.fn((entity: unknown, data: Record<string, unknown>) => {
@@ -48,18 +49,31 @@ describe('Engagement Lead capabilities', () => {
           return row;
         }),
         persistAndFlush: jest.fn(async () => undefined),
-        find: jest.fn(async () => []),
+        find: jest.fn(async (entity: unknown) => {
+          if (entity === UserEntity) {
+            return [{ id: 'contact-1', role: { roleName: 'Client' }, isActive: true }];
+          }
+          return [];
+        }),
         flush: jest.fn(async () => undefined),
       };
       const service = new EngagementsService(
         em as never,
         mockOutbox() as never,
         mockNotifications() as never,
+        { presignDownload: jest.fn() } as never,
       );
       jest.spyOn(service, 'getOne').mockResolvedValue({ id: 'eng-1' } as never);
 
       await service.create(
-        { clientId: 'c1', engagementTypeId: 1, departmentId: 1, title: 'FY25' },
+        {
+          clientId: 'c1',
+          engagementTypeId: 1,
+          departmentId: 1,
+          title: 'FY25',
+          clientContactUserIds: ['contact-1'],
+          mainClientContactUserId: 'contact-1',
+        },
         sa.userId,
       );
 
@@ -109,6 +123,7 @@ describe('Engagement Lead capabilities', () => {
         em as never,
         mockOutbox() as never,
         mockNotifications() as never,
+        { presignDownload: jest.fn() } as never,
       );
       jest.spyOn(service, 'getOne').mockResolvedValue({ id: 'e1' } as never);
 
@@ -132,6 +147,7 @@ describe('Engagement Lead capabilities', () => {
         em as never,
         mockOutbox() as never,
         mockNotifications() as never,
+        { presignDownload: jest.fn() } as never,
       );
 
       await expect(
@@ -164,6 +180,7 @@ describe('Engagement Lead capabilities', () => {
         em as never,
         mockOutbox() as never,
         mockNotifications() as never,
+        { presignDownload: jest.fn() } as never,
       );
       jest.spyOn(service, 'getOne').mockResolvedValue({ id: 'e1' } as never);
 
@@ -180,6 +197,7 @@ describe('Engagement Lead capabilities', () => {
         em as never,
         mockOutbox() as never,
         mockNotifications() as never,
+        { presignDownload: jest.fn() } as never,
       );
 
       await expect(
@@ -188,14 +206,18 @@ describe('Engagement Lead capabilities', () => {
       expect(em.findOneOrFail).not.toHaveBeenCalled();
     });
 
-    it('allows Super Admin to transition without being Lead', async () => {
+    it('allows the creating Super Admin to transition', async () => {
       const engagement = {
         stage: EngagementStage.Planning,
         referenceCode: 'ENG-1',
         completedAt: null as Date | null,
+        createdBy: { id: sa.userId },
       };
       const em = {
-        findOne: jest.fn(async () => null),
+        findOne: jest.fn(async (entity: unknown) => {
+          if (entity === EngagementEntity) return engagement;
+          return null;
+        }),
         findOneOrFail: jest.fn(async () => engagement),
         create: jest.fn(),
         flush: jest.fn(async () => undefined),
@@ -206,6 +228,7 @@ describe('Engagement Lead capabilities', () => {
         em as never,
         mockOutbox() as never,
         mockNotifications() as never,
+        { presignDownload: jest.fn() } as never,
       );
       jest.spyOn(service, 'getOne').mockResolvedValue({ id: 'e1' } as never);
 
@@ -215,6 +238,60 @@ describe('Engagement Lead capabilities', () => {
         sa,
       );
       expect(engagement.stage).toBe(EngagementStage.Execution);
+    });
+
+    it('rejects a Super Admin who did not create the engagement', async () => {
+      const engagement = {
+        stage: EngagementStage.Planning,
+        createdBy: { id: 'other-sa' },
+      };
+      const em = {
+        findOne: jest.fn(async (entity: unknown) => {
+          if (entity === EngagementEntity) return engagement;
+          return { memberRole: EngagementMemberRole.Lead };
+        }),
+        findOneOrFail: jest.fn(),
+      };
+      const service = new EngagementsService(
+        em as never,
+        mockOutbox() as never,
+        mockNotifications() as never,
+        { presignDownload: jest.fn() } as never,
+      );
+
+      await expect(
+        service.transition('e1', { toStage: EngagementStage.Execution }, sa),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(em.findOneOrFail).not.toHaveBeenCalled();
+    });
+
+    it('rejects an engagement Lead from transitioning stage', async () => {
+      const engagement = {
+        stage: EngagementStage.Planning,
+        createdBy: { id: sa.userId },
+      };
+      const em = {
+        findOne: jest.fn(async (entity: unknown) => {
+          if (entity === EngagementEntity) return engagement;
+          return { memberRole: EngagementMemberRole.Lead };
+        }),
+        findOneOrFail: jest.fn(),
+      };
+      const service = new EngagementsService(
+        em as never,
+        mockOutbox() as never,
+        mockNotifications() as never,
+        { presignDownload: jest.fn() } as never,
+      );
+
+      await expect(
+        service.transition(
+          'e1',
+          { toStage: EngagementStage.Execution },
+          staffLead,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(em.findOneOrFail).not.toHaveBeenCalled();
     });
   });
 });

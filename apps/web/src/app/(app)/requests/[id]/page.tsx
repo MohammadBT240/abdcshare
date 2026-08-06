@@ -5,25 +5,38 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  IconArrowRight,
   IconBuilding,
   IconHistory,
   IconLayoutDashboard,
   IconMessageCircle,
   IconFiles,
+  IconNotebook,
 } from "@tabler/icons-react";
+import { UserAvatar } from "@/components/data/user-avatar";
+import { StatusPill, resolveStatusTone } from "@/components/data";
 import { PageToolbar } from "@/components/layout/page-toolbar";
 import { AppTabNav } from "@/components/layout/app-tab-nav";
 import { useAuthContext } from "@/components/providers/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { ConfirmDialog } from "@/components/forms";
 import { toast } from "sonner";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { RequestDiscussionTab } from "@/features/discussions/components/request-discussion-tab";
+import {
+  RequestDiscussionTab,
+  type DiscussFileSeed,
+} from "@/features/discussions/components/request-discussion-tab";
 import { useEngagementWorkspace } from "@/features/engagements/hooks/use-engagements";
 import { STAGE_STYLES } from "@/features/engagements/lib/stage-styles";
 import { RequestHistoryList } from "@/features/requests/components/request-history-list";
-import { RequestOverviewTab } from "@/features/requests/components/request-overview-tab";
+import {
+  ManageAssigneesDialog,
+  RequestExpectationBriefStrip,
+  RequestLinkedWorkingPapersTab,
+  RequestOverviewTab,
+} from "@/features/requests/components/request-overview-tab";
 import { useDeleteRequest, useRequest } from "@/features/requests/hooks/use-requests";
 import { RequestSubmissionsTab } from "@/features/submissions/components/request-submissions-tab";
 import {
@@ -38,6 +51,7 @@ const TAB_ICONS: Record<RequestDetailTab, ReactNode> = {
   overview: <IconLayoutDashboard />,
   discussion: <IconMessageCircle />,
   submissions: <IconFiles />,
+  "working-papers": <IconNotebook />,
   history: <IconHistory />,
 };
 
@@ -53,18 +67,35 @@ function RequestDetailInner({ id }: { id: string }) {
   const request = useRequest(id);
   const remove = useDeleteRequest(id);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [discussFile, setDiscussFile] = useState<DiscussFileSeed | null>(null);
   const workspace = useEngagementWorkspace(request.data?.engagementId ?? "");
 
-  const activeTab = parseRequestDetailTab(searchParams.get("tab"));
-  const canUpdate = can("request:update");
-  const canAssign = can("request:assign");
-  const canViewDocuments = can("document:view");
+  /** Edit / stage / status / delete — Super Admin. */
+  const canManageRequest = can("request:update") && can("catalogue:view");
+  /** Expectation brief upload/replace/remove — staff with request:update. */
+  const canManageBrief = can("request:update");
+  /** Assignees — Super Admin. */
+  const canManageAssignees = can("request:assign") && can("catalogue:view");
+  /** Linked working papers — firm users only (Clients lack working-paper:upload). */
+  const canViewLinkedWorkingPapers = can("working-paper:upload");
   const canSubmitReview = can("review:submit");
   const canParticipateInDiscussion = can("discussion:participate");
   const canRespond = can("submission:respond");
   const canReview = can("submission:review");
 
+  const requestedTab = parseRequestDetailTab(searchParams.get("tab"));
+  const activeTab =
+    requestedTab === "working-papers" && !canViewLinkedWorkingPapers
+      ? "overview"
+      : requestedTab;
+
+  const visibleTabs = REQUEST_DETAIL_TABS.filter(
+    (t) => t.id !== "working-papers" || canViewLinkedWorkingPapers,
+  );
+
   function setTab(tab: RequestDetailTab) {
+    if (tab === "working-papers" && !canViewLinkedWorkingPapers) return;
     const next = new URLSearchParams(searchParams.toString());
     if (tab === "overview") next.delete("tab");
     else next.set("tab", tab);
@@ -152,7 +183,7 @@ function RequestDetailInner({ id }: { id: string }) {
             <Button type="button" variant="outline" size="sm" asChild>
               <Link href={engagementHref}>Engagement</Link>
             </Button>
-            {canUpdate ? (
+            {canManageRequest ? (
               <Button
                 type="button"
                 size="sm"
@@ -177,48 +208,133 @@ function RequestDetailInner({ id }: { id: string }) {
           aria-hidden
           className="pointer-events-none absolute -bottom-3 -right-2 h-28 w-28 select-none object-contain opacity-25 dark:opacity-15"
         />
-        <div className="relative z-[1] flex flex-wrap items-start justify-between gap-3 px-4 py-3.5">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <IconBuilding className="h-5 w-5" />
-            </span>
-            <div className="min-w-0 space-y-1">
-              <h1 className="truncate text-xl font-semibold tracking-tight">
-                {r.referenceCode}
-              </h1>
-              <p className="truncate text-sm text-muted-foreground">
-                {clientName ? (
-                  clientId ? (
-                    <Link
-                      href={`/admin/clients/${clientId}`}
-                      className="font-semibold text-primary hover:underline"
-                    >
-                      {clientName}
-                    </Link>
+        <div className="relative z-[1] space-y-3 px-4 py-3.5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <IconBuilding className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 space-y-1">
+                <h1 className="truncate text-xl font-semibold tracking-tight">
+                  {r.referenceCode}
+                </h1>
+                <p className="truncate text-sm text-muted-foreground">
+                  {clientName ? (
+                    clientId ? (
+                      <Link
+                        href={`/admin/clients/${clientId}`}
+                        className="font-semibold text-primary hover:underline"
+                      >
+                        {clientName}
+                      </Link>
+                    ) : (
+                      <span className="font-semibold text-foreground">
+                        {clientName}
+                      </span>
+                    )
                   ) : (
-                    <span className="font-semibold text-foreground">
-                      {clientName}
-                    </span>
-                  )
-                ) : (
-                  <span>No client</span>
-                )}
-                {[departmentName, engagementTitle].filter(Boolean).length > 0
-                  ? ` · ${[departmentName, engagementTitle].filter(Boolean).join(" · ")}`
-                  : null}
-              </p>
+                    <span>No client</span>
+                  )}
+                  {[departmentName, engagementTitle].filter(Boolean).length > 0
+                    ? ` · ${[departmentName, engagementTitle].filter(Boolean).join(" · ")}`
+                    : null}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge
+                variant="secondary"
+                className={cn("border-transparent", phaseStyle.className)}
+              >
+                {r.phase}
+              </Badge>
+              {r.stage ? <Badge variant="outline">{r.stage}</Badge> : null}
+              {r.status ? (
+                <StatusPill tone={resolveStatusTone(r.status)}>{r.status}</StatusPill>
+              ) : null}
+              {r.isOverdue ? <StatusPill tone="danger">Overdue</StatusPill> : null}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge
-              variant="secondary"
-              className={cn("border-transparent", phaseStyle.className)}
-            >
-              {r.phase}
-            </Badge>
-            {r.stage ? <Badge variant="outline">{r.stage}</Badge> : null}
-            {r.status ? <Badge variant="outline">{r.status}</Badge> : null}
-            {r.isOverdue ? <Badge variant="destructive">Overdue</Badge> : null}
+
+          {r.description?.trim() ? (
+            <p className="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+              {r.description.trim()}
+            </p>
+          ) : (
+            <p className="text-sm italic text-muted-foreground">
+              No description provided.
+            </p>
+          )}
+
+          <RequestExpectationBriefStrip
+            request={r}
+            canManageBrief={canManageBrief}
+          />
+
+          <div className="space-y-1.5 border-t border-border/60 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                Document progress ·{" "}
+                <span className="font-medium text-foreground">
+                  {r.acceptedFileCount}/{r.expectedDocumentCount} accepted
+                </span>{" "}
+                ({r.progressPercent}%)
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant={activeTab === "submissions" ? "secondary" : "default"}
+                className="h-8"
+                onClick={() => setTab("submissions")}
+              >
+                {canRespond
+                  ? "Go to submissions"
+                  : canReview
+                    ? "Review submissions"
+                    : "Open submissions"}
+                <IconArrowRight className="ml-1.5 h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <Progress value={r.progressPercent} className="h-1.5" />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Assignees
+            </span>
+            {r.assignees.length === 0 ? (
+              <span className="text-sm text-muted-foreground">
+                None yet
+                {canManageAssignees ? " — use Manage to assign." : "."}
+              </span>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5">
+                {r.assignees.map((a) => (
+                  <li
+                    key={a.userId}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs"
+                  >
+                    <UserAvatar
+                      src={a.avatarUrl}
+                      initials={a.fullName.slice(0, 2)}
+                      size="sm"
+                    />
+                    <span className="font-medium">{a.fullName}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {canManageAssignees ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs"
+                onClick={() => setAssignOpen(true)}
+              >
+                Manage
+              </Button>
+            ) : null}
           </div>
         </div>
       </header>
@@ -229,7 +345,7 @@ function RequestDetailInner({ id }: { id: string }) {
         className="space-y-3"
       >
         <AppTabNav
-          items={REQUEST_DETAIL_TABS.map((t) => ({
+          items={visibleTabs.map((t) => ({
             ...t,
             icon: TAB_ICONS[t.id],
           }))}
@@ -247,10 +363,13 @@ function RequestDetailInner({ id }: { id: string }) {
                 r.departmentId || workspace.data?.departmentId || 0,
             }}
             teamMembers={workspace.data?.team ?? []}
-            canUpdate={canUpdate}
-            canAssign={canAssign}
-            canViewDocuments={canViewDocuments}
+            canManageRequest={canManageRequest}
+            canManageAssignees={canManageAssignees}
             canSubmitReview={canSubmitReview}
+            canRespond={canRespond}
+            canReview={canReview}
+            onManageAssignees={() => setAssignOpen(true)}
+            onGoToSubmissions={() => setTab("submissions")}
           />
         </TabsContent>
 
@@ -262,6 +381,8 @@ function RequestDetailInner({ id }: { id: string }) {
             currentUserId={user?.id}
             canParticipate={canParticipateInDiscussion}
             active={activeTab === "discussion"}
+            initialReferencedFile={discussFile}
+            onInitialReferencedFileConsumed={() => setDiscussFile(null)}
           />
         </TabsContent>
 
@@ -271,8 +392,33 @@ function RequestDetailInner({ id }: { id: string }) {
             canRespond={canRespond}
             canReview={canReview}
             enabled={activeTab === "submissions"}
+            onDiscussFile={
+              canParticipateInDiscussion
+                ? (file) => {
+                    setDiscussFile(file);
+                    setTab("discussion");
+                  }
+                : undefined
+            }
           />
         </TabsContent>
+
+        {canViewLinkedWorkingPapers ? (
+          <TabsContent value="working-papers" className="mt-0">
+            <RequestLinkedWorkingPapersTab
+              request={{
+                ...r,
+                clientId: r.clientId || workspace.data?.clientId || "",
+                clientName: r.clientName || workspace.data?.clientName || "",
+                departmentName:
+                  r.departmentName || workspace.data?.departmentName || "",
+                departmentId:
+                  r.departmentId || workspace.data?.departmentId || 0,
+              }}
+              enabled={activeTab === "working-papers"}
+            />
+          </TabsContent>
+        ) : null}
 
         <TabsContent value="history" className="mt-0">
           <RequestHistoryList
@@ -281,6 +427,14 @@ function RequestDetailInner({ id }: { id: string }) {
           />
         </TabsContent>
       </Tabs>
+      {canManageAssignees ? (
+        <ManageAssigneesDialog
+          open={assignOpen}
+          onOpenChange={setAssignOpen}
+          request={r}
+          teamMembers={workspace.data?.team ?? []}
+        />
+      ) : null}
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}

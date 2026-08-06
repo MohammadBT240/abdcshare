@@ -24,11 +24,6 @@ export const CATALOGUE_SECTIONS: CatalogueSection[] = [
     description: 'Types within a request class',
   },
   {
-    href: '/admin/catalogues/request-stages',
-    title: 'Request stages',
-    description: 'Ordered workflow stages',
-  },
-  {
     href: '/admin/catalogues/request-statuses',
     title: 'Request statuses',
     description: 'Ordered status catalogue',

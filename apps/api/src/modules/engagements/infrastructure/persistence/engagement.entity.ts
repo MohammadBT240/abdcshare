@@ -6,6 +6,7 @@ import { EngagementTypeEntity } from '../../../engagement-types/infrastructure/p
 import { DepartmentEntity } from '../../../departments/infrastructure/persistence/department.entity';
 import { UserEntity } from '../../../users/infrastructure/persistence/user.entity';
 import { EngagementTeamMemberEntity } from './engagement-team-member.entity';
+import { EngagementClientContactEntity } from './engagement-client-contact.entity';
 import { EngagementRequestClassEntity } from './engagement-request-class.entity';
 
 @Entity({ tableName: 'engagements' })
@@ -46,6 +47,9 @@ export class EngagementEntity extends BaseEntity {
 
   @OneToMany(() => EngagementTeamMemberEntity, (tm) => tm.engagement)
   team = new Collection<EngagementTeamMemberEntity>(this);
+
+  @OneToMany(() => EngagementClientContactEntity, (cc) => cc.engagement)
+  clientContacts = new Collection<EngagementClientContactEntity>(this);
 
   @OneToMany(() => EngagementRequestClassEntity, (fl) => fl.engagement)
   requestClasses = new Collection<EngagementRequestClassEntity>(this);

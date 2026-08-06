@@ -1,6 +1,6 @@
 'use client';
 
-import { IconDots } from '@tabler/icons-react';
+import { IconDotsVertical } from '@tabler/icons-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -31,8 +31,13 @@ export function RowActions({ items, align = 'end' }: RowActionsProps) {
     <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" className="h-8 w-8 px-0">
-            <IconDots className="h-4 w-4" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 rounded-full border border-border/70 p-0 shadow-none hover:bg-muted"
+          >
+            <IconDotsVertical className="h-4 w-4" />
             <span className="sr-only">Actions</span>
           </Button>
         </DropdownMenuTrigger>

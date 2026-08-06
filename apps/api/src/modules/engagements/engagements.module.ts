@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { EngagementEntity } from './infrastructure/persistence/engagement.entity';
 import { EngagementTeamMemberEntity } from './infrastructure/persistence/engagement-team-member.entity';
+import { EngagementClientContactEntity } from './infrastructure/persistence/engagement-client-contact.entity';
 import { EngagementRequestClassEntity } from './infrastructure/persistence/engagement-request-class.entity';
 import { EngagementStageHistoryEntity } from './infrastructure/persistence/engagement-status-history.entity';
 import { EngagementSignOffEntity } from './infrastructure/persistence/engagement-sign-off.entity';
@@ -14,6 +15,7 @@ import { EngagementsController } from './engagements.controller';
     MikroOrmModule.forFeature([
       EngagementEntity,
       EngagementTeamMemberEntity,
+      EngagementClientContactEntity,
       EngagementRequestClassEntity,
       EngagementStageHistoryEntity,
       EngagementSignOffEntity,

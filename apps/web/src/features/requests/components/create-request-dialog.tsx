@@ -6,14 +6,26 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { IconPlus } from '@tabler/icons-react';
-import { FormDialog, FormField, LoadingButton, AppSelect } from '@/components/forms';
+import {
+  FormDialog,
+  FormField,
+  LoadingButton,
+  AppSelect,
+  MultiCombobox,
+  FileUpload,
+  ATTACHMENT_ACCEPT,
+  DOCUMENT_MAX_BYTES,
+} from '@/components/forms';
 import { DatePicker } from '@/components/forms/date-picker';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { BffClientError } from '@/lib/bff/client';
-import { useCreateRequest } from '@/features/requests/hooks/use-requests';
+import {
+  uploadRequestBrief,
+  useCreateRequest,
+} from '@/features/requests/hooks/use-requests';
 import { useCatalogueList } from '@/features/catalogues/hooks/use-catalogue';
 import type { EngagementTeamMember } from '@/features/engagements/hooks/use-engagements';
 
@@ -23,6 +35,7 @@ const createRequestSchema = z.object({
   requestTypeId: z.string().min(1, 'Request type is required'),
   description: z.string().max(1000).optional(),
   dueDate: z.string().optional(),
+  expectedDocumentCount: z.number().int().min(1).max(500),
 });
 
 type CreateRequestFormValues = z.infer<typeof createRequestSchema>;
@@ -61,6 +74,8 @@ export function CreateRequestDialog({
   const create = useCreateRequest();
   const requestTypes = useCatalogueList('request-types', 'pageSize=100&isActive=true');
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const [briefFiles, setBriefFiles] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
   const classOptions = useMemo(
     () => inScopeClasses.map((c) => ({ value: String(c.id), label: c.name })),
@@ -86,19 +101,24 @@ export function CreateRequestDialog({
       requestTypeId: '',
       description: '',
       dueDate: '',
+      expectedDocumentCount: 1,
     },
   });
 
   const selectedClassId = form.watch('requestClassId');
+  const selectedTypeId = form.watch('requestTypeId');
 
-  const typeOptions = useMemo(() => {
+  const typeRows = useMemo(() => {
     const rows = requestTypes.data?.data ?? [];
     const classId = selectedClassId ? Number(selectedClassId) : null;
     if (classId == null || Number.isNaN(classId)) return [];
-    return rows
-      .filter((rt) => rt.requestClassId === classId)
-      .map((rt) => ({ value: String(rt.id), label: rt.name }));
+    return rows.filter((rt) => rt.requestClassId === classId);
   }, [requestTypes.data, selectedClassId]);
+
+  const typeOptions = useMemo(
+    () => typeRows.map((rt) => ({ value: String(rt.id), label: rt.name })),
+    [typeRows],
+  );
 
   const selectedClassName = inScopeClasses.find((c) => String(c.id) === selectedClassId)?.name;
   const singleClass = inScopeClasses.length === 1;
@@ -111,32 +131,58 @@ export function CreateRequestDialog({
       requestTypeId: '',
       description: '',
       dueDate: '',
+      expectedDocumentCount: 1,
     });
     setAssigneeIds([]);
+    setBriefFiles([]);
   }, [open, engagementId, defaultClassId, form]);
 
-  function toggleAssignee(userId: string, checked: boolean) {
-    setAssigneeIds((prev) =>
-      checked ? [...prev, userId] : prev.filter((id) => id !== userId),
-    );
-  }
+  useEffect(() => {
+    if (!selectedTypeId) return;
+    const type = typeRows.find((rt) => String(rt.id) === selectedTypeId);
+    const expected = type?.expectedDocuments;
+    if (expected != null && expected >= 1) {
+      form.setValue('expectedDocumentCount', expected, { shouldValidate: true });
+    }
+  }, [selectedTypeId, typeRows, form]);
 
   async function handleSubmit(values: CreateRequestFormValues) {
+    setSubmitting(true);
     try {
       const result = await create.mutateAsync({
         engagementId: values.engagementId,
         requestTypeId: Number(values.requestTypeId),
         description: values.description || undefined,
         dueDate: values.dueDate || undefined,
+        expectedDocumentCount: values.expectedDocumentCount,
         assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined,
       });
+      const brief = briefFiles[0];
+      if (brief) {
+        try {
+          await uploadRequestBrief(result.id, brief);
+        } catch (briefErr) {
+          toast.error(
+            briefErr instanceof BffClientError
+              ? briefErr.message
+              : 'Request created, but the expectation brief failed to upload. You can attach it from the request overview.',
+          );
+          onOpenChange(false);
+          if (onCreated) onCreated(result.id);
+          return;
+        }
+      }
       toast.success('Request created successfully');
       onOpenChange(false);
       if (onCreated) onCreated(result.id);
     } catch (err) {
       toast.error(err instanceof BffClientError ? err.message : 'Failed to create request');
+    } finally {
+      setSubmitting(false);
     }
   }
+
+  const busy = submitting || create.isPending;
 
   return (
     <FormDialog
@@ -149,12 +195,12 @@ export function CreateRequestDialog({
       maxWidthClass="sm:max-w-lg"
       footer={
         <>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={create.isPending}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             Cancel
           </Button>
           <LoadingButton
             onClick={form.handleSubmit(handleSubmit)}
-            loading={create.isPending}
+            loading={busy}
             disabled={!form.formState.isValid || inScopeClasses.length === 0}
           >
             <IconPlus className="mr-2 h-4 w-4" />
@@ -218,11 +264,41 @@ export function CreateRequestDialog({
           />
         </FormField>
 
+        <FormField
+          label="Expected documents"
+          error={form.formState.errors.expectedDocumentCount?.message}
+          required
+          description="Used to measure request progress (accepted ÷ expected)."
+        >
+          <Input
+            type="number"
+            min={1}
+            max={500}
+            {...form.register('expectedDocumentCount', { valueAsNumber: true })}
+          />
+        </FormField>
+
         <FormField label="Description" error={form.formState.errors.description?.message}>
           <Textarea
             {...form.register('description')}
             placeholder="Optional additional details..."
             rows={3}
+          />
+        </FormField>
+
+        <FormField
+          label="Expectation brief"
+          description="Optional. Visible to the client on the request overview."
+        >
+          <FileUpload
+            files={briefFiles}
+            onChange={setBriefFiles}
+            multiple={false}
+            accept={ATTACHMENT_ACCEPT}
+            maxBytes={DOCUMENT_MAX_BYTES}
+            label="Attach brief (optional)"
+            description="PDF, Office, or image — max one file."
+            disabled={busy}
           />
         </FormField>
 
@@ -246,30 +322,21 @@ export function CreateRequestDialog({
           {teamMembers.length === 0 ? (
             <p className="text-sm text-muted-foreground">No team members on this engagement.</p>
           ) : (
-            <ul className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-border p-3">
-              {teamMembers.map((m) => {
-                const checked = assigneeIds.includes(m.userId);
-                return (
-                  <li key={m.userId} className="flex items-center gap-2">
-                    <Checkbox
-                      id={`assignee-${m.userId}`}
-                      checked={checked}
-                      onCheckedChange={(value) => toggleAssignee(m.userId, value === true)}
-                    />
-                    <label
-                      htmlFor={`assignee-${m.userId}`}
-                      className="flex min-w-0 flex-1 cursor-pointer flex-col text-sm"
-                    >
-                      <span className="truncate font-medium">{m.fullName}</span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {m.memberRole}
-                        {m.email ? ` · ${m.email}` : ''}
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
+            <MultiCombobox
+              values={assigneeIds}
+              onValuesChange={setAssigneeIds}
+              options={teamMembers.map((m) => ({
+                value: m.userId,
+                label: m.fullName,
+                description: m.email
+                  ? `${m.memberRole} · ${m.email}`
+                  : m.memberRole,
+                avatarUrl: m.avatarUrl,
+              }))}
+              placeholder="Search and select assignees…"
+              searchPlaceholder="Search team…"
+              emptyMessage="No matching team members"
+            />
           )}
         </FormField>
       </div>

@@ -14,6 +14,19 @@ interface ClassFilterRailProps {
   onAddClass?: () => void;
 }
 
+function summarizeRollups(rollups: ClassRollup[]) {
+  let done = 0;
+  let total = 0;
+  let overdue = 0;
+  for (const rc of rollups) {
+    done += rc.done;
+    total += rc.total;
+    overdue += rc.overdue;
+  }
+  const progressPercent = total === 0 ? 0 : Math.round((done / total) * 100);
+  return { done, total, overdue, progressPercent };
+}
+
 export function ClassFilterRail({
   rollups,
   selectedClassId,
@@ -21,6 +34,8 @@ export function ClassFilterRail({
   canAddClass,
   onAddClass,
 }: ClassFilterRailProps) {
+  const allSummary = summarizeRollups(rollups);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -46,16 +61,42 @@ export function ClassFilterRail({
           type="button"
           onClick={() => onSelect('all')}
           className={cn(
-            'flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors',
+            'w-full rounded-md px-3 py-2 text-left text-sm transition-colors',
             selectedClassId === 'all'
               ? 'bg-primary text-primary-foreground'
               : 'hover:bg-muted text-foreground',
           )}
         >
           <span className="font-medium">All classes</span>
+          {allSummary.total > 0 ? (
+            <p
+              className={cn(
+                'mt-1 text-[11px]',
+                selectedClassId === 'all'
+                  ? 'text-primary-foreground/80'
+                  : 'text-muted-foreground',
+              )}
+            >
+              {allSummary.progressPercent}% · {allSummary.done}/{allSummary.total}{' '}
+              done
+              {allSummary.overdue > 0 ? ` · ${allSummary.overdue} overdue` : ''}
+            </p>
+          ) : (
+            <p
+              className={cn(
+                'mt-1 text-[11px]',
+                selectedClassId === 'all'
+                  ? 'text-primary-foreground/80'
+                  : 'text-muted-foreground',
+              )}
+            >
+              No requests yet
+            </p>
+          )}
         </button>
         {rollups.map((rc) => {
           const active = selectedClassId === rc.requestClassId;
+          const empty = rc.total === 0;
           return (
             <button
               key={rc.requestClassId}
@@ -70,20 +111,32 @@ export function ClassFilterRail({
                 <span className={cn('truncate text-sm font-medium', active && 'text-primary')}>
                   {rc.name}
                 </span>
-                <span
-                  className={cn(
-                    'shrink-0 text-[10px] font-medium uppercase',
-                    rc.signedOff ? 'text-primary' : 'text-muted-foreground',
-                  )}
-                >
-                  {rc.signedOff ? 'Signed' : 'Open'}
-                </span>
+                {empty ? (
+                  <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
+                    No requests
+                  </span>
+                ) : (
+                  <span
+                    className={cn(
+                      'shrink-0 text-[10px] font-medium uppercase',
+                      rc.signedOff ? 'text-primary' : 'text-muted-foreground',
+                    )}
+                  >
+                    {rc.signedOff ? 'Signed' : 'Open'}
+                  </span>
+                )}
               </div>
-              <Progress value={rc.progressPercent} className="h-1" />
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {rc.done}/{rc.total}
-                {rc.overdue > 0 ? ` · ${rc.overdue} overdue` : ''}
-              </p>
+              {empty ? (
+                <p className="text-[11px] text-muted-foreground">No requests in this class yet</p>
+              ) : (
+                <>
+                  <Progress value={rc.progressPercent} className="h-1" />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {rc.progressPercent}% · {rc.done}/{rc.total} done
+                    {rc.overdue > 0 ? ` · ${rc.overdue} overdue` : ''}
+                  </p>
+                </>
+              )}
             </button>
           );
         })}

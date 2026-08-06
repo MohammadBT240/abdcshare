@@ -18,7 +18,7 @@ export class ClientSubmissionEntity extends BaseEntity {
   message!: string;
 
   @Enum({ items: () => SubmissionStatus })
-  status: SubmissionStatus = SubmissionStatus.Pending;
+  status: SubmissionStatus = SubmissionStatus.Draft;
 
   @ManyToOne(() => UserEntity, { nullable: true })
   reviewedBy?: UserEntity | null;

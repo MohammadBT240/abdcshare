@@ -4,6 +4,7 @@ import { DiscussionMessageEntity } from './infrastructure/persistence/discussion
 import { DiscussionMentionEntity } from './infrastructure/persistence/discussion-mention.entity';
 import { DiscussionReadEntity } from './infrastructure/persistence/discussion-read.entity';
 import { DiscussionAttachmentEntity } from './infrastructure/persistence/discussion-attachment.entity';
+import { DiscussionFileReferenceEntity } from './infrastructure/persistence/discussion-file-reference.entity';
 import { DiscussionsService } from './discussions.service';
 import { DiscussionsController } from './discussions.controller';
 
@@ -14,6 +15,7 @@ import { DiscussionsController } from './discussions.controller';
       DiscussionMentionEntity,
       DiscussionReadEntity,
       DiscussionAttachmentEntity,
+      DiscussionFileReferenceEntity,
     ]),
   ],
   controllers: [DiscussionsController],

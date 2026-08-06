@@ -5,10 +5,10 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { IconPlus } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/data/data-table';
+import { StatusBadge } from '@/components/data/status-badge';
 import { useListParams } from '@/components/data/use-list-params';
 import { DataTableSkeleton } from '@/components/skeletons';
 import { useAuthContext } from '@/components/providers/auth-provider';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -119,9 +119,7 @@ function CatalogueAdminInner({
     cols.push({
       header: 'Status',
       cell: ({ row }) => (
-        <Badge variant={row.original.isActive ? 'success' : 'secondary'}>
-          {row.original.isActive ? 'Active' : 'Inactive'}
-        </Badge>
+        <StatusBadge status={row.original.isActive} />
       ),
     });
     if (canManage) {
@@ -272,6 +270,8 @@ function CatalogueAdminInner({
           setSearchQueryDebounced(q);
         }}
         onPageChange={(page) => setParams({ page })}
+        pageSize={params.pageSize}
+        onPageSizeChange={(pageSize) => setParams({ pageSize, page: 1 })}
       />
 
       <Dialog open={open} onOpenChange={setOpen}>

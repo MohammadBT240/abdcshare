@@ -2,49 +2,82 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { type ColumnDef } from '@tanstack/react-table';
-import { IconAlertCircle, IconExternalLink, IconHistory } from '@tabler/icons-react';
 import {
-  DataTable,
-  EntityCell,
+  IconBriefcase,
+  IconBuilding,
+  IconSearch,
+  IconTag,
+  IconUser,
+} from '@tabler/icons-react';
+import {
+  ChecklistFilter,
+  DateFilterPill,
   FilterBar,
-  RowActions,
-  snColumn,
   useListParams,
-  type RowActionItem,
 } from '@/components/data';
 import { AppSelect } from '@/components/forms';
 import { PageToolbar } from '@/components/layout/page-toolbar';
 import { DataTableSkeleton } from '@/components/skeletons';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { UserAvatar } from '@/components/data/user-avatar';
 import { RequestHistoryDialog } from '@/features/requests/components/request-history-dialog';
+import { RequestsGroupedTable } from '@/features/requests/components/requests-grouped-table';
 import {
   useBulkUpdateRequests,
   useRequestsList,
-  type RequestListItem,
 } from '@/features/requests/hooks/use-requests';
 import { useCatalogueList } from '@/features/catalogues/hooks/use-catalogue';
+import { useClientsList } from '@/features/clients/hooks/use-clients';
+import { useEngagementsList } from '@/features/engagements/hooks/use-engagements';
 import { useUsersList } from '@/features/users/hooks/use-users';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { toast } from 'sonner';
 import { BffClientError } from '@/lib/bff/client';
 
+function parseDateParam(value?: string): Date | undefined {
+  if (!value) return undefined;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+function toDateParam(date?: Date): string | undefined {
+  if (!date) return undefined;
+  return date.toISOString().slice(0, 10);
+}
+
+function parseCsvIds(value?: string): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function setCsvExtra(key: string, values: string[]) {
+  return { extra: { [key]: values.length > 0 ? values.join(',') : undefined } };
+}
+
 function RequestsListInner() {
   const router = useRouter();
   const { can } = useAuthContext();
-  const { params, setParams, setSearchQueryDebounced, queryString } = useListParams();
+  const canManageLifecycle = can('request:update') && can('catalogue:view');
+  const canBulkAssign = can('request:assign') && can('catalogue:view');
+  const { params, setParams, setSearchQueryDebounced, queryString } = useListParams({
+    pageSize: 50,
+  });
   const [searchDraft, setSearchDraft] = useState(params.q);
-  const [historyRequest, setHistoryRequest] = useState<{ id: string; refCode: string } | null>(null);
+  const [historyRequest, setHistoryRequest] = useState<{ id: string; refCode: string } | null>(
+    null,
+  );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [bulkStageId, setBulkStageId] = useState('');
   const [bulkStatusId, setBulkStatusId] = useState('');
   const [bulkAssigneeId, setBulkAssigneeId] = useState('');
   const bulkUpdate = useBulkUpdateRequests();
 
   const list = useRequestsList(queryString);
+  const clients = useClientsList('pageSize=100&isActive=true');
+  const engagements = useEngagementsList('pageSize=100');
+  const requestClasses = useCatalogueList('request-classes', 'pageSize=100&isActive=true');
   const requestStages = useCatalogueList('request-stages', 'pageSize=100&isActive=true');
   const requestStatuses = useCatalogueList('request-statuses', 'pageSize=100&isActive=true');
   const users = useUsersList('pageSize=100&isActive=true');
@@ -52,6 +85,25 @@ function RequestsListInner() {
   useEffect(() => {
     setSearchDraft(params.q);
   }, [params.q]);
+
+  const clientOptions = useMemo(
+    () => (clients.data?.data ?? []).map((c) => ({ value: c.id, label: c.name })),
+    [clients.data],
+  );
+
+  const engagementOptions = useMemo(
+    () =>
+      (engagements.data?.data ?? []).map((e) => ({
+        value: e.id,
+        label: e.title,
+      })),
+    [engagements.data],
+  );
+
+  const classOptions = useMemo(
+    () => (requestClasses.data?.data ?? []).map((c) => ({ value: String(c.id), label: c.name })),
+    [requestClasses.data],
+  );
 
   const stageOptions = useMemo(
     () => (requestStages.data?.data ?? []).map((s) => ({ value: String(s.id), label: s.name })),
@@ -62,28 +114,17 @@ function RequestsListInner() {
     () => (requestStatuses.data?.data ?? []).map((s) => ({ value: String(s.id), label: s.name })),
     [requestStatuses.data],
   );
+
   const userOptions = useMemo(
-    () => (users.data?.data ?? []).map((u) => ({ value: u.id, label: u.fullName })),
+    () =>
+      (users.data?.data ?? []).map((u) => ({
+        value: u.id,
+        label: u.fullName,
+        avatarUrl: u.avatarUrl,
+        initials: u.fullName,
+      })),
     [users.data],
   );
-
-  async function applyBulkUpdate() {
-    try {
-      const result = await bulkUpdate.mutateAsync({
-        ids: selectedIds,
-        stageId: bulkStageId ? Number(bulkStageId) : undefined,
-        statusId: bulkStatusId ? Number(bulkStatusId) : undefined,
-        assigneeUserId: bulkAssigneeId || undefined,
-      });
-      toast.success(`${result.updated} request(s) updated`);
-      setSelectedIds([]);
-      setBulkStageId('');
-      setBulkStatusId('');
-      setBulkAssigneeId('');
-    } catch (error) {
-      toast.error(error instanceof BffClientError ? error.message : 'Failed to update requests');
-    }
-  }
 
   const phaseOptions = [
     { value: 'Planning', label: 'Planning' },
@@ -91,101 +132,41 @@ function RequestsListInner() {
     { value: 'Reporting', label: 'Reporting' },
   ];
 
-  const columns = useMemo<ColumnDef<RequestListItem, unknown>[]>(() => {
-    const page = list.data?.meta.page ?? params.page;
-    const pageSize = list.data?.meta.pageSize ?? params.pageSize;
+  const selectedClientIds = parseCsvIds(params.extra.clientIds);
+  const selectedEngagementIds = parseCsvIds(
+    params.extra.engagementIds || params.extra.engagementId,
+  );
+  const selectedClassIds = parseCsvIds(
+    params.extra.requestClassIds || params.extra.requestClassId,
+  );
+  const selectedPhases = parseCsvIds(params.extra.phases || params.extra.phase);
+  const selectedStageIds = parseCsvIds(params.extra.stageIds || params.extra.stageId);
+  const selectedStatusIds = parseCsvIds(params.extra.statusIds || params.extra.statusId);
+  const selectedAssigneeIds = parseCsvIds(
+    params.extra.assigneeIds || params.extra.assigneeId,
+  );
 
-    return [
-      snColumn<RequestListItem>(page, pageSize),
-      {
-        id: 'request',
-        header: 'Request',
-        cell: ({ row }) => {
-          const record = row.original;
-          const secondary = [record.requestTypeName, record.description].filter(Boolean).join(' • ');
-          return (
-            <EntityCell
-              primary={record.referenceCode}
-              secondary={secondary}
-            />
-          );
-        },
-      },
-      { header: 'Engagement', accessorKey: 'engagementTitle' },
-      { header: 'Class', accessorKey: 'requestClassName' },
-      {
-        header: 'Phase',
-        cell: ({ row }) => <Badge variant="secondary">{row.original.phase}</Badge>,
-      },
-      { header: 'Stage', accessorKey: 'stage' },
-      { header: 'Status', accessorKey: 'status' },
-      {
-        header: 'Due date',
-        cell: ({ row }) => {
-          const { dueDate, isOverdue } = row.original;
-          if (!dueDate) return '—';
-          return (
-            <div className="flex items-center gap-1.5">
-              {isOverdue ? <IconAlertCircle className="h-4 w-4 text-destructive" /> : null}
-              <span className={isOverdue ? 'text-destructive' : ''}>
-                {new Date(dueDate).toLocaleDateString()}
-              </span>
-            </div>
-          );
-        },
-      },
-      {
-        header: 'Assignees',
-        cell: ({ row }) => {
-          const { assignees } = row.original;
-          if (assignees.length === 0) return '—';
-          return (
-            <div className="flex -space-x-2">
-              {assignees.slice(0, 3).map((a) => (
-                <UserAvatar
-                  key={a.userId}
-                  src={a.avatarUrl}
-                  initials={a.fullName.slice(0, 2)}
-                  size="sm"
-                  className="ring-2 ring-background"
-                />
-              ))}
-              {assignees.length > 3 ? (
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium ring-2 ring-background">
-                  +{assignees.length - 3}
-                </div>
-              ) : null}
-            </div>
-          );
-        },
-      },
-      {
-        id: 'actions',
-        header: '',
-        cell: ({ row }) => {
-          const record = row.original;
-          const items: RowActionItem[] = [
-            {
-              label: 'Open',
-              icon: IconExternalLink as any,
-              onClick: () => router.push(`/requests/${record.id}`),
-            },
-            {
-              label: 'View history',
-              icon: IconHistory as any,
-              onClick: () => setHistoryRequest({ id: record.id, refCode: record.referenceCode }),
-            },
-          ];
-          return <RowActions items={items} />;
-        },
-      },
-    ];
-  }, [list.data?.meta, params.page, params.pageSize, router]);
+  async function applyBulkUpdate() {
+    try {
+      const result = await bulkUpdate.mutateAsync({
+        ids: selectedIds,
+        statusId: canManageLifecycle && bulkStatusId ? Number(bulkStatusId) : undefined,
+        assigneeUserId: canBulkAssign ? bulkAssigneeId || undefined : undefined,
+      });
+      toast.success(`${result.updated} request(s) updated`);
+      setSelectedIds([]);
+      setBulkStatusId('');
+      setBulkAssigneeId('');
+    } catch (error) {
+      toast.error(error instanceof BffClientError ? error.message : 'Failed to update requests');
+    }
+  }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <PageToolbar
         title="Requests"
+        className="mb-2 sm:mb-3"
         breadcrumbs={[
           { label: 'Home', href: '/dashboard' },
           { label: 'Requests' },
@@ -194,48 +175,152 @@ function RequestsListInner() {
       />
 
       <FilterBar>
-        <Input
-          value={searchDraft}
-          onChange={(e) => {
-            setSearchDraft(e.target.value);
-            setSearchQueryDebounced(e.target.value);
-          }}
-          placeholder="Search requests..."
-          className="h-9 w-64"
+        <div className="relative min-w-0 flex-1 basis-56 max-w-sm">
+          <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchDraft}
+            onChange={(e) => {
+              setSearchDraft(e.target.value);
+              setSearchQueryDebounced(e.target.value);
+            }}
+            placeholder="Search clients, engagements, requests…"
+            className="h-10 rounded-lg pl-9"
+          />
+        </div>
+        <ChecklistFilter
+          label="Client"
+          icon={<IconBuilding className="h-4 w-4" />}
+          options={clientOptions}
+          values={selectedClientIds}
+          onValuesChange={(values) => setParams(setCsvExtra('clientIds', values))}
+          searchPlaceholder="Clients"
         />
-        <AppSelect
-          value={params.extra.phase ?? ''}
-          onValueChange={(value) => setParams({ extra: { phase: value } })}
-          options={[{ value: '', label: 'All phases' }, ...phaseOptions]}
-          placeholder="Filter by phase"
-          className="h-9 w-48"
+        <ChecklistFilter
+          label="Engagement"
+          icon={<IconBriefcase className="h-4 w-4" />}
+          options={engagementOptions}
+          values={selectedEngagementIds}
+          onValuesChange={(values) =>
+            setParams({
+              extra: {
+                engagementIds: values.length > 0 ? values.join(',') : undefined,
+                engagementId: undefined,
+              },
+            })
+          }
+          searchPlaceholder="Engagements"
         />
-        <AppSelect
-          value={params.extra.stageId ?? ''}
-          onValueChange={(value) => setParams({ extra: { stageId: value } })}
-          options={[{ value: '', label: 'All stages' }, ...stageOptions]}
-          placeholder="Filter by stage"
-          className="h-9 w-48"
+        <ChecklistFilter
+          label="Class"
+          icon={<IconTag className="h-4 w-4" />}
+          options={classOptions}
+          values={selectedClassIds}
+          onValuesChange={(values) =>
+            setParams({
+              extra: {
+                requestClassIds: values.length > 0 ? values.join(',') : undefined,
+                requestClassId: undefined,
+              },
+            })
+          }
+          searchPlaceholder="Classes"
         />
-        <AppSelect
-          value={params.extra.statusId ?? ''}
-          onValueChange={(value) => setParams({ extra: { statusId: value } })}
-          options={[{ value: '', label: 'All statuses' }, ...statusOptions]}
-          placeholder="Filter by status"
-          className="h-9 w-48"
+        <ChecklistFilter
+          label="Phase"
+          icon={<IconTag className="h-4 w-4" />}
+          options={phaseOptions}
+          values={selectedPhases}
+          onValuesChange={(values) =>
+            setParams({
+              extra: {
+                phases: values.length > 0 ? values.join(',') : undefined,
+                phase: undefined,
+              },
+            })
+          }
+          searchPlaceholder="Phases"
+        />
+        <ChecklistFilter
+          label="Stage"
+          icon={<IconTag className="h-4 w-4" />}
+          options={stageOptions}
+          values={selectedStageIds}
+          onValuesChange={(values) =>
+            setParams({
+              extra: {
+                stageIds: values.length > 0 ? values.join(',') : undefined,
+                stageId: undefined,
+              },
+            })
+          }
+          searchPlaceholder="Stages"
+        />
+        <ChecklistFilter
+          label="Status"
+          icon={<IconTag className="h-4 w-4" />}
+          options={statusOptions}
+          values={selectedStatusIds}
+          onValuesChange={(values) =>
+            setParams({
+              extra: {
+                statusIds: values.length > 0 ? values.join(',') : undefined,
+                statusId: undefined,
+              },
+            })
+          }
+          searchPlaceholder="Statuses"
+        />
+        <ChecklistFilter
+          label="Assignee"
+          icon={<IconUser className="h-4 w-4" />}
+          options={userOptions}
+          values={selectedAssigneeIds}
+          onValuesChange={(values) =>
+            setParams({
+              extra: {
+                assigneeIds: values.length > 0 ? values.join(',') : undefined,
+                assigneeId: undefined,
+              },
+            })
+          }
+          searchPlaceholder="People"
+        />
+        <DateFilterPill
+          label="Due date"
+          value={parseDateParam(params.extra.dueDate)}
+          onChange={(date) => setParams({ extra: { dueDate: toDateParam(date) } })}
         />
       </FilterBar>
 
-      {selectedIds.length > 0 ? (
+      {selectedIds.length > 0 && (canManageLifecycle || canBulkAssign) ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
           <span className="mr-2 text-sm font-medium">{selectedIds.length} selected</span>
-          <AppSelect value={bulkStageId} onValueChange={setBulkStageId} options={stageOptions} placeholder="Set stage" className="w-44" />
-          <AppSelect value={bulkStatusId} onValueChange={setBulkStatusId} options={statusOptions} placeholder="Set status" className="w-44" />
-          <AppSelect value={bulkAssigneeId} onValueChange={setBulkAssigneeId} options={userOptions} placeholder="Set assignee" className="w-48" />
+          {canManageLifecycle ? (
+            <AppSelect
+              value={bulkStatusId}
+              onValueChange={setBulkStatusId}
+              options={statusOptions}
+              placeholder="Set status"
+              className="w-44"
+            />
+          ) : null}
+          {canBulkAssign ? (
+            <AppSelect
+              value={bulkAssigneeId}
+              onValueChange={setBulkAssigneeId}
+              options={userOptions.map(({ value, label }) => ({ value, label }))}
+              placeholder="Set assignee"
+              className="w-48"
+            />
+          ) : null}
           <Button
             type="button"
             size="sm"
-            disabled={bulkUpdate.isPending || (!bulkStageId && !bulkStatusId && !bulkAssigneeId)}
+            disabled={
+              bulkUpdate.isPending ||
+              (!bulkStatusId && !bulkAssigneeId) ||
+              (!canManageLifecycle && Boolean(bulkStatusId))
+            }
             onClick={applyBulkUpdate}
           >
             {bulkUpdate.isPending ? 'Updating…' : 'Apply'}
@@ -246,19 +331,22 @@ function RequestsListInner() {
         </div>
       ) : null}
 
-      <DataTable
-        columns={columns}
+      <RequestsGroupedTable
         data={list.data?.data ?? []}
         meta={list.data?.meta}
         isPending={list.isPending}
         error={list.isError ? 'Failed to load requests' : null}
         onPageChange={(page) => setParams({ page })}
+        pageSize={params.pageSize}
+        onPageSizeChange={(pageSize) => setParams({ pageSize, page: 1 })}
         onRowClick={(row) => router.push(`/requests/${row.id}`)}
+        onViewHistory={(row) =>
+          setHistoryRequest({ id: row.id, refCode: row.referenceCode })
+        }
         emptyMessage="No requests found"
-        selectable={can('request:update')}
+        selectable={canManageLifecycle || canBulkAssign}
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
-        getRowId={(row) => row.id}
       />
 
       {historyRequest ? (

@@ -11,6 +11,7 @@ import { PageToolbar } from '@/components/layout/page-toolbar';
 import { FormCardSkeleton } from '@/components/skeletons';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/data';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,6 +31,7 @@ import {
   useAssignDesignation,
   useDeactivateUser,
   useDepartments,
+  useResetUserPassword,
   useRoles,
   useUpdateUser,
   useUser,
@@ -51,6 +53,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const departments = useDepartments();
   const update = useUpdateUser(id);
   const deactivate = useDeactivateUser();
+  const resetPassword = useResetUserPassword();
   const designation = useAssignDesignation(id);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [hydratedFor, setHydratedFor] = useState<string | null>(null);
@@ -199,6 +202,17 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
     }
   }
 
+  async function onResetPassword() {
+    try {
+      await resetPassword.mutateAsync(id);
+      toast.success(
+        `New temporary password emailed to ${user.data?.email ?? 'the user'}`,
+      );
+    } catch (err) {
+      toast.error(err instanceof BffClientError ? err.message : 'Password reset failed');
+    }
+  }
+
   const lookupsReady = !roles.isPending && !departments.isPending;
 
   if (user.isPending || !lookupsReady || hydratedFor !== id) return <FormCardSkeleton />;
@@ -221,9 +235,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Badge variant={record.isActive ? 'success' : 'secondary'}>
-              {record.isActive ? 'Active' : 'Inactive'}
-            </Badge>
+            <StatusBadge status={record.isActive} />
             {record.partnerDesignation ? (
               <Badge variant="secondary">
                 {record.partnerDesignation === 'PrincipalPartner'
@@ -393,27 +405,51 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                 Save changes
               </LoadingButton>
               {record.isActive ? (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button type="button" variant="outline">
-                      Deactivate
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Deactivate user?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        {record.fullName} will no longer be able to sign in.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => void onDeactivate()}>
+                <>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button type="button" variant="outline">
+                        Reset & email password
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Reset password and email credentials?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          A new temporary password will be emailed to {record.email}. They must
+                          change it on next login. Active sessions will be signed out.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => void onResetPassword()}>
+                          Reset & email
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button type="button" variant="outline">
                         Deactivate
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Deactivate user?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {record.fullName} will no longer be able to sign in.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => void onDeactivate()}>
+                          Deactivate
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
               ) : null}
             </>
           ) : null}

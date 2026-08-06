@@ -7,10 +7,17 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { PageMeta } from "@abdcshare/api-client";
-import { bffApi, bffFormData } from "@/lib/bff/client";
+import { bffApi } from "@/lib/bff/client";
 
 export type DocumentCategory = "WorkingPaper" | "FinalReport" | "Supporting";
 export type DocumentStatus = "Draft" | "Ready" | "UnderReview" | "SignedOff";
+export type ReportReviewState =
+  | "NotSent"
+  | "AwaitingClient"
+  | "ChangesRequested"
+  | "Locked"
+  | "Approved"
+  | "Overridden";
 export type EngagementPhase = "Planning" | "Execution" | "Reporting";
 export type DocumentParticipantRole = "Auditor" | "Advisor" | "Staff";
 
@@ -42,6 +49,8 @@ export interface DocumentListItem {
   description?: string | null;
   status: DocumentStatus;
   currentVersion: number;
+  clientReviewState?: ReportReviewState;
+  clientReviewRound?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -82,12 +91,13 @@ async function invalidateDocuments(
     await queryClient.invalidateQueries({ queryKey: documentKeys.detail(id) });
 }
 
-export function useDocumentsList(queryString: string) {
+export function useDocumentsList(queryString: string, enabled = true) {
   return useQuery({
     queryKey: documentKeys.list(queryString),
     queryFn: () =>
       bffApi<DocumentListResponse>(`/api/documents?${queryString}`),
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
@@ -116,13 +126,27 @@ export function useCreateDocument() {
 export function useUploadDocumentFile() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ documentId, file }: { documentId: string; file: File }) => {
-      const form = new FormData();
-      form.append("file", file);
-      return bffFormData<DocumentDetail>(
-        `/api/documents/${documentId}/files/upload`,
-        form,
+    mutationFn: async ({
+      documentId,
+      file,
+      onProgress,
+      onBytesProgress,
+    }: {
+      documentId: string;
+      file: File;
+      onProgress?: (percent: number) => void;
+      onBytesProgress?: (progress: {
+        percent: number;
+        bytesUploaded: number;
+        bytesTotal: number;
+      }) => void;
+    }) => {
+      const { uploadFilesWithUppy } = await import("@/lib/uploads/uppy-client");
+      await uploadFilesWithUppy(
+        { kind: "document", parentId: documentId, onProgress, onBytesProgress },
+        [file],
       );
+      return bffApi<DocumentDetail>(`/api/documents/${documentId}`);
     },
     onSuccess: async (document) => {
       await invalidateDocuments(queryClient, document.id);
@@ -215,6 +239,48 @@ export function useExportDocuments() {
   });
 }
 
+export type DocumentFilePreview = {
+  url: string | null;
+  mode: 'native' | 'converted' | 'unavailable';
+  previewStatus: string;
+  reason?: 'pending' | 'failed' | 'unsupported';
+};
+
+export async function fetchDocumentFilePreview(
+  documentId: string,
+  fileId: string,
+  opts?: { retryFailed?: boolean },
+) {
+  const qs = opts?.retryFailed ? '?retryFailed=1' : '';
+  return bffApi<DocumentFilePreview>(
+    `/api/documents/${documentId}/files/${fileId}/preview${qs}`,
+  );
+}
+
+export async function fetchDocumentZipEntries(documentId: string, fileId: string) {
+  return bffApi<{ entries: Array<{ name: string; size: number; isDirectory: boolean }> }>(
+    `/api/documents/${documentId}/files/${fileId}/zip-entries`,
+  );
+}
+
+export async function fetchDocumentZipEntry(
+  documentId: string,
+  fileId: string,
+  entryPath: string,
+) {
+  const qs = new URLSearchParams({ path: entryPath });
+  return bffApi<{ url: string; fileName: string; mimeType: string }>(
+    `/api/documents/${documentId}/files/${fileId}/zip-entry?${qs}`,
+  );
+}
+
+export async function openDocumentFileDownload(documentId: string, fileId: string) {
+  const { url } = await bffApi<{ url: string }>(
+    `/api/documents/${documentId}/files/${fileId}/download`,
+  );
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 export function useDocumentPreview() {
   return useMutation({
     mutationFn: async ({
@@ -223,9 +289,6 @@ export function useDocumentPreview() {
     }: {
       documentId: string;
       fileId: string;
-    }) =>
-      bffApi<{ url: string }>(
-        `/api/documents/${documentId}/files/${fileId}/download`,
-      ),
+    }) => fetchDocumentFilePreview(documentId, fileId),
   });
 }

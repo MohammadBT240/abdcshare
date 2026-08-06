@@ -26,8 +26,9 @@ describe('EngagementsService', () => {
   describe('create', () => {
     it('generates a sequential reference code and opens in Planning with an initial history row', async () => {
       const created: Array<{ entity: unknown; data: Record<string, unknown> }> = [];
+      const { UserEntity } = await import('../users/infrastructure/persistence/user.entity');
       const em = {
-        findOne: jest.fn(async () => ({ id: 1, name: 'X' })), // client/type/department all resolve
+        findOne: jest.fn(async () => ({ id: 1, name: 'X', primaryContact: { id: 'contact-1' } })),
         count: jest.fn(async () => 2), // two engagements already exist this year
         getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
         create: jest.fn((entity: unknown, data: Record<string, unknown>) => {
@@ -36,16 +37,28 @@ describe('EngagementsService', () => {
           return row;
         }),
         persistAndFlush: jest.fn(async () => undefined),
-        find: jest.fn(async () => []),
+        find: jest.fn(async (entity: unknown) => {
+          if (entity === UserEntity) {
+            return [{ id: 'contact-1', role: { roleName: 'Client' }, isActive: true }];
+          }
+          return [];
+        }),
         flush: jest.fn(async () => undefined),
       };
       const outbox = mockOutbox();
       const notifications = mockNotifications();
-      const service = new EngagementsService(em as never, outbox as never, notifications as never);
+      const service = new EngagementsService(em as never, outbox as never, notifications as never, { presignDownload: jest.fn() } as never);
       jest.spyOn(service, 'getOne').mockResolvedValue({ id: 'eng-1' } as never);
 
       await service.create(
-        { clientId: 'c1', engagementTypeId: 1, departmentId: 1, title: 'FY25 Audit' },
+        {
+          clientId: 'c1',
+          engagementTypeId: 1,
+          departmentId: 1,
+          title: 'FY25 Audit',
+          clientContactUserIds: ['contact-1'],
+          mainClientContactUserId: 'contact-1',
+        },
         'user-1',
       );
 
@@ -66,14 +79,19 @@ describe('EngagementsService', () => {
   describe('transition', () => {
     function serviceWith(stage: EngagementStage) {
       const em = {
-        findOne: jest.fn(async () => null),
+        findOne: jest.fn(async (entity: unknown) => {
+          if (entity === EngagementEntity) {
+            return { id: 'e1', createdBy: { id: sa.userId } };
+          }
+          return null;
+        }),
         findOneOrFail: jest.fn(async () => ({ stage, referenceCode: 'ENG-1' })),
         create: jest.fn(),
         flush: jest.fn(),
         getReference: jest.fn(),
         find: jest.fn(async () => []),
       };
-      return new EngagementsService(em as never, mockOutbox() as never, mockNotifications() as never);
+      return new EngagementsService(em as never, mockOutbox() as never, mockNotifications() as never, { presignDownload: jest.fn() } as never);
     }
 
     it('rejects a disallowed transition (Planning → Completed)', async () => {
@@ -95,7 +113,7 @@ describe('EngagementsService', () => {
     it('copies scope, makes cloner Lead (not source team), starts in Planning', async () => {
       const source = {
         id: 'source',
-        client: { id: 'c1' },
+        client: { id: 'c1', primaryContact: { id: 'contact-1' } },
         engagementType: { id: 2 },
         department: { id: 3 },
         title: 'Annual audit FY25',
@@ -105,8 +123,14 @@ describe('EngagementsService', () => {
             { requestClass: { id: 8 }, sortOrder: 1 },
           ],
         },
+        clientContacts: {
+          getItems: () => [
+            { user: { id: 'contact-1' }, isMain: true, receiveEmail: true },
+          ],
+        },
       };
       const created: Array<{ entity: unknown; data: Record<string, unknown> }> = [];
+      const { UserEntity } = await import('../users/infrastructure/persistence/user.entity');
       const em = {
         findOne: jest.fn(async () => source),
         count: jest.fn(async () => 4),
@@ -117,10 +141,15 @@ describe('EngagementsService', () => {
         }),
         getReference: jest.fn((_entity: unknown, id: unknown) => ({ id })),
         persistAndFlush: jest.fn(async () => undefined),
-        find: jest.fn(async () => []),
+        find: jest.fn(async (entity: unknown) => {
+          if (entity === UserEntity) {
+            return [{ id: 'contact-1', role: { roleName: 'Client' }, isActive: true }];
+          }
+          return [];
+        }),
         flush: jest.fn(async () => undefined),
       };
-      const service = new EngagementsService(em as never, mockOutbox() as never, mockNotifications() as never);
+      const service = new EngagementsService(em as never, mockOutbox() as never, mockNotifications() as never, { presignDownload: jest.fn() } as never);
       jest.spyOn(service, 'getOne').mockResolvedValue({ id: 'clone' } as never);
 
       await service.clone('source', { periodLabel: 'FY26' }, 'u1');

@@ -8,6 +8,7 @@ export class AuthUserDto {
   @ApiProperty() mustChangePassword!: boolean;
   @ApiPropertyOptional({ enum: ['PrincipalPartner', 'Partner'], nullable: true })
   partnerDesignation?: 'PrincipalPartner' | 'Partner' | null;
+  @ApiPropertyOptional({ nullable: true }) avatarUrl?: string | null;
 }
 
 export class AuthTokensDto {
