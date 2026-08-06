@@ -1,15 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import {
-  IconChevronDown,
-  IconFingerprint,
-  IconLogout,
-  IconRosetteDiscountCheck,
-  IconUser,
-} from '@tabler/icons-react';
+import { IconChevronDown, IconLogout, IconSettings } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import type { AuthUser } from '@abdcshare/api-client';
+import { UserAvatar } from '@/components/data/user-avatar';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -50,15 +45,19 @@ export function UserMenu({ user }: { user: AuthUser }) {
   }
 
   const firstName = user.fullName.split(/\s+/)[0] ?? user.fullName;
-  const shortId = user.id.split('-')[0];
+  const initials = initialsOf(user.fullName);
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button type="button" variant="ghost" size="sm" className="h-10 gap-2 px-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
-            {initialsOf(user.fullName)}
-          </span>
+          <UserAvatar
+            src={user.avatarUrl}
+            initials={initials}
+            size="sm"
+            className="rounded-md"
+            alt={user.fullName}
+          />
           <span className="hidden text-left sm:block">
             <span className="block text-sm font-semibold leading-tight">{firstName}</span>
             <span className="block text-xs font-normal leading-tight text-muted-foreground">
@@ -70,41 +69,32 @@ export function UserMenu({ user }: { user: AuthUser }) {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-72 p-0">
-        {/* Identity block — real session data only */}
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
-            {initialsOf(user.fullName)}
-          </span>
+          <UserAvatar
+            src={user.avatarUrl}
+            initials={initials}
+            size="md"
+            className="h-11 w-11 shrink-0 rounded-md text-sm"
+            alt={user.fullName}
+          />
           <div className="min-w-0">
-            <p className="flex items-center gap-1 truncate text-sm font-semibold">
-              {user.fullName}
-              <IconRosetteDiscountCheck className="h-4 w-4 shrink-0 text-primary" />
-            </p>
+            <p className="truncate text-sm font-semibold">{user.fullName}</p>
             <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-          </div>
-        </div>
-
-        <div className="space-y-2 border-b border-border px-4 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-sm font-medium">{user.role}</span>
-            <span className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              User type
-              <IconUser className="h-3 w-3" />
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-sm">{shortId}</span>
-            <span className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              User ID
-              <IconFingerprint className="h-3 w-3" />
-            </span>
           </div>
         </div>
 
         <div className="p-1">
           <DropdownMenuItem
+            onSelect={() => router.push('/settings/account')}
+            className="cursor-pointer"
+          >
+            <IconSettings className="mr-2 h-4 w-4" />
+            Account settings
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
             onSelect={() => void logout()}
-            className="justify-center font-medium text-destructive focus:bg-destructive/10 focus:text-destructive"
+            className="cursor-pointer font-medium text-destructive focus:bg-destructive/10 focus:text-destructive"
           >
             <IconLogout className="mr-2 h-4 w-4" />
             Sign Out
