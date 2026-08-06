@@ -12,6 +12,7 @@ export type AuthUser = {
   role: string;
   mustChangePassword: boolean;
   partnerDesignation?: 'PrincipalPartner' | 'Partner' | null;
+  avatarUrl?: string | null;
 };
 
 export type AuthTokens = {
