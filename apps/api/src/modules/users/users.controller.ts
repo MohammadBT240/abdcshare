@@ -1,7 +1,11 @@
 import { Body, Controller, Get, Header, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import {
+  RequireAnyPermission,
+  RequirePermission,
+} from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { UsersService } from './users.service';
 import { BulkUsersService } from './bulk-users.service';
 import { CreateUserDto } from './presentation/dto/create-user.dto';
@@ -136,28 +140,38 @@ export class UsersController {
     return this.users.assignDesignation(id, dto.designation ?? null);
   }
 
+  /** SA (client:manage) may set Client-role avatars; Platform Admin uses user:manage. */
   @Post(':id/avatar/presign')
-  @RequirePermission('user:manage')
-  avatarPresignForUser(@Param('id') id: string, @Body() dto: AvatarPresignDto) {
+  @RequireAnyPermission('user:manage', 'client:manage')
+  async avatarPresignForUser(
+    @Param('id') id: string,
+    @Body() dto: AvatarPresignDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    await this.users.assertCanManageAvatar(actor, id);
     return this.users.avatarPresignUpload(id, dto);
   }
 
   @Post(':id/avatar')
-  @RequirePermission('user:manage')
-  avatarUploadForUser(
+  @RequireAnyPermission('user:manage', 'client:manage')
+  async avatarUploadForUser(
     @Param('id') id: string,
     @Body() dto: AvatarUploadDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ): Promise<MeResponseDto> {
+    await this.users.assertCanManageAvatar(actor, id);
     return this.users.avatarUpload(id, dto);
   }
 
   /** @deprecated Prefer POST :id/avatar with file bytes — kept for older clients. */
   @Post(':id/avatar/confirm')
-  @RequirePermission('user:manage')
-  avatarConfirmForUser(
+  @RequireAnyPermission('user:manage', 'client:manage')
+  async avatarConfirmForUser(
     @Param('id') id: string,
     @Body() dto: AvatarConfirmDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ): Promise<MeResponseDto> {
+    await this.users.assertCanManageAvatar(actor, id);
     return this.users.avatarConfirm(id, dto.storageKey);
   }
 }

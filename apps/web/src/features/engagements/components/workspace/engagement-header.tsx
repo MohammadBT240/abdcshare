@@ -20,7 +20,7 @@ interface EngagementHeaderProps {
   onTransition?: () => void;
   canTransition: boolean;
   nextActions?: NextAction[];
-  onSelectTab?: (tab: WorkspaceTab) => void;
+  onSelectTab?: (tab: WorkspaceTab, query?: Record<string, string>) => void;
 }
 
 const WORKFLOW_STAGES = ["Planning", "Execution", "Reporting"] as const;

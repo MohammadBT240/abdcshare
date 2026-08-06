@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -8,9 +9,15 @@ import {
 import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { EVENT, type Paginated, type PartnerDesignation } from '@abdcshare/shared';
+import {
+  EVENT,
+  hasPermission,
+  type Paginated,
+  type PartnerDesignation,
+} from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
 import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
+import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { TokenService } from '../auth/application/token.service';
 import { OutboxService } from '../outbox/outbox.service';
 import { UserEntity } from './infrastructure/persistence/user.entity';
@@ -96,6 +103,28 @@ export class UsersService {
     user.fullName = buildFullName(user.firstName, user.middleName, user.surname);
     await this.em.flush();
     return this.toMeDto(user);
+  }
+
+  /**
+   * Platform Admin (`user:manage`) may set any user's avatar.
+   * Super Admin (`client:manage` only) may set avatars for Client-role contacts.
+   */
+  async assertCanManageAvatar(actor: AuthenticatedUser, targetUserId: string): Promise<void> {
+    if (hasPermission(actor.role, 'user:manage', actor.partnerDesignation)) return;
+
+    if (!hasPermission(actor.role, 'client:manage', actor.partnerDesignation)) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    const target = await this.em.findOne(
+      UserEntity,
+      { id: targetUserId },
+      { populate: ['role'] },
+    );
+    if (!target) throw new NotFoundException('User not found');
+    if (target.role.roleName !== 'Client') {
+      throw new ForbiddenException('Only Client contact avatars can be updated with client:manage');
+    }
   }
 
   async avatarPresignUpload(userId: string, dto: AvatarPresignDto) {
