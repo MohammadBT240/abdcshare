@@ -54,7 +54,10 @@ import { EngagementRequestClassEntity } from "../engagements/infrastructure/pers
 import { RequestClassEntity } from "../request-classes/infrastructure/persistence/request-class.entity";
 import { RequestEntity } from "../requests/infrastructure/persistence/request.entity";
 import { UserEntity } from "../users/infrastructure/persistence/user.entity";
-import { DOCUMENT_MAX_BYTES } from "./documents.constants";
+import {
+  DOCUMENT_MAX_BYTES,
+  formatDocumentMaxBytesLabel,
+} from "./documents.constants";
 import type {
   AddDocumentParticipantDto,
   ConfirmUploadDto,
@@ -89,17 +92,36 @@ export class DocumentsService {
     return Object.keys(eng).length ? { id, engagement: eng } : { id };
   }
 
+  private isClient(user?: AuthenticatedUser | null): boolean {
+    return user?.role === "Client";
+  }
+
+  /** Clients may only access Supporting (planning) documents — never WP / FinalReport. */
+  private assertClientSupportingCategory(
+    category: DocumentCategory,
+    user?: AuthenticatedUser | null,
+  ): void {
+    if (this.isClient(user) && category !== DocumentCategory.Supporting) {
+      throw new ForbiddenException(
+        "Clients may only access supporting (planning) documents",
+      );
+    }
+  }
+
   private async findScoped(
     id: string,
     user: AuthenticatedUser | undefined,
     populate?: string[],
   ): Promise<DocumentEntity> {
+    const fields = new Set(populate ?? []);
+    fields.add("createdBy");
     const doc = await this.em.findOne(
       DocumentEntity,
       this.scopedWhere(id, user) as FilterQuery<DocumentEntity>,
-      populate ? { populate: populate as never } : undefined,
+      { populate: [...fields] as never },
     );
     if (!doc) throw new NotFoundException("Document not found");
+    this.assertClientSupportingCategory(doc.category, user);
     return doc;
   }
 
@@ -117,6 +139,9 @@ export class DocumentsService {
       description: d.description ?? null,
       status: d.status,
       currentVersion: d.currentVersion,
+      clientReviewState: d.clientReviewState,
+      clientReviewRound: d.clientReviewRound,
+      createdById: d.createdBy?.id ?? null,
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
     };
@@ -228,21 +253,31 @@ export class DocumentsService {
     return this.getOne(doc.id, user);
   }
 
-  /** Permission for create: Supporting → engagement:update; WorkingPaper → working-paper:upload; FinalReport → final-report:upload. */
+  /** Permission for create: Supporting → engagement:update or supporting:upload; WorkingPaper → working-paper:upload; FinalReport → final-report:upload. */
   private assertCreatePermission(
     category: DocumentCategory,
     user: AuthenticatedUser,
   ): void {
     if (category === DocumentCategory.Supporting) {
-      if (
-        !hasPermission(user.role, "engagement:update", user.partnerDesignation)
-      ) {
+      const canManage = hasPermission(
+        user.role,
+        "engagement:update",
+        user.partnerDesignation,
+      );
+      const canSupporting = hasPermission(
+        user.role,
+        "supporting:upload",
+        user.partnerDesignation,
+      );
+      if (!canManage && !canSupporting) {
         throw new ForbiddenException(
-          "engagement:update is required to create supporting documents",
+          "engagement:update or supporting:upload is required to create supporting documents",
         );
       }
       return;
     }
+    // Clients never create firm document categories.
+    this.assertClientSupportingCategory(category, user);
     if (category === DocumentCategory.FinalReport) {
       if (
         !hasPermission(
@@ -266,6 +301,21 @@ export class DocumentsService {
     }
   }
 
+  private assertCanDelete(doc: DocumentEntity, user: AuthenticatedUser): void {
+    if (hasPermission(user.role, "document:delete", user.partnerDesignation)) {
+      return;
+    }
+    const ownSupporting =
+      doc.category === DocumentCategory.Supporting &&
+      doc.createdBy?.id === user.userId &&
+      hasPermission(user.role, "supporting:upload", user.partnerDesignation);
+    if (!ownSupporting) {
+      throw new ForbiddenException(
+        "You do not have permission to delete this document",
+      );
+    }
+  }
+
   /** Permission for file upload / mutate on an existing document, based on its category. */
   private assertUploadPermission(
     category: DocumentCategory,
@@ -281,7 +331,19 @@ export class DocumentsService {
     const where: Record<string, unknown> = {};
     if (query.requestClassId) where.requestClass = query.requestClassId;
     if (query.requestId) where.request = query.requestId;
-    if (query.category) where.category = query.category;
+    if (this.isClient(user)) {
+      if (
+        query.category != null &&
+        query.category !== DocumentCategory.Supporting
+      ) {
+        throw new ForbiddenException(
+          "Clients may only list supporting (planning) documents",
+        );
+      }
+      where.category = DocumentCategory.Supporting;
+    } else if (query.category) {
+      where.category = query.category;
+    }
     if (query.status) where.status = query.status;
     if (query.phase) where.phase = query.phase;
     if (query.q) where.title = { $ilike: `%${query.q}%` };
@@ -297,7 +359,7 @@ export class DocumentsService {
       DocumentEntity,
       where as FilterQuery<DocumentEntity>,
       {
-        populate: ["requestClass", "request", "department"],
+        populate: ["requestClass", "request", "department", "createdBy"],
         orderBy: { createdAt: "desc", id: "asc" },
         limit,
         offset,
@@ -315,6 +377,9 @@ export class DocumentsService {
     dto: ExportDocumentsDto,
     user: AuthenticatedUser,
   ): Promise<{ accepted: true; jobId: string }> {
+    if (this.isClient(user)) {
+      throw new ForbiddenException("Clients may not export documents");
+    }
     await this.accessibleEngagement(dto.engagementId, user);
     const job = this.outbox.enqueue(EVENT.DocumentExportRequested, {
       engagementId: dto.engagementId,
@@ -324,6 +389,35 @@ export class DocumentsService {
     });
     await this.em.flush();
     return { accepted: true, jobId: job.id };
+  }
+
+  /**
+   * Fresh signed URL for an engagement document export zip.
+   * `storageKey` must live under this engagement's export prefix.
+   */
+  async exportDownloadUrl(
+    engagementId: string,
+    storageKey: string,
+    fileName: string | undefined,
+    user: AuthenticatedUser,
+  ): Promise<{ url: string }> {
+    if (this.isClient(user)) {
+      throw new ForbiddenException("Clients may not export documents");
+    }
+    await this.accessibleEngagement(engagementId, user);
+    const marker = `exports/${engagementId}/`;
+    // Keys are like `abdcshare/exports/{engagementId}/…` or `exports/{engagementId}/…`
+    if (!storageKey.includes(marker)) {
+      throw new ForbiddenException("Invalid export key");
+    }
+    const name =
+      fileName?.replace(/[\\/]/g, "") ||
+      storageKey.split("/").pop() ||
+      "documents.zip";
+    const url = await this.storage.presignDownload(storageKey, name, {
+      disposition: "attachment",
+    });
+    return { url };
   }
 
   async getOne(
@@ -354,9 +448,10 @@ export class DocumentsService {
     return this.getOne(id, user);
   }
 
-  /** Delete a document (Super Admin) — cascades files + participants. */
+  /** Delete a document — SA (`document:delete`) or Client own Supporting. Cascades files + participants. */
   async remove(id: string, user: AuthenticatedUser): Promise<{ ok: true }> {
-    const doc = await this.findScoped(id, user);
+    const doc = await this.findScoped(id, user, ["createdBy"]);
+    this.assertCanDelete(doc, user);
     // NOTE: object-storage cleanup of the files is left to the storage layer /
     // a future worker sweep; the DB rows cascade via the FK delete rules.
     await this.em.removeAndFlush(doc);
@@ -384,7 +479,7 @@ export class DocumentsService {
     this.assertUploadPermission(doc.category, user);
     if (dto.sizeBytes != null && dto.sizeBytes > DOCUMENT_MAX_BYTES) {
       throw new BadRequestException(
-        `File exceeds maximum size of ${Math.floor(DOCUMENT_MAX_BYTES / (1024 * 1024))} MB`,
+        `File exceeds maximum size of ${formatDocumentMaxBytesLabel()}`,
       );
     }
     return this.storage.createMultipart({
@@ -424,7 +519,7 @@ export class DocumentsService {
     this.assertUploadPermission(doc.category, user);
     if (dto.sizeBytes > DOCUMENT_MAX_BYTES) {
       throw new BadRequestException(
-        `File exceeds maximum size of ${Math.floor(DOCUMENT_MAX_BYTES / (1024 * 1024))} MB`,
+        `File exceeds maximum size of ${formatDocumentMaxBytesLabel()}`,
       );
     }
     if (!dto.storageKey.includes(`documents/${doc.engagement.id}`)) {
@@ -604,7 +699,9 @@ export class DocumentsService {
     if (!file?.buffer?.length)
       throw new BadRequestException("A file is required");
     if (file.size > DOCUMENT_MAX_BYTES) {
-      throw new BadRequestException("File must be 100 MB or smaller");
+      throw new BadRequestException(
+        `File must be ${formatDocumentMaxBytesLabel()} or smaller`,
+      );
     }
     const { storageKey } = await this.storage.upload({
       keyPrefix: `documents/${doc.engagement.id}`,

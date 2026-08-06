@@ -24,6 +24,13 @@ const superAdmin = {
   role: "Super Admin",
   mustChangePassword: false,
 } as AuthenticatedUser;
+const client = {
+  userId: "c1",
+  email: "",
+  role: "Client",
+  clientId: "client-1",
+  mustChangePassword: false,
+} as AuthenticatedUser;
 
 function mockNotifications() {
   return { emit: jest.fn(async () => undefined) };
@@ -169,6 +176,71 @@ describe("DocumentsService", () => {
       expect(doc?.category).toBe(DocumentCategory.FinalReport);
     });
 
+    it("allows a Client to create Supporting via supporting:upload", async () => {
+      const created: Array<{ entity: unknown; data: Record<string, unknown> }> =
+        [];
+      const em = {
+        findOne: jest.fn(async () => ({
+          id: "e1",
+          department: { id: 1 },
+          stage: EngagementStatus.Planning,
+        })),
+        create: jest.fn((entity: unknown, data: Record<string, unknown>) => {
+          const row = { id: "doc-c1", ...data };
+          created.push({ entity, data: row });
+          return row;
+        }),
+        getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
+        persistAndFlush: jest.fn(async () => undefined),
+      };
+      const service = new DocumentsService(
+        em as never,
+        { enqueue: jest.fn() } as never,
+        mockNotifications() as never,
+        { presignUpload: jest.fn(), presignDownload: jest.fn() } as never,
+      );
+      jest.spyOn(service, "getOne").mockResolvedValue({ id: "doc-c1" } as never);
+
+      await service.create(
+        {
+          engagementId: "e1",
+          category: DocumentCategory.Supporting,
+          title: "Bank confirmation letter",
+        },
+        client,
+      );
+
+      const doc = created.find((c) => c.entity === DocumentEntity)?.data;
+      expect(doc?.category).toBe(DocumentCategory.Supporting);
+    });
+
+    it("forbids a Client from creating a WorkingPaper", async () => {
+      const em = {
+        findOne: jest.fn(),
+        create: jest.fn(),
+        persistAndFlush: jest.fn(),
+        getReference: jest.fn(),
+      };
+      const service = new DocumentsService(
+        em as never,
+        { enqueue: jest.fn() } as never,
+        mockNotifications() as never,
+        { presignUpload: jest.fn(), presignDownload: jest.fn() } as never,
+      );
+
+      await expect(
+        service.create(
+          {
+            engagementId: "e1",
+            category: DocumentCategory.WorkingPaper,
+            title: "WP",
+          },
+          client,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(em.findOne).not.toHaveBeenCalled();
+    });
+
     it("creates a WorkingPaper without a request class", async () => {
       const created: Array<{ entity: unknown; data: Record<string, unknown> }> =
         [];
@@ -308,6 +380,78 @@ describe("DocumentsService", () => {
       );
       expect(created.some((c) => c.entity === DocumentFileEntity)).toBe(true);
       expect(doc.currentVersion).toBe(2);
+    });
+  });
+
+  describe("remove — delete gates", () => {
+    it("allows a Client to delete their own Supporting document", async () => {
+      const doc = {
+        id: "d1",
+        category: DocumentCategory.Supporting,
+        createdBy: { id: "c1" },
+        engagement: { id: "e1" },
+      };
+      const em = {
+        findOne: jest.fn(async () => doc),
+        removeAndFlush: jest.fn(async () => undefined),
+      };
+      const service = new DocumentsService(
+        em as never,
+        { enqueue: jest.fn() } as never,
+        mockNotifications() as never,
+        { presignUpload: jest.fn(), presignDownload: jest.fn() } as never,
+      );
+
+      await expect(service.remove("d1", client)).resolves.toEqual({ ok: true });
+      expect(em.removeAndFlush).toHaveBeenCalledWith(doc);
+    });
+
+    it("forbids a Client from deleting another user's Supporting document", async () => {
+      const doc = {
+        id: "d1",
+        category: DocumentCategory.Supporting,
+        createdBy: { id: "other" },
+        engagement: { id: "e1" },
+      };
+      const em = {
+        findOne: jest.fn(async () => doc),
+        removeAndFlush: jest.fn(async () => undefined),
+      };
+      const service = new DocumentsService(
+        em as never,
+        { enqueue: jest.fn() } as never,
+        mockNotifications() as never,
+        { presignUpload: jest.fn(), presignDownload: jest.fn() } as never,
+      );
+
+      await expect(service.remove("d1", client)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(em.removeAndFlush).not.toHaveBeenCalled();
+    });
+
+    it("allows Super Admin to delete any document via document:delete", async () => {
+      const doc = {
+        id: "d1",
+        category: DocumentCategory.WorkingPaper,
+        createdBy: { id: "s1" },
+        engagement: { id: "e1" },
+      };
+      const em = {
+        findOne: jest.fn(async () => doc),
+        removeAndFlush: jest.fn(async () => undefined),
+      };
+      const service = new DocumentsService(
+        em as never,
+        { enqueue: jest.fn() } as never,
+        mockNotifications() as never,
+        { presignUpload: jest.fn(), presignDownload: jest.fn() } as never,
+      );
+
+      await expect(service.remove("d1", superAdmin)).resolves.toEqual({
+        ok: true,
+      });
+      expect(em.removeAndFlush).toHaveBeenCalledWith(doc);
     });
   });
 });

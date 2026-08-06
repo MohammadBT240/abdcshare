@@ -18,6 +18,7 @@ import {
   DocumentParticipantRole,
   DocumentStatus,
   EngagementPhase,
+  ReportReviewState,
   type PageMeta,
 } from '@abdcshare/shared';
 import { PaginationQueryDto } from '../../../../common/dto/pagination-query.dto';
@@ -127,6 +128,9 @@ export class DocumentResponseDto {
   @ApiPropertyOptional() description?: string | null;
   @ApiProperty({ enum: DocumentStatus }) status!: DocumentStatus;
   @ApiProperty() currentVersion!: number;
+  @ApiProperty({ enum: ReportReviewState }) clientReviewState!: ReportReviewState;
+  @ApiProperty() clientReviewRound!: number;
+  @ApiPropertyOptional() createdById?: string | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }

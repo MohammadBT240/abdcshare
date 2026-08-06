@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -53,7 +54,7 @@ export class DocumentsController {
 
   /**
    * Create a document. Permission is category-scoped in the service:
-   * Supporting → engagement:update; WorkingPaper → working-paper:upload; FinalReport → final-report:upload.
+   * Supporting → engagement:update or supporting:upload; WorkingPaper → working-paper:upload; FinalReport → final-report:upload.
    */
   @Post()
   create(
@@ -81,6 +82,20 @@ export class DocumentsController {
     return this.documents.exportDocuments(dto, user);
   }
 
+  @Get('exports/download')
+  @RequirePermission('document:view')
+  exportDownload(
+    @Query('engagementId', ParseUUIDPipe) engagementId: string,
+    @Query('key') key: string | undefined,
+    @Query('name') name: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ url: string }> {
+    if (!key?.trim()) {
+      throw new BadRequestException('key query required');
+    }
+    return this.documents.exportDownloadUrl(engagementId, key.trim(), name, user);
+  }
+
   @Get(':id')
   @RequirePermission('document:view')
   getOne(
@@ -99,8 +114,8 @@ export class DocumentsController {
     return this.documents.update(id, dto, user);
   }
 
+  /** Authz in service: document:delete, or own Supporting with supporting:upload. */
   @Delete(':id')
-  @RequirePermission('document:delete')
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
