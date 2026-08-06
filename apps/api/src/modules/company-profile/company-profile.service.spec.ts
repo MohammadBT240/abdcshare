@@ -140,4 +140,74 @@ describe('CompanyProfileService', () => {
     expect(storage.presignDownload).toHaveBeenCalledWith('k', 'x.pdf');
     expect(result.url).toBe('https://example.com/file.pdf');
   });
+
+  it('returns a native preview URL for PDFs', async () => {
+    const { service, rows, storage } = build();
+    rows.push({
+      id: 'profile-1',
+      name: 'X',
+      fileName: 'x.pdf',
+      mimeType: 'application/pdf',
+      storageKey: 'k',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as CompanyProfileEntity);
+
+    const result = await service.preview('profile-1');
+    expect(storage.presignDownload).toHaveBeenCalledWith('k', 'x.pdf', {
+      disposition: 'inline',
+    });
+    expect(result).toMatchObject({
+      url: 'https://example.com/file.pdf',
+      mode: 'native',
+      previewStatus: 'Ready',
+    });
+  });
+
+  it('marks Word files as unsupported for local (non-public) storage URLs', async () => {
+    const { service, rows, storage } = build();
+    storage.presignDownload = jest.fn(
+      async () => 'http://localhost:3001/api/storage/local/k?inline=x.docx',
+    );
+    rows.push({
+      id: 'profile-1',
+      name: 'X',
+      fileName: 'x.docx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      storageKey: 'k',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as CompanyProfileEntity);
+
+    const result = await service.preview('profile-1');
+    expect(result).toMatchObject({
+      url: null,
+      mode: 'unavailable',
+      reason: 'unsupported',
+    });
+  });
+
+  it('embeds Word files via Office Online when the object URL is public HTTPS', async () => {
+    const { service, rows, storage } = build();
+    storage.presignDownload = jest.fn(async () => 'https://cdn.example.com/file.docx');
+    rows.push({
+      id: 'profile-1',
+      name: 'X',
+      fileName: 'x.docx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      storageKey: 'k',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as CompanyProfileEntity);
+
+    const result = await service.preview('profile-1');
+    expect(result.mode).toBe('converted');
+    expect(result.url).toContain('view.officeapps.live.com');
+    expect(result.url).toContain(encodeURIComponent('https://cdn.example.com/file.docx'));
+  });
 });
