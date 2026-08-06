@@ -30,6 +30,7 @@ export const PERMISSIONS = [
   // documents (split upload per category)
   'working-paper:upload',
   'final-report:upload', // Super Admin only
+  'supporting:upload', // Client planning / Supporting docs (SA uses engagement:update)
   'document:view',
   'document:delete',
   'document:export',
@@ -66,7 +67,7 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'bulk-import:run', 'audit:view', 'notification:receive',
   ],
   'Super Admin': [
-    ...ALL_VIEW, 'user:view', 'client:view', 'catalogue:view', 'reference-data:view', 'company-profile:view',
+    ...ALL_VIEW, 'user:view', 'client:manage', 'client:view', 'catalogue:view', 'reference-data:view', 'company-profile:view',
     'engagement:create', 'engagement:update', 'engagement:transition',
     'request:create', 'request:update', 'request:assign',
     'working-paper:upload', 'final-report:upload', 'document:delete', 'document:export',
@@ -85,7 +86,8 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'review:submit',
   ],
   Client: [
-    'engagement:view', 'request:view', 'submission:respond', 'discussion:participate',
+    'engagement:view', 'request:view', 'document:view', 'supporting:upload',
+    'submission:respond', 'discussion:participate',
     'report-review:respond', 'notification:receive',
   ],
   // Guests are invited by the Principal Partner solely to submit a report to the Chairman.
