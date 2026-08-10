@@ -6,7 +6,8 @@ const TONE_CLASS = {
   success: 'bg-emerald-600',
   danger: 'bg-red-600',
   warning: 'bg-amber-500',
-  info: 'bg-violet-600',
+  info: 'bg-sky-600',
+  accent: 'bg-violet-600',
   neutral: 'bg-slate-500',
 } as const;
 
@@ -52,7 +53,7 @@ const TONE_BY_KEY: Record<string, StatusPillTone> = {
   returned: 'danger',
   pending: 'warning',
   draft: 'warning',
-  underreview: 'info',
+  underreview: 'accent',
 
   // Documents
   signedoff: 'success',
@@ -68,14 +69,23 @@ const TONE_BY_KEY: Record<string, StatusPillTone> = {
   forreview: 'warning',
   sentback: 'danger',
 
-  // Request catalogue (normalized names)
-  closed: 'success',
+  // Request catalogue statuses (seed: Open, Pending Client, Accepted, Returned, Closed)
+  open: 'info',
+  pendingclient: 'warning',
+  closed: 'neutral',
   done: 'success',
   completed: 'success',
   rejected: 'danger',
-  notstarted: 'warning',
-  reviewed: 'info',
+  cancelled: 'neutral',
+  canceled: 'neutral',
+  onhold: 'warning',
+  blocked: 'danger',
+
+  // Request stages (when shown as pills)
+  notstarted: 'neutral',
   inprogress: 'info',
+  submitted: 'warning',
+  reviewed: 'accent',
 };
 
 /**
@@ -103,6 +113,8 @@ export function formatStatusLabel(labelOrEnum: string | boolean): string {
     signedoff: 'Signed off',
     notstarted: 'Not started',
     inprogress: 'In progress',
+    pendingclient: 'Pending client',
+    onhold: 'On hold',
   };
   if (LABELS[key]) return LABELS[key];
   // Insert spaces before capitals for PascalCase enums
