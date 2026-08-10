@@ -134,6 +134,24 @@ export interface EngagementWorkspace {
   canTransitionEngagement: boolean;
   canSignOffEngagement: boolean;
   finalReportsNeedingFirmAction: number;
+  analytics?: {
+    aging: {
+      noDue: number;
+      overdue: number;
+      dueToday: number;
+      dueThisWeek: number;
+      later: number;
+    };
+    workloadByMember: Array<{
+      userId: string;
+      fullName: string;
+      memberRole?: "Lead" | "Member";
+      open: number;
+      overdue: number;
+    }>;
+    unassignedOpen: number;
+    unassignedOverdue: number;
+  };
 }
 
 export interface EngagementHistoryItem {
