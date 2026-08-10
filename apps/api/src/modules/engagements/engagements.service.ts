@@ -10,6 +10,7 @@ import {
   isRequestDone,
   isRequestOverdue,
   ReportReviewState,
+  startOfLocalDay,
   statusProgressPercent,
   type Paginated,
 } from '@abdcshare/shared';
@@ -601,7 +602,7 @@ export class EngagementsService {
       this.em.find(
         RequestEntity,
         { engagement: id } as FilterQuery<RequestEntity>,
-        { populate: ['requestType.requestClass', 'status', 'stage'] },
+        { populate: ['requestType.requestClass', 'status', 'stage', 'assignees.user'] },
       ),
       this.em.find(
         EngagementSignOffEntity,
@@ -751,6 +752,66 @@ export class EngagementsService {
       },
     } as FilterQuery<DocumentEntity>);
 
+    const startToday = startOfLocalDay(now);
+    const endWeek = new Date(startToday);
+    endWeek.setDate(endWeek.getDate() + 7);
+    const aging = { noDue: 0, overdue: 0, dueToday: 0, dueThisWeek: 0, later: 0 };
+    const workloadMap = new Map<
+      string,
+      { userId: string; fullName: string; open: number; overdue: number }
+    >();
+    for (const m of engagement.team.getItems()) {
+      workloadMap.set(m.user.id, {
+        userId: m.user.id,
+        fullName: m.user.fullName,
+        open: 0,
+        overdue: 0,
+      });
+    }
+    let unassignedOpen = 0;
+    let unassignedOverdue = 0;
+
+    for (const r of requests) {
+      if (isRequestDone(r.status?.name)) continue;
+      const overdue = isRequestOverdue(r.dueDate, r.status?.name, now);
+      if (!r.dueDate) aging.noDue += 1;
+      else if (overdue) aging.overdue += 1;
+      else {
+        const due = startOfLocalDay(r.dueDate instanceof Date ? r.dueDate : new Date(r.dueDate));
+        if (due.getTime() === startToday.getTime()) aging.dueToday += 1;
+        else if (due.getTime() <= endWeek.getTime()) aging.dueThisWeek += 1;
+        else aging.later += 1;
+      }
+
+      const assignees = r.assignees.isInitialized() ? r.assignees.getItems() : [];
+      if (assignees.length === 0) {
+        unassignedOpen += 1;
+        if (overdue) unassignedOverdue += 1;
+      } else {
+        for (const a of assignees) {
+          const row = workloadMap.get(a.user.id) ?? {
+            userId: a.user.id,
+            fullName: a.user.fullName,
+            open: 0,
+            overdue: 0,
+          };
+          row.open += 1;
+          if (overdue) row.overdue += 1;
+          workloadMap.set(a.user.id, row);
+        }
+      }
+    }
+
+    const teamRoleByUser = new Map(
+      engagement.team.getItems().map((m) => [m.user.id, m.memberRole as 'Lead' | 'Member']),
+    );
+    const workloadByMember = [...workloadMap.values()]
+      .map((w) => ({
+        ...w,
+        memberRole: teamRoleByUser.get(w.userId),
+      }))
+      .sort((a, b) => b.open - a.open || a.fullName.localeCompare(b.fullName));
+
     return {
       ...(await this.toDetailDto(engagement)),
       signOffs: signOffRows.map((s) => this.signOffDto(s)),
@@ -775,6 +836,12 @@ export class EngagementsService {
       canTransitionEngagement,
       canSignOffEngagement,
       finalReportsNeedingFirmAction,
+      analytics: {
+        aging,
+        workloadByMember,
+        unassignedOpen,
+        unassignedOverdue,
+      },
     };
   }
 
