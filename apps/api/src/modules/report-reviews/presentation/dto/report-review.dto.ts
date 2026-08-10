@@ -32,7 +32,16 @@ export class OverrideReportDto {
   @ApiPropertyOptional() @IsOptional() @IsString() reason?: string;
 }
 
-export class PendingReportListQueryDto extends PaginationQueryDto {}
+export class PendingReportListQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({
+    enum: ['pending', 'all'],
+    description:
+      'pending = AwaitingClient only (default); all = every report already sent to the client',
+  })
+  @IsOptional()
+  @IsIn(['pending', 'all'])
+  state?: 'pending' | 'all';
+}
 
 export class FirmReportListQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({
