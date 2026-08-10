@@ -34,12 +34,6 @@ const STAGE_BAND: Record<(typeof WORKFLOW_STAGES)[number], string> = {
     "border-teal-200/80 bg-teal-50/70 dark:border-teal-900/50 dark:bg-teal-950/25",
 };
 
-const STAGE_ACCENT: Record<(typeof WORKFLOW_STAGES)[number], string> = {
-  Planning: "bg-sky-500",
-  Execution: "bg-amber-500",
-  Reporting: "bg-teal-500",
-};
-
 export function EngagementHeader({
   workspace,
   onTransition,

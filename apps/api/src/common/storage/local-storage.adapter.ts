@@ -1,6 +1,5 @@
 import {
   mkdir,
-  open,
   readFile,
   readdir,
   rm,

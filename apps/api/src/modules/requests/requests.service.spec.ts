@@ -2,9 +2,8 @@ import {
   BadRequestException,
   ConflictException,
 } from "@nestjs/common";
-import { RequestsService, REQUEST_EVENT } from "./requests.service";
+import { RequestsService } from "./requests.service";
 import { RequestEntity } from "./infrastructure/persistence/request.entity";
-import { RequestHistoryEntity } from "./infrastructure/persistence/request-history.entity";
 import { RequestStageEntity } from "../request-stages/infrastructure/persistence/request-stage.entity";
 import { RequestStatusEntity } from "../request-statuses/infrastructure/persistence/request-status.entity";
 import { RequestAssigneeEntity } from "./infrastructure/persistence/request-assignee.entity";

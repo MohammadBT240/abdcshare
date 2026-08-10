@@ -1,0 +1,32 @@
+---
+# options-ssl-nginx.conf and ssl-dhparams.pem are required when nginx_include_letsencrypt_ssl_snippets is true.
+# certbot certonly --webroot does not create them.
+
+- name: Ensure /etc/letsencrypt exists
+  ansible.builtin.file:
+    path: /etc/letsencrypt
+    state: directory
+    mode: "0755"
+
+- name: Stat options-ssl-nginx.conf
+  ansible.builtin.stat:
+    path: /etc/letsencrypt/options-ssl-nginx.conf
+  register: abdcshare_le_options_stat
+
+- name: Install options-ssl-nginx.conf from role files
+  ansible.builtin.copy:
+    src: options-ssl-nginx.conf
+    dest: /etc/letsencrypt/options-ssl-nginx.conf
+    mode: "0644"
+  when: not abdcshare_le_options_stat.stat.exists
+
+- name: Stat ssl-dhparams.pem
+  ansible.builtin.stat:
+    path: /etc/letsencrypt/ssl-dhparams.pem
+  register: abdcshare_le_dhparam_stat
+
+- name: Generate ssl-dhparams.pem
+  ansible.builtin.command:
+    cmd: openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048
+    creates: /etc/letsencrypt/ssl-dhparams.pem
+  when: not abdcshare_le_dhparam_stat.stat.exists

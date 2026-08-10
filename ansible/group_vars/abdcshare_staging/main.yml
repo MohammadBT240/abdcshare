@@ -1,0 +1,23 @@
+---
+deploy_dir: /var/www/abdcshare/staging
+registry_owner: mohammadbt240
+compose_project_name: "abdcshare-staging"
+image_tag_default: latest
+
+api_host_port: 4101
+web_host_port: 3101
+
+web_app_url: "https://staging.abdcshare.com"
+storage_public_base_url: "https://staging-api.abdcshare.com"
+
+jwt_access_ttl: 900
+jwt_refresh_ttl: 1209600
+password_reset_ttl: 3600
+
+storage_driver: "r2"
+storage_upload_ttl: 900
+r2_bucket: "abdcshare-uploads-staging"
+r2_endpoint: ""
+r2_object_prefix: "abdcshare"
+
+email_from: "ABDC Share (staging) <no-reply@abdcshare.com>"

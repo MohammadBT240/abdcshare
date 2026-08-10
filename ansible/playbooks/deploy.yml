@@ -1,0 +1,22 @@
+---
+- name: Deploy abdcshare stack(s)
+  hosts: all
+  serial: 1
+  become: false
+
+  vars:
+    repo_deploy_src: "{{ playbook_dir | dirname | dirname }}/deploy"
+
+  tasks:
+    - import_tasks: includes/deploy_stack.yml
+
+- name: Configure host nginx reverse proxy (shared VM)
+  hosts: all
+  serial: 1
+  become: true
+
+  tasks:
+    - name: Apply abdcshare_nginx role (once per physical host)
+      ansible.builtin.include_role:
+        name: abdcshare_nginx
+      run_once: true

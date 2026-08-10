@@ -1,0 +1,11 @@
+---
+- name: Configure abdcshare nginx reverse proxy
+  hosts: all
+  serial: 1
+  become: true
+
+  tasks:
+    - name: Apply abdcshare_nginx role (once per physical host)
+      ansible.builtin.include_role:
+        name: abdcshare_nginx
+      run_once: true

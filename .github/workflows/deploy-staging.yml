@@ -1,0 +1,174 @@
+# Staging: branch `staging` -> build images (git-SHA tags) -> Ansible deploy to abdcshare_staging.
+#
+# Required secrets:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_PASSWORD, ANSIBLE_VAULT_PASSWORD
+# Optional: DEPLOY_PORT, GHCR_PULL_TOKEN
+
+name: abdcshare-deploy-staging
+
+on:
+  push:
+    branches: [staging]
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "deploy/**"
+      - "ansible/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.base.json"
+      - ".npmrc"
+      - ".dockerignore"
+      - ".github/workflows/deploy-staging.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm test
+
+  build-and-push:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      registry_owner: ${{ steps.meta.outputs.registry_owner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image metadata
+        id: meta
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          echo "registry_owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.api
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.registry_owner }}/abdcshare-api:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.registry_owner }}/abdcshare-api:staging
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build and push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.worker
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.registry_owner }}/abdcshare-worker:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.registry_owner }}/abdcshare-worker:staging
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.web
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.registry_owner }}/abdcshare-web:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.registry_owner }}/abdcshare-web:staging
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible and sshpass
+        run: |
+          set -e
+          sudo apt-get update -qq && sudo apt-get install -y sshpass
+          # Pin below 2.19: ansible-core 2.19.x has a Galaxy client bug that
+          # crashes `ansible-galaxy collection install` with KeyError: 'results'.
+          pip install "ansible-core>=2.15,<2.19"
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: Write Ansible vault password file
+        run: |
+          echo "$ANSIBLE_VAULT_PASSWORD" > ansible/.vault_pass_ci
+          chmod 600 ansible/.vault_pass_ci
+        env:
+          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+
+      - name: Write CI inventory
+        run: |
+          python3 ansible/scripts/write_ci_inventory.py \
+            --group abdcshare_staging \
+            --host-alias abdcshare-staging \
+            -o ansible/inventory/ci.yml
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_PASSWORD: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+
+      - name: Link group_vars beside CI inventory
+        run: |
+          rm -f ansible/inventory/group_vars
+          ln -sfn ../group_vars ansible/inventory/group_vars
+
+      - name: Run Ansible deploy (staging)
+        working-directory: ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "false"
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: |
+          set -e
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          ansible-playbook \
+            --vault-password-file .vault_pass_ci \
+            -i inventory/ci.yml \
+            playbooks/deploy.yml \
+            -l abdcshare_staging \
+            -e "image_tag=${GITHUB_SHA}" \
+            -e "ghcr_pull_token=${GHCR_PULL_TOKEN}" \
+            -e "ghcr_username=${OWNER}"
+
+      - name: Remove vault password file
+        if: always()
+        run: rm -f ansible/.vault_pass_ci

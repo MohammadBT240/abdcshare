@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 import type { PageMeta } from '@abdcshare/shared';
 import { PaginationQueryDto } from '../../../../common/dto/pagination-query.dto';
 

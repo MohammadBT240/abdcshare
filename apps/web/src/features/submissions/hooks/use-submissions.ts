@@ -1,7 +1,7 @@
 'use client';
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SubmissionStatus } from '@abdcshare/shared';
+import type { SubmissionStatus } from '@abdcshare/shared';
 import type { PageMeta } from '@abdcshare/api-client';
 import { bffApi } from '@/lib/bff/client';
 import { uploadFilesWithUppy } from '@/lib/uploads/uppy-client';

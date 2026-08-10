@@ -1,0 +1,20 @@
+---
+# Copy to vault.yml, fill in real values, then encrypt:
+#   ansible-vault encrypt ansible/group_vars/abdcshare_prod/vault.yml
+# Never commit an unencrypted vault.yml.
+
+vault_postgres_password: "CHANGE-ME"
+vault_jwt_access_secret: "CHANGE-ME-min-32-chars"
+vault_jwt_refresh_secret: "CHANGE-ME-min-32-chars"
+
+# Cloudflare R2
+vault_r2_account_id: ""
+vault_r2_access_key_id: ""
+vault_r2_secret_access_key: ""
+
+# Resend (worker email dispatch)
+vault_resend_api_key: ""
+
+# Seed profile only (first deploy): the initial Platform Admin.
+vault_seed_admin_email: ""
+vault_seed_admin_password: ""
