@@ -1,5 +1,5 @@
-import { AppShell } from '@/components/layout/app-shell';
-import { AuthProvider } from '@/components/providers/auth-provider';
+import { AppShell } from "@/components/layout/app-shell";
+import { AuthProvider } from "@/components/providers/auth-provider";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
