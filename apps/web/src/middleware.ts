@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ACCESS_COOKIE } from "@/lib/auth/constants";
+import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/auth/constants";
 
 function isProtectedAppRoute(pathname: string): boolean {
   const protectedRoots = [
@@ -9,6 +9,8 @@ function isProtectedAppRoute(pathname: string): boolean {
     "/requests",
     "/reviews",
     "/final-reports",
+    "/reports",
+    "/partner-reports",
     "/settings",
   ];
   return protectedRoots.some(
@@ -16,21 +18,28 @@ function isProtectedAppRoute(pathname: string): boolean {
   );
 }
 
+function hasSession(req: NextRequest): boolean {
+  return Boolean(
+    req.cookies.get(ACCESS_COOKIE)?.value ||
+      req.cookies.get(REFRESH_COOKIE)?.value,
+  );
+}
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const hasAccess = Boolean(req.cookies.get(ACCESS_COOKIE)?.value);
+  const signedIn = hasSession(req);
 
-  if (isProtectedAppRoute(pathname) && !hasAccess) {
+  if (isProtectedAppRoute(pathname) && !signedIn) {
     const login = new URL("/login", req.url);
     login.searchParams.set("redirect", pathname);
     return NextResponse.redirect(login);
   }
 
-  if (hasAccess && pathname === "/login") {
+  if (signedIn && pathname === "/login") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  if (pathname === "/change-password" && !hasAccess) {
+  if (pathname === "/change-password" && !signedIn) {
     const login = new URL("/login", req.url);
     login.searchParams.set("redirect", "/change-password");
     return NextResponse.redirect(login);
@@ -53,6 +62,10 @@ export const config = {
     "/reviews/:path*",
     "/final-reports",
     "/final-reports/:path*",
+    "/reports",
+    "/reports/:path*",
+    "/partner-reports",
+    "/partner-reports/:path*",
     "/settings",
     "/settings/:path*",
     "/login",
