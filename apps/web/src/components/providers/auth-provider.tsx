@@ -40,7 +40,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const can = (permission: Permission): boolean => {
     if (!user) return false;
     const role = user.role as RoleName;
-    return hasPermission(role, permission, user.partnerDesignation ?? null);
+    if (hasPermission(role, permission, user.partnerDesignation ?? null)) return true;
+    if (
+      user.partnerReportAllowed &&
+      (permission === 'partner-report:submit' || permission === 'partner-report:view')
+    ) {
+      return true;
+    }
+    return false;
   };
 
   return (
