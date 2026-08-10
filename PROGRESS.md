@@ -474,8 +474,8 @@ Client-facing draft-review loop for **final reports**, on top of document versio
   is signed off. ⚠️ migration `Migration…110621`. Test: `engagement-completion.spec.ts`.
 - **Global search + dashboards** (`modules/insights`, no tables) — `GET /api/search?q=` (scoped ILIKE across
   engagements/requests/documents/clients; clients see no docs, only admins see the client directory);
-  `GET /api/dashboard` (scope-aware counts: engagements by status, requests in-scope/overdue/assigned-to-me,
-  final reports awaiting client review, unread notifications).
+  `GET /api/dashboard` — **role-shaped** payload (`governance` | `firm` | `staff` | `client` | `guest`)
+  with attention items + optional Partner/Principal partner strip; Guest never sees firm engagement counts.
 
 **Bucket 4:**
 - **Done:** **scheduled deadline reminders** — `DeadlineReminderService` (`@Cron` daily @07:00 +
@@ -534,6 +534,18 @@ Structured periodic reports to the Chairman (Principal Partner), modelled on `ch
 - Tests: `partner-reports.service.spec` (guest provisioning + existing-email-reminds), `must-change-password.guard.spec`.
   api + worker + shared typecheck green; `migration:create` clean. **17 spec files.** Run `migration:up`
   (also seeds the `Guest` role via `ROLE_NAMES`).
+
+## Partner reports — Staff allow-list + web UI  ⚠️ **migrations `Migration20260807123000` + `Migration20260807140000`**
+- **`partner_report_reporters`** — Principal can allow existing **Staff** to submit (upsert + remind).
+  Invite outcomes: `invited` (Guest) | `allowed` (Staff) | `reminded` (Partner/Guest). Other roles rejected.
+- **Access:** `PermissionsGuard` + `/auth/me.partnerReportAllowed` + web `can()` treat allow-listed Staff
+  as having `partner-report:submit` + `view`. Reporters list + DELETE revoke (Staff row / Guest invite).
+- **Soft governance:** per-roster `cadence` / `remindersEnabled` / `reportRequestedAt` (never blocks submit).
+  Principal **Request** / **Remind**; `GET me/status` for reporter banners; weekly cron nudges due/requested.
+- **Export:** `GET /partner-reports/export` CSV (list); `GET /:id/export` PDF (single report letterhead).
+- **Web:** `/partner-reports` list/new/detail, roster dialog (searchable enable + cadence + request),
+  export menus, reporter request/due banner. BFF + middleware + Work nav.
+  Run `migration:up` for roster + cadence columns.
 
 ## Infra hardening (complete) — rate limit + R2 + React Email
 - **Auth rate limiting** — `@nestjs/throttler` global default (120/min) + strict limits on
@@ -631,10 +643,14 @@ Staff/client product surfaces on top of Phase 3–4 APIs (plus upgrades above).
 - **Known small fix in-tree:** RowActions icons must be JSX elements (not component refs) on list pages.
 
 **Still deferred from Slice 3+ (API often exists; web missing or stubbed):**
-- **Partner Reports UI** — API complete; sidebar item still `href: "#"`.
 - **Audit viewer UI** — `GET /api/audit` exists; no admin screen.
 - **Global search UI** — `GET /api/search` exists; no header search.
-- Bulk CSV user import; richer analytics dashboards (Phase 6).
+- Bulk CSV user import; chart-library analytics (beyond Progress bars).
+
+## Role dashboards + engagement analytics (complete)
+- **Home** — `/dashboard` switches UI by `kind` (`features/dashboard/*`); deep-linked metrics + attention list.
+- **Engagement Overview** — `workspace.analytics` aging buckets + workload by member (+ unassigned).
+- Partner Reports UI shipped earlier; home strip reuses Principal/reporter counts.
 
 ## Per-file review + upload retry (complete)
 - Reviews are per submission **file**; response status is derived (all Accepted → Accepted;
