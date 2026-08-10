@@ -174,12 +174,12 @@ Recipient rules (who gets which event): see **[NOTIFICATIONS.md](./NOTIFICATIONS
 
 ## Epic P — Dashboards & analytics 🆕
 
-- **P-1 (M, SA/PP)** Firm dashboard: active engagements by status, overdue requests, upcoming deadlines, completion %. ✅ (headline counts built; charts/% pending)
+- **P-1 (M, SA/PP)** Firm dashboard: active engagements by status, overdue requests, upcoming deadlines, completion %. ✅ (role-shaped `/dashboard` + attention queue; Progress bars, no chart lib)
 - **P-2 (M, ST)** Personal dashboard: my assigned requests & deadlines. ✅
-- **P-3 (S, SA)** Per-engagement analytics: request-class progress, request aging, workload by member.
-- **P-4 (S, CL)** Client dashboard: outstanding requests & returned documents.
-- **P-5 (C, PA)** Governance dashboard: users by role/department, catalogue/reference-data health.
-- **P-6 (S, PP)** Partner-reporting dashboard: submission compliance per week.
+- **P-3 (S, SA)** Per-engagement analytics: request-class progress, request aging, workload by member. ✅ (workspace Overview)
+- **P-4 (S, CL)** Client dashboard: outstanding requests & returned documents. ✅
+- **P-5 (C, PA)** Governance dashboard: users by role/department, catalogue/reference-data health. ✅
+- **P-6 (S, PP)** Partner-reporting dashboard: submission compliance per week. ✅ (home partner strip + `/partner-reports` dashboard)
 
 ## Epic Q — Search, reporting & exports
 

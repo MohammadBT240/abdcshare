@@ -249,6 +249,29 @@ export class SubmissionCountsDto {
   underReview!: number;
 }
 
+export class RequestAgingDto {
+  @ApiProperty() noDue!: number;
+  @ApiProperty() overdue!: number;
+  @ApiProperty() dueToday!: number;
+  @ApiProperty() dueThisWeek!: number;
+  @ApiProperty() later!: number;
+}
+
+export class WorkloadByMemberDto {
+  @ApiProperty() userId!: string;
+  @ApiProperty() fullName!: string;
+  @ApiPropertyOptional({ enum: ['Lead', 'Member'] }) memberRole?: 'Lead' | 'Member';
+  @ApiProperty() open!: number;
+  @ApiProperty() overdue!: number;
+}
+
+export class EngagementAnalyticsDto {
+  @ApiProperty({ type: RequestAgingDto }) aging!: RequestAgingDto;
+  @ApiProperty({ type: [WorkloadByMemberDto] }) workloadByMember!: WorkloadByMemberDto[];
+  @ApiProperty({ description: 'Open requests with no assignee' }) unassignedOpen!: number;
+  @ApiProperty({ description: 'Overdue requests with no assignee' }) unassignedOverdue!: number;
+}
+
 export class EngagementWorkspaceResponseDto extends EngagementDetailResponseDto {
   @ApiProperty({ type: [SignOffResponseDto] }) signOffs!: SignOffResponseDto[];
   @ApiProperty({ type: [ClassRollupDto] }) classRollups!: ClassRollupDto[];
@@ -277,6 +300,7 @@ export class EngagementWorkspaceResponseDto extends EngagementDetailResponseDto 
   @ApiProperty() canSignOffEngagement!: boolean;
   /** Final reports in ChangesRequested or Locked that need firm action. */
   @ApiProperty() finalReportsNeedingFirmAction!: number;
+  @ApiProperty({ type: EngagementAnalyticsDto }) analytics!: EngagementAnalyticsDto;
 }
 
 export class EngagementHistoryItemDto {

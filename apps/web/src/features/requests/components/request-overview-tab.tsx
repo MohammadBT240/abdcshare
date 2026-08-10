@@ -46,6 +46,7 @@ import { useCatalogueList } from "@/features/catalogues/hooks/use-catalogue";
 import { useDocumentsList } from "@/features/documents/hooks/use-documents";
 import type { EngagementTeamMember } from "@/features/engagements/hooks/use-engagements";
 import { STAGE_STYLES } from "@/features/engagements/lib/stage-styles";
+import { ChangeRequestStatusDialog } from "@/features/requests/components/change-request-status-dialog";
 import {
   fetchRequestBriefPreview,
   useAddRequestAssignee,
@@ -53,7 +54,6 @@ import {
   useRemoveRequestAssignee,
   useRemoveRequestBrief,
   useUpdateRequest,
-  useUpdateRequestStatus,
   useUploadRequestBrief,
   type RequestDetail,
 } from "@/features/requests/hooks/use-requests";
@@ -447,7 +447,7 @@ export function RequestOverviewTab({
         />
       ) : null}
       {statusOpen ? (
-        <ChangeStatusDialog
+        <ChangeRequestStatusDialog
           open={statusOpen}
           onOpenChange={setStatusOpen}
           request={request}
@@ -950,96 +950,6 @@ function EditRequestDialog({
         </FormField>
         <FormField label="Due date">
           <DatePicker value={dueDate} onChange={setDueDate} />
-        </FormField>
-      </div>
-    </FormDialog>
-  );
-}
-
-function ChangeStatusDialog({
-  open,
-  onOpenChange,
-  request,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  request: RequestDetail;
-}) {
-  const updateStatus = useUpdateRequestStatus(request.id);
-  const statuses = useCatalogueList(
-    "request-statuses",
-    "pageSize=100&isActive=true",
-  );
-  const [statusId, setStatusId] = useState(
-    request.statusId ? String(request.statusId) : "",
-  );
-  const [note, setNote] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    setStatusId(request.statusId ? String(request.statusId) : "");
-    setNote("");
-  }, [open, request.statusId]);
-
-  const options = useMemo(
-    () =>
-      (statuses.data?.data ?? []).map((s) => ({
-        value: String(s.id),
-        label: s.name,
-      })),
-    [statuses.data],
-  );
-
-  async function onSubmit() {
-    if (!statusId) {
-      toast.error("Select a status");
-      return;
-    }
-    try {
-      await updateStatus.mutateAsync({
-        statusId: Number(statusId),
-        note: note.trim() || undefined,
-      });
-      toast.success("Status updated");
-      onOpenChange(false);
-    } catch (err) {
-      toast.error(
-        err instanceof BffClientError ? err.message : "Failed to change status",
-      );
-    }
-  }
-
-  return (
-    <FormDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Change status"
-      maxWidthClass="sm:max-w-lg"
-      footer={
-        <LoadingButton
-          type="button"
-          loading={updateStatus.isPending}
-          onClick={onSubmit}
-        >
-          Save
-        </LoadingButton>
-      }
-    >
-      <div className="space-y-4">
-        <FormField label="Status" required>
-          <AppSelect
-            value={statusId}
-            onValueChange={setStatusId}
-            options={options}
-            placeholder="Select status"
-          />
-        </FormField>
-        <FormField label="Note">
-          <Textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-          />
         </FormField>
       </div>
     </FormDialog>

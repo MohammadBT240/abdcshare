@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { RequestListItem } from "@/features/requests/hooks/use-requests";
+import { ChangeRequestStatusDialog } from "@/features/requests/components/change-request-status-dialog";
 import {
   groupRequestsByClientEngagementClass,
   type RequestClientGroup,
@@ -75,6 +76,8 @@ export interface RequestsGroupedTableProps {
   selectable?: boolean;
   selectedIds?: string[];
   onSelectionChange?: (ids: string[]) => void;
+  /** When true, status badge opens the change-status dialog (request:update). */
+  canChangeStatus?: boolean;
 }
 
 function classKey(engagementId: string, classId: number): string {
@@ -135,12 +138,14 @@ export function RequestsGroupedTable({
   selectable,
   selectedIds = [],
   onSelectionChange,
+  canChangeStatus,
 }: RequestsGroupedTableProps) {
   const groups = useMemo(
     () => groupRequestsByClientEngagementClass(data),
     [data],
   );
   const allIds = useMemo(() => data.map((r) => r.id), [data]);
+  const [statusTarget, setStatusTarget] = useState<RequestListItem | null>(null);
   /** S/N + optional checkbox + Request…Actions */
   const colCount = 1 + (selectable ? 1 : 0) + 8;
 
@@ -303,6 +308,8 @@ export function RequestsGroupedTable({
                     onToggleRow={toggleRow}
                     onRowClick={onRowClick}
                     onViewHistory={onViewHistory}
+                    canChangeStatus={canChangeStatus}
+                    onChangeStatus={setStatusTarget}
                   />
                 ))
               )}
@@ -320,6 +327,12 @@ export function RequestsGroupedTable({
           isPending={isPending}
         />
       ) : null}
+
+      <ChangeRequestStatusDialog
+        open={Boolean(statusTarget)}
+        onOpenChange={(open) => !open && setStatusTarget(null)}
+        request={statusTarget}
+      />
     </div>
   );
 }
@@ -351,6 +364,8 @@ function ClientBlock({
   onToggleRow,
   onRowClick,
   onViewHistory,
+  canChangeStatus,
+  onChangeStatus,
 }: {
   client: RequestClientGroup;
   serialNumber: number;
@@ -367,6 +382,8 @@ function ClientBlock({
   onToggleRow: (id: string, checked: boolean) => void;
   onRowClick?: (row: RequestListItem) => void;
   onViewHistory?: (row: RequestListItem) => void;
+  canChangeStatus?: boolean;
+  onChangeStatus?: (row: RequestListItem) => void;
 }) {
   const { mounted, shown } = useExpandTransition(clientOpen);
 
@@ -423,6 +440,8 @@ function ClientBlock({
                 onToggleRow={onToggleRow}
                 onRowClick={onRowClick}
                 onViewHistory={onViewHistory}
+                canChangeStatus={canChangeStatus}
+                onChangeStatus={onChangeStatus}
               />
             );
           })
@@ -452,6 +471,8 @@ function EngagementBlock({
   onToggleRow,
   onRowClick,
   onViewHistory,
+  canChangeStatus,
+  onChangeStatus,
 }: {
   eng: RequestClientGroup["engagements"][number];
   engOpen: boolean;
@@ -465,6 +486,8 @@ function EngagementBlock({
   onToggleRow: (id: string, checked: boolean) => void;
   onRowClick?: (row: RequestListItem) => void;
   onViewHistory?: (row: RequestListItem) => void;
+  canChangeStatus?: boolean;
+  onChangeStatus?: (row: RequestListItem) => void;
 }) {
   const { mounted, shown } = useExpandTransition(engOpen);
 
@@ -515,6 +538,8 @@ function EngagementBlock({
                 onToggleRow={onToggleRow}
                 onRowClick={onRowClick}
                 onViewHistory={onViewHistory}
+                canChangeStatus={canChangeStatus}
+                onChangeStatus={onChangeStatus}
               />
             );
           })
@@ -536,6 +561,8 @@ function ClassBlock({
   onToggleRow,
   onRowClick,
   onViewHistory,
+  canChangeStatus,
+  onChangeStatus,
 }: {
   className: string;
   requestCount: number;
@@ -549,6 +576,8 @@ function ClassBlock({
   onToggleRow: (id: string, checked: boolean) => void;
   onRowClick?: (row: RequestListItem) => void;
   onViewHistory?: (row: RequestListItem) => void;
+  canChangeStatus?: boolean;
+  onChangeStatus?: (row: RequestListItem) => void;
 }) {
   const { mounted, shown } = useExpandTransition(classOpen);
 
@@ -586,6 +615,8 @@ function ClassBlock({
               onToggleRow={onToggleRow}
               onRowClick={onRowClick}
               onViewHistory={onViewHistory}
+              canChangeStatus={canChangeStatus}
+              onChangeStatus={onChangeStatus}
             />
           ))
         : null}
@@ -602,6 +633,8 @@ function LeafRow({
   onToggleRow,
   onRowClick,
   onViewHistory,
+  canChangeStatus,
+  onChangeStatus,
 }: {
   record: RequestListItem;
   selectable?: boolean;
@@ -611,6 +644,8 @@ function LeafRow({
   onToggleRow: (id: string, checked: boolean) => void;
   onRowClick?: (row: RequestListItem) => void;
   onViewHistory?: (row: RequestListItem) => void;
+  canChangeStatus?: boolean;
+  onChangeStatus?: (row: RequestListItem) => void;
 }) {
   const secondary = [record.requestTypeName, record.description]
     .filter(Boolean)
@@ -668,9 +703,25 @@ function LeafRow({
         <TableCell className="py-3">{record.stage || "—"}</TableCell>
         <TableCell className="py-3">
           {record.status ? (
-            <StatusPill tone={resolveStatusTone(record.status)}>
-              {record.status}
-            </StatusPill>
+            canChangeStatus ? (
+              <button
+                type="button"
+                className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title="Change status"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onChangeStatus?.(record);
+                }}
+              >
+                <StatusPill tone={resolveStatusTone(record.status)}>
+                  {record.status}
+                </StatusPill>
+              </button>
+            ) : (
+              <StatusPill tone={resolveStatusTone(record.status)}>
+                {record.status}
+              </StatusPill>
+            )
           ) : (
             "—"
           )}

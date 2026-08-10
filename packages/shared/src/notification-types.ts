@@ -207,20 +207,20 @@ export const NOTIFICATION_TYPE_CATALOG: NotificationTypeMeta[] = [
   },
   {
     type: 'partner-report.submitted',
-    label: 'Partner report submitted',
-    description: 'When a Chairman report is submitted',
+    label: 'Report submitted',
+    description: 'When a Principal report is submitted',
     category: 'partner-report',
   },
   {
     type: 'partner-report.reviewed',
-    label: 'Partner report reviewed',
-    description: 'When your Chairman report is reviewed',
+    label: 'Report reviewed',
+    description: 'When your Principal report is reviewed',
     category: 'partner-report',
   },
   {
     type: 'partner-report.reminder',
-    label: 'Partner report reminder',
-    description: 'Reminder to submit a Chairman report',
+    label: 'Report reminder',
+    description: 'Reminder to submit a Principal report',
     category: 'partner-report',
   },
 ];

@@ -178,11 +178,24 @@ The Principal Partner invites by email → a **`Guest`-role user** is provisione
 `must_change_password`, credentials + login link emailed) → the guest logs in, changes password, and
 submits one report to the Chairman.
 
+**partner_report_reporters** *(Staff allow-list / unified roster prefs)* — user_id PK FK → users ·
+allowed_by_id FK → users · created_at · cadence enum(Weekly,Monthly,Quarterly,None) default Weekly ·
+reminders_enabled bool · report_requested_at null · request_note null · last_reminded_at null.
+Principal invite of an existing **Staff** email upserts a row here (no Guest account) and reminds them.
+Partners/Guests also get roster prefs on enable/invite. Cadence + reminders are **soft** (never block
+submit). Explicit **Request report** sets `report_requested_at` until the next submit.
+
+**Invite outcomes:** new email → `invited` (Guest); existing Staff → `allowed`; existing Partner/Guest →
+`reminded`; other roles → reject.
+
+**Export:** Principal (and report owners) can download a list CSV via `/partner-reports/export`,
+and a polished single-report PDF via `/partner-reports/:id/export`.
+
 **Automation / permissions:** submit → notifies the Chairman; review → notifies the author.
-`partner-report:submit` (Partner desig + Guest role), `partner-report:view` (authors see own / Chairman
-sees all), `partner-report:review` + `partner-report:view-all` + `partner-report:invite` (Principal
-Partner). **`mustChangePassword` is globally enforced** (MustChangePasswordGuard) so an invited guest must
-set a password before doing anything.
+`partner-report:submit` (Partner desig + Guest role + allow-listed Staff), `partner-report:view`
+(authors see own / Chairman sees all), `partner-report:review` + `partner-report:view-all` +
+`partner-report:invite` (Principal Partner). **`mustChangePassword` is globally enforced**
+(MustChangePasswordGuard) so an invited guest must set a password before doing anything.
 
 ---
 

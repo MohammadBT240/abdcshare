@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAccessTokenWithRefresh, upstream } from '@/lib/bff/upstream';
+import { upstreamWithAuth } from '@/lib/bff/upstream';
 import { mapApiError } from '@/lib/bff/errors';
 
 const ALLOWED_PREFIXES = [
@@ -23,6 +23,7 @@ const ALLOWED_PREFIXES = [
   'documents',
   'reviews',
   'final-reports',
+  'partner-reports',
   'notifications',
 ] as const;
 
@@ -40,11 +41,6 @@ async function handle(
     return NextResponse.json({ message: 'Not found', statusCode: 404 }, { status: 404 });
   }
 
-  const access = await getAccessTokenWithRefresh();
-  if (!access) {
-    return NextResponse.json({ message: 'Unauthorized', statusCode: 401 }, { status: 401 });
-  }
-
   const url = new URL(req.url);
   const apiPath = `/api/${path.join('/')}${url.search}`;
   const method = req.method.toUpperCase();
@@ -60,21 +56,31 @@ async function handle(
     }
   }
 
-  const result = await upstream(apiPath, {
+  const result = await upstreamWithAuth(apiPath, {
     method,
-    accessToken: access,
     body,
     contentType,
   });
+
+  if ('unauthorized' in result) {
+    return NextResponse.json({ message: 'Unauthorized', statusCode: 401 }, { status: 401 });
+  }
 
   if (result.status === 204) {
     return new NextResponse(null, { status: 204 });
   }
 
   if (!result.contentType?.includes('application/json')) {
+    const headers: Record<string, string> = {};
+    if (result.contentType) headers['Content-Type'] = result.contentType;
+    if (result.contentDisposition) headers['Content-Disposition'] = result.contentDisposition;
+
+    if (result.body instanceof ArrayBuffer) {
+      return new NextResponse(result.body, { status: result.status, headers });
+    }
     return new NextResponse(typeof result.body === 'string' ? result.body : '', {
       status: result.status,
-      headers: result.contentType ? { 'Content-Type': result.contentType } : undefined,
+      headers,
     });
   }
 

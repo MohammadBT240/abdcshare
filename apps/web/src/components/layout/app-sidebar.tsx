@@ -68,6 +68,12 @@ const SECTIONS: NavSection[] = [
         icon: IconFolderOpen,
         permission: "report-review:respond",
       },
+      {
+        label: "Reports",
+        href: "/reports",
+        icon: IconChartBar,
+        permission: "partner-report:view",
+      },
     ],
   },
   {
@@ -102,12 +108,6 @@ const SECTIONS: NavSection[] = [
         href: "/admin/final-reports",
         icon: IconFolderOpen,
         permission: "report-review:manage",
-      },
-      {
-        label: "Partner Reports",
-        href: "#",
-        icon: IconChartBar,
-        permission: "partner-report:view",
       },
     ],
   },

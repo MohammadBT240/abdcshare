@@ -12,6 +12,8 @@ export type AuthUser = {
   role: string;
   mustChangePassword: boolean;
   partnerDesignation?: 'PrincipalPartner' | 'Partner' | null;
+  /** Staff on Principal Partner allow-list — effective partner-report submit/view. */
+  partnerReportAllowed?: boolean;
   avatarUrl?: string | null;
 };
 

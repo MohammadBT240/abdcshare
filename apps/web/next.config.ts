@@ -7,6 +7,13 @@ const config: NextConfig = {
   experimental: {
     middlewareClientMaxBodySize: '4mb',
   },
+  async redirects() {
+    return [
+      { source: '/partner-reports', destination: '/reports', permanent: false },
+      { source: '/partner-reports/new', destination: '/reports/new', permanent: false },
+      { source: '/partner-reports/:id', destination: '/reports/:id', permanent: false },
+    ];
+  },
   async rewrites() {
     return [];
   },

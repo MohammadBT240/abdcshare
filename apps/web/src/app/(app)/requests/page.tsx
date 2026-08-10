@@ -347,6 +347,7 @@ function RequestsListInner() {
         selectable={canManageLifecycle || canBulkAssign}
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
+        canChangeStatus={canManageLifecycle}
       />
 
       {historyRequest ? (

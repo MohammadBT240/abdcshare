@@ -4,8 +4,8 @@ import {
   Inject,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
-import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
+} from "@nestjs/common";
+import { EntityManager, type FilterQuery } from "@mikro-orm/postgresql";
 import {
   DocumentCategory,
   DocumentStatus,
@@ -15,41 +15,48 @@ import {
   ReportReviewDecision,
   ReportReviewState,
   type Paginated,
-} from '@abdcshare/shared';
-import { pageParams, paginated } from '../../common/pagination/paginate';
-import { engagementScopeWhere, resolveScope } from '../../common/security/access-scope';
-import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
-import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
+} from "@abdcshare/shared";
+import { pageParams, paginated } from "../../common/pagination/paginate";
+import {
+  engagementScopeWhere,
+  resolveScope,
+} from "../../common/security/access-scope";
+import type { AuthenticatedUser } from "../../common/interfaces/authenticated-user";
+import { STORAGE, type StoragePort } from "../../common/storage/storage.port";
 import {
   extractZipEntryFromSource,
   listZipEntriesFromSource,
   type ZipByteSource,
-} from '../../common/storage/zip-entries.util';
+} from "../../common/storage/zip-entries.util";
 import {
   isNativePreviewable,
   isOfficeMime,
   isPreviewAllowlisted,
   isZipMime,
-} from '../../common/storage/preview.util';
-import { OutboxService } from '../outbox/outbox.service';
-import { NotificationsService, type NotifyRecipient } from '../notifications/notifications.service';
-import { engagementClientContactRecipients } from '../notifications/recipient-helpers';
-import { DocumentEntity } from '../documents/infrastructure/persistence/document.entity';
-import { DocumentFileEntity } from '../documents/infrastructure/persistence/document-file.entity';
-import { UserEntity } from '../users/infrastructure/persistence/user.entity';
-import { ReportReviewCycleEntity } from './infrastructure/persistence/report-review-cycle.entity';
+} from "../../common/storage/preview.util";
+import { OutboxService } from "../outbox/outbox.service";
+import {
+  NotificationsService,
+  type NotifyRecipient,
+} from "../notifications/notifications.service";
+import { engagementClientContactRecipients } from "../notifications/recipient-helpers";
+import { DocumentEntity } from "../documents/infrastructure/persistence/document.entity";
+import { DocumentFileEntity } from "../documents/infrastructure/persistence/document-file.entity";
+import { EngagementEntity } from "../engagements/infrastructure/persistence/engagement.entity";
+import { UserEntity } from "../users/infrastructure/persistence/user.entity";
+import { ReportReviewCycleEntity } from "./infrastructure/persistence/report-review-cycle.entity";
 import type {
   FirmReportListQueryDto,
   OverrideReportDto,
   PendingReportListQueryDto,
   ReportFileDto,
   RespondReportDto,
-} from './presentation/dto/report-review.dto';
+} from "./presentation/dto/report-review.dto";
 import {
   ClientPendingReportDto,
   FirmReportListItemDto,
   ReportReviewStatusDto,
-} from './presentation/dto/report-review.dto';
+} from "./presentation/dto/report-review.dto";
 
 @Injectable()
 export class ReportReviewsService {
@@ -61,41 +68,57 @@ export class ReportReviewsService {
   ) {}
 
   /** A final-report document under the caller's access scope. */
-  private finalReportWhere(id: string, user: AuthenticatedUser): FilterQuery<DocumentEntity> {
+  private finalReportWhere(
+    id: string,
+    user: AuthenticatedUser,
+  ): FilterQuery<DocumentEntity> {
     const eng = engagementScopeWhere(resolveScope(user));
-    const base: Record<string, unknown> = { id, category: DocumentCategory.FinalReport };
+    const base: Record<string, unknown> = {
+      id,
+      category: DocumentCategory.FinalReport,
+    };
     if (Object.keys(eng).length) base.engagement = eng;
     return base as FilterQuery<DocumentEntity>;
   }
 
-  private async load(id: string, user: AuthenticatedUser, populate?: string[]): Promise<DocumentEntity> {
+  private async load(
+    id: string,
+    user: AuthenticatedUser,
+    populate?: string[],
+  ): Promise<DocumentEntity> {
     const doc = await this.em.findOne(
       DocumentEntity,
       this.finalReportWhere(id, user),
       populate ? { populate: populate as never } : undefined,
     );
-    if (!doc) throw new NotFoundException('Final report not found');
+    if (!doc) throw new NotFoundException("Final report not found");
     return doc;
   }
 
-  private async cyclesFor(documentId: string): Promise<ReportReviewCycleEntity[]> {
+  private async cyclesFor(
+    documentId: string,
+  ): Promise<ReportReviewCycleEntity[]> {
     return this.em.find(
       ReportReviewCycleEntity,
       { document: documentId } as FilterQuery<ReportReviewCycleEntity>,
-      { orderBy: { roundNo: 'asc' } },
+      { orderBy: { roundNo: "asc" } },
     );
   }
 
-  private async filesByVersion(documentId: string): Promise<Map<number, DocumentFileEntity>> {
+  private async filesByVersion(
+    documentId: string,
+  ): Promise<Map<number, DocumentFileEntity>> {
     const files = await this.em.find(
       DocumentFileEntity,
       { document: documentId } as FilterQuery<DocumentFileEntity>,
-      { orderBy: { version: 'asc' } },
+      { orderBy: { version: "asc" } },
     );
     return new Map(files.map((f) => [f.version, f]));
   }
 
-  private toFileDto(file: DocumentFileEntity | undefined | null): ReportFileDto | null {
+  private toFileDto(
+    file: DocumentFileEntity | undefined | null,
+  ): ReportFileDto | null {
     if (!file) return null;
     return {
       id: file.id,
@@ -109,7 +132,8 @@ export class ReportReviewsService {
   private async toStatus(doc: DocumentEntity): Promise<ReportReviewStatusDto> {
     const cycles = await this.cyclesFor(doc.id);
     const byVersion = await this.filesByVersion(doc.id);
-    const currentCycle = cycles.find((c) => c.roundNo === doc.clientReviewRound) ?? cycles.at(-1);
+    const currentCycle =
+      cycles.find((c) => c.roundNo === doc.clientReviewRound) ?? cycles.at(-1);
     const currentFile =
       (currentCycle ? byVersion.get(currentCycle.fileVersion) : undefined) ??
       byVersion.get(doc.currentVersion) ??
@@ -160,20 +184,20 @@ export class ReportReviewsService {
     fileId: string,
     user: AuthenticatedUser,
   ): Promise<{ doc: DocumentEntity; file: DocumentFileEntity }> {
-    const doc = await this.load(documentId, user, ['engagement']);
+    const doc = await this.load(documentId, user, ["engagement"]);
     if (doc.clientReviewState === ReportReviewState.NotSent) {
-      throw new NotFoundException('Final report not found');
+      throw new NotFoundException("Final report not found");
     }
     const file = await this.em.findOne(DocumentFileEntity, {
       id: fileId,
       document: documentId,
     } as FilterQuery<DocumentFileEntity>);
-    if (!file) throw new NotFoundException('File not found');
+    if (!file) throw new NotFoundException("File not found");
 
     const cycles = await this.cyclesFor(documentId);
     const allowedVersions = new Set(cycles.map((c) => c.fileVersion));
     if (!allowedVersions.has(file.version)) {
-      throw new NotFoundException('File not found');
+      throw new NotFoundException("File not found");
     }
     return { doc, file };
   }
@@ -182,7 +206,7 @@ export class ReportReviewsService {
     return {
       size: async () => {
         const head = await this.storage.head(storageKey);
-        if (!head) throw new NotFoundException('Stored file not found');
+        if (!head) throw new NotFoundException("Stored file not found");
         return head.sizeBytes;
       },
       read: (start, endInclusive) =>
@@ -192,25 +216,32 @@ export class ReportReviewsService {
 
   // ---- SA: send draft to client -------------------------------------------
 
-  async sendToClient(documentId: string, user: AuthenticatedUser): Promise<ReportReviewStatusDto> {
-    const doc = await this.load(documentId, user, ['engagement']);
+  async sendToClient(
+    documentId: string,
+    user: AuthenticatedUser,
+  ): Promise<ReportReviewStatusDto> {
+    const doc = await this.load(documentId, user, ["engagement"]);
     if (doc.currentVersion < 1) {
-      throw new BadRequestException('Upload a report file before sending it to the client');
+      throw new BadRequestException(
+        "Upload a report file before sending it to the client",
+      );
     }
     if (doc.clientReviewState === ReportReviewState.AwaitingClient) {
-      throw new ConflictException('This report is already awaiting the client');
+      throw new ConflictException("This report is already awaiting the client");
     }
     if (doc.clientReviewState === ReportReviewState.Locked) {
-      throw new BadRequestException('This report is locked after 3 cycles — use override to finalise');
+      throw new BadRequestException(
+        "This report is locked after 3 cycles — use override to finalise",
+      );
     }
     if (
       doc.clientReviewState === ReportReviewState.Approved ||
       doc.clientReviewState === ReportReviewState.Overridden
     ) {
-      throw new BadRequestException('This report is already finalised');
+      throw new BadRequestException("This report is already finalised");
     }
     if (doc.clientReviewRound >= MAX_REPORT_REVIEW_ROUNDS) {
-      throw new BadRequestException('Maximum review cycles reached');
+      throw new BadRequestException("Maximum review cycles reached");
     }
 
     if (doc.clientReviewState === ReportReviewState.ChangesRequested) {
@@ -218,7 +249,7 @@ export class ReportReviewsService {
       const lastCycle = cycles.at(-1);
       if (lastCycle && doc.currentVersion <= lastCycle.fileVersion) {
         throw new BadRequestException(
-          'Upload a revised file before sending again',
+          "Upload a revised file before sending again",
         );
       }
     }
@@ -235,18 +266,24 @@ export class ReportReviewsService {
     doc.clientReviewRound = round;
     doc.clientReviewState = ReportReviewState.AwaitingClient;
 
-    const clientRecipients = await engagementClientContactRecipients(this.em, doc.engagement.id);
+    const clientRecipients = await engagementClientContactRecipients(
+      this.em,
+      doc.engagement.id,
+    );
     await this.notifications.emit({
       recipients: clientRecipients,
-      type: 'report.review_requested',
-      title: 'A final report draft is ready for your review',
+      type: "report.review_requested",
+      title: "A final report draft is ready for your review",
       body: `Round ${round} of ${MAX_REPORT_REVIEW_ROUNDS}: please review and approve or request changes.`,
-      entityType: 'document',
+      entityType: "document",
       entityId: doc.id,
       link: `/final-reports/${doc.id}`,
       excludeUserId: user.userId,
     });
-    this.outbox.enqueue(EVENT.ReportSentForReview, { documentId: doc.id, round });
+    this.outbox.enqueue(EVENT.ReportSentForReview, {
+      documentId: doc.id,
+      round,
+    });
     await this.em.flush();
     return this.toStatus(doc);
   }
@@ -258,30 +295,39 @@ export class ReportReviewsService {
     dto: OverrideReportDto,
     user: AuthenticatedUser,
   ): Promise<ReportReviewStatusDto> {
-    const doc = await this.load(documentId, user, ['engagement']);
+    const doc = await this.load(documentId, user, ["engagement"]);
     if (doc.clientReviewState !== ReportReviewState.Locked) {
-      throw new BadRequestException('Only a locked report can be overridden');
+      throw new BadRequestException("Only a locked report can be overridden");
     }
     doc.clientReviewState = ReportReviewState.Overridden;
     doc.status = DocumentStatus.SignedOff;
-    const clientRecipients = await engagementClientContactRecipients(this.em, doc.engagement.id);
+    const clientRecipients = await engagementClientContactRecipients(
+      this.em,
+      doc.engagement.id,
+    );
     await this.notifications.emit({
       recipients: clientRecipients,
-      type: 'report.finalised',
-      title: 'A final report has been issued',
+      type: "report.finalised",
+      title: "A final report has been issued",
       body: dto.reason,
-      entityType: 'document',
+      entityType: "document",
       entityId: doc.id,
       link: `/final-reports/${doc.id}`,
       excludeUserId: user.userId,
     });
-    this.outbox.enqueue(EVENT.ReportReviewDecided, { documentId: doc.id, outcome: 'overridden' });
+    this.outbox.enqueue(EVENT.ReportReviewDecided, {
+      documentId: doc.id,
+      outcome: "overridden",
+    });
     await this.em.flush();
     return this.toStatus(doc);
   }
 
-  async statusForFirm(documentId: string, user: AuthenticatedUser): Promise<ReportReviewStatusDto> {
-    const doc = await this.load(documentId, user, ['engagement']);
+  async statusForFirm(
+    documentId: string,
+    user: AuthenticatedUser,
+  ): Promise<ReportReviewStatusDto> {
+    const doc = await this.load(documentId, user, ["engagement"]);
     return this.toStatus(doc);
   }
 
@@ -290,18 +336,18 @@ export class ReportReviewsService {
     query: FirmReportListQueryDto,
   ): Promise<Paginated<FirmReportListItemDto>> {
     const eng = engagementScopeWhere(resolveScope(user));
-    const state = query.state ?? 'needsAction';
+    const state = query.state ?? "needsAction";
     const where: Record<string, unknown> = {
       category: DocumentCategory.FinalReport,
     };
 
     if (query.reviewState) {
       where.clientReviewState = query.reviewState;
-    } else if (state === 'needsAction') {
+    } else if (state === "needsAction") {
       where.clientReviewState = {
         $in: [ReportReviewState.ChangesRequested, ReportReviewState.Locked],
       };
-    } else if (state === 'awaitingClient') {
+    } else if (state === "awaitingClient") {
       where.clientReviewState = ReportReviewState.AwaitingClient;
     } else {
       where.clientReviewState = {
@@ -322,13 +368,19 @@ export class ReportReviewsService {
       const pattern = `%${q}%`;
       const feedbackCycles = await this.em.find(
         ReportReviewCycleEntity,
-        { feedback: { $ilike: pattern } } as FilterQuery<ReportReviewCycleEntity>,
-        { fields: ['document'] as never },
+        {
+          feedback: { $ilike: pattern },
+        } as FilterQuery<ReportReviewCycleEntity>,
+        { fields: ["document"] as never },
       );
       const feedbackDocIds = [
         ...new Set(
           feedbackCycles
-            .map((c) => (typeof c.document === 'object' && c.document ? c.document.id : String(c.document)))
+            .map((c) =>
+              typeof c.document === "object" && c.document
+                ? c.document.id
+                : String(c.document),
+            )
             .filter(Boolean),
         ),
       ];
@@ -346,8 +398,8 @@ export class ReportReviewsService {
       DocumentEntity,
       where as FilterQuery<DocumentEntity>,
       {
-        populate: ['engagement'],
-        orderBy: { updatedAt: 'desc', id: 'asc' },
+        populate: ["engagement"],
+        orderBy: { updatedAt: "desc", id: "asc" },
         limit,
         offset,
       },
@@ -358,7 +410,10 @@ export class ReportReviewsService {
       const cycles = await this.cyclesFor(d.id);
       const latestWithFeedback = [...cycles]
         .reverse()
-        .find((c) => c.feedback && c.decision === ReportReviewDecision.ChangesRequested);
+        .find(
+          (c) =>
+            c.feedback && c.decision === ReportReviewDecision.ChangesRequested,
+        );
       data.push({
         documentId: d.id,
         engagementId: d.engagement.id,
@@ -382,26 +437,57 @@ export class ReportReviewsService {
     query: PendingReportListQueryDto,
   ): Promise<Paginated<ClientPendingReportDto>> {
     const eng = engagementScopeWhere(resolveScope(user));
+    const state = query.state ?? "pending";
+    const { page, pageSize, limit, offset } = pageParams(query);
+
+    // Resolve engagement IDs first. Nesting `clientContacts` under Document→engagement
+    // in the same findAndCount as enum filters can yield empty results in MikroORM,
+    // even though findOne(id + same scope) and raw SQL joins succeed.
+    let engagementIds: string[] | undefined;
+    if (Object.keys(eng).length) {
+      const scoped = await this.em.find(
+        EngagementEntity,
+        eng as FilterQuery<EngagementEntity>,
+        { fields: ["id"] as never },
+      );
+      engagementIds = scoped.map((e) => e.id);
+      if (!engagementIds.length) {
+        return paginated([], 0, page, pageSize);
+      }
+    }
+
     const where: Record<string, unknown> = {
       category: DocumentCategory.FinalReport,
-      clientReviewState: ReportReviewState.AwaitingClient,
     };
-    if (Object.keys(eng).length) where.engagement = eng;
+    if (state === "all") {
+      where.clientReviewState = { $ne: ReportReviewState.NotSent };
+    } else {
+      where.clientReviewState = ReportReviewState.AwaitingClient;
+    }
+    if (engagementIds) {
+      where.engagement = { $in: engagementIds };
+    }
 
-    const { page, pageSize, limit, offset } = pageParams(query);
-    const [rows, total] = await this.em.findAndCount(DocumentEntity, where as FilterQuery<DocumentEntity>, {
-      populate: ['engagement'],
-      orderBy: { updatedAt: 'desc', id: 'asc' },
-      limit,
-      offset,
-    });
+    const [rows, total] = await this.em.findAndCount(
+      DocumentEntity,
+      where as FilterQuery<DocumentEntity>,
+      {
+        populate: ["engagement"],
+        orderBy: { updatedAt: "desc", id: "asc" },
+        limit,
+        offset,
+      },
+    );
 
     const data: ClientPendingReportDto[] = [];
     for (const d of rows) {
       const cycles = await this.cyclesFor(d.id);
-      const currentCycle = cycles.find((c) => c.roundNo === d.clientReviewRound) ?? cycles.at(-1);
+      const currentCycle =
+        cycles.find((c) => c.roundNo === d.clientReviewRound) ?? cycles.at(-1);
       const byVersion = await this.filesByVersion(d.id);
-      const file = currentCycle ? byVersion.get(currentCycle.fileVersion) : undefined;
+      const file = currentCycle
+        ? byVersion.get(currentCycle.fileVersion)
+        : undefined;
       data.push({
         documentId: d.id,
         engagementId: d.engagement.id,
@@ -423,17 +509,24 @@ export class ReportReviewsService {
     return paginated(data, total, page, pageSize);
   }
 
-  async getForClient(documentId: string, user: AuthenticatedUser): Promise<ReportReviewStatusDto> {
-    const doc = await this.load(documentId, user, ['engagement']);
+  async getForClient(
+    documentId: string,
+    user: AuthenticatedUser,
+  ): Promise<ReportReviewStatusDto> {
+    const doc = await this.load(documentId, user, ["engagement"]);
     if (doc.clientReviewState === ReportReviewState.NotSent) {
-      throw new NotFoundException('Final report not found');
+      throw new NotFoundException("Final report not found");
     }
     return this.toStatus(doc);
   }
 
-  async downloadForClient(documentId: string, user: AuthenticatedUser): Promise<{ url: string }> {
+  async downloadForClient(
+    documentId: string,
+    user: AuthenticatedUser,
+  ): Promise<{ url: string }> {
     const status = await this.getForClient(documentId, user);
-    if (!status.currentFile) throw new NotFoundException('No report file to download');
+    if (!status.currentFile)
+      throw new NotFoundException("No report file to download");
     return this.downloadFile(documentId, status.currentFile.id, user);
   }
 
@@ -442,8 +535,15 @@ export class ReportReviewsService {
     fileId: string,
     user: AuthenticatedUser,
   ): Promise<{ url: string }> {
-    const { file } = await this.loadClientAccessibleFile(documentId, fileId, user);
-    const url = await this.storage.presignDownload(file.storageKey, file.fileName);
+    const { file } = await this.loadClientAccessibleFile(
+      documentId,
+      fileId,
+      user,
+    );
+    const url = await this.storage.presignDownload(
+      file.storageKey,
+      file.fileName,
+    );
     return { url };
   }
 
@@ -454,25 +554,36 @@ export class ReportReviewsService {
     opts?: { retryFailed?: boolean },
   ): Promise<{
     url: string | null;
-    mode: 'native' | 'converted' | 'unavailable';
+    mode: "native" | "converted" | "unavailable";
     previewStatus: FilePreviewStatus;
-    reason?: 'pending' | 'failed' | 'unsupported';
+    reason?: "pending" | "failed" | "unsupported";
   }> {
-    const { file } = await this.loadClientAccessibleFile(documentId, fileId, user);
+    const { file } = await this.loadClientAccessibleFile(
+      documentId,
+      fileId,
+      user,
+    );
 
-    if (file.previewStatus === FilePreviewStatus.Ready && file.previewStorageKey) {
+    if (
+      file.previewStatus === FilePreviewStatus.Ready &&
+      file.previewStorageKey
+    ) {
       const url = await this.storage.presignDownload(
         file.previewStorageKey,
         `${file.fileName}.pdf`,
-        { disposition: 'inline' },
+        { disposition: "inline" },
       );
-      return { url, mode: 'converted', previewStatus: file.previewStatus };
+      return { url, mode: "converted", previewStatus: file.previewStatus };
     }
     if (isNativePreviewable(file.mimeType, file.fileName)) {
-      const url = await this.storage.presignDownload(file.storageKey, file.fileName, {
-        disposition: 'inline',
-      });
-      return { url, mode: 'native', previewStatus: FilePreviewStatus.Ready };
+      const url = await this.storage.presignDownload(
+        file.storageKey,
+        file.fileName,
+        {
+          disposition: "inline",
+        },
+      );
+      return { url, mode: "native", previewStatus: FilePreviewStatus.Ready };
     }
     if (
       opts?.retryFailed &&
@@ -482,7 +593,7 @@ export class ReportReviewsService {
       file.previewStatus = FilePreviewStatus.Pending;
       file.previewError = null;
       this.outbox.enqueue(EVENT.FilePreviewRequested, {
-        entityType: 'document_file',
+        entityType: "document_file",
         fileId: file.id,
         storageKey: file.storageKey,
         fileName: file.fileName,
@@ -491,57 +602,67 @@ export class ReportReviewsService {
       await this.em.flush();
       return {
         url: null,
-        mode: 'unavailable',
+        mode: "unavailable",
         previewStatus: FilePreviewStatus.Pending,
-        reason: 'pending',
+        reason: "pending",
       };
     }
     if (file.previewStatus === FilePreviewStatus.Pending) {
       return {
         url: null,
-        mode: 'unavailable',
+        mode: "unavailable",
         previewStatus: FilePreviewStatus.Pending,
-        reason: 'pending',
+        reason: "pending",
       };
     }
     if (file.previewStatus === FilePreviewStatus.Failed) {
       return {
         url: null,
-        mode: 'unavailable',
+        mode: "unavailable",
         previewStatus: FilePreviewStatus.Failed,
-        reason: 'failed',
+        reason: "failed",
       };
     }
     if (isOfficeMime(file.mimeType, file.fileName)) {
       return {
         url: null,
-        mode: 'unavailable',
+        mode: "unavailable",
         previewStatus: FilePreviewStatus.Pending,
-        reason: 'pending',
+        reason: "pending",
       };
     }
     if (!isPreviewAllowlisted(file.mimeType, file.fileName)) {
       return {
         url: null,
-        mode: 'unavailable',
+        mode: "unavailable",
         previewStatus: file.previewStatus,
-        reason: 'unsupported',
+        reason: "unsupported",
       };
     }
     return {
       url: null,
-      mode: 'unavailable',
+      mode: "unavailable",
       previewStatus: file.previewStatus,
-      reason: 'unsupported',
+      reason: "unsupported",
     };
   }
 
-  async zipEntries(documentId: string, fileId: string, user: AuthenticatedUser) {
-    const { file } = await this.loadClientAccessibleFile(documentId, fileId, user);
+  async zipEntries(
+    documentId: string,
+    fileId: string,
+    user: AuthenticatedUser,
+  ) {
+    const { file } = await this.loadClientAccessibleFile(
+      documentId,
+      fileId,
+      user,
+    );
     if (!isZipMime(file.mimeType, file.fileName)) {
-      throw new BadRequestException('File is not a zip archive');
+      throw new BadRequestException("File is not a zip archive");
     }
-    return { entries: await listZipEntriesFromSource(this.zipSource(file.storageKey)) };
+    return {
+      entries: await listZipEntriesFromSource(this.zipSource(file.storageKey)),
+    };
   }
 
   async zipEntryUrl(
@@ -550,9 +671,13 @@ export class ReportReviewsService {
     entryPath: string,
     user: AuthenticatedUser,
   ): Promise<{ url: string; fileName: string; mimeType: string }> {
-    const { file } = await this.loadClientAccessibleFile(documentId, fileId, user);
+    const { file } = await this.loadClientAccessibleFile(
+      documentId,
+      fileId,
+      user,
+    );
     if (!isZipMime(file.mimeType, file.fileName)) {
-      throw new BadRequestException('File is not a zip archive');
+      throw new BadRequestException("File is not a zip archive");
     }
     const extracted = await extractZipEntryFromSource(
       this.zipSource(file.storageKey),
@@ -566,8 +691,8 @@ export class ReportReviewsService {
     });
     const url = await this.storage.presignDownload(storageKey, extracted.name, {
       disposition: isPreviewAllowlisted(extracted.mimeType, extracted.name)
-        ? 'inline'
-        : 'attachment',
+        ? "inline"
+        : "attachment",
     });
     return { url, fileName: extracted.name, mimeType: extracted.mimeType };
   }
@@ -577,19 +702,25 @@ export class ReportReviewsService {
     dto: RespondReportDto,
     user: AuthenticatedUser,
   ): Promise<ReportReviewStatusDto> {
-    if (dto.decision === ReportReviewDecision.ChangesRequested && !dto.feedback) {
-      throw new BadRequestException('Feedback is required when requesting changes');
+    if (
+      dto.decision === ReportReviewDecision.ChangesRequested &&
+      !dto.feedback
+    ) {
+      throw new BadRequestException(
+        "Feedback is required when requesting changes",
+      );
     }
-    const doc = await this.load(documentId, user, ['engagement.team.user']);
+    const doc = await this.load(documentId, user, ["engagement.team.user"]);
     if (doc.clientReviewState !== ReportReviewState.AwaitingClient) {
-      throw new BadRequestException('This report is not awaiting your review');
+      throw new BadRequestException("This report is not awaiting your review");
     }
     const cycle = await this.em.findOne(ReportReviewCycleEntity, {
       document: documentId,
       roundNo: doc.clientReviewRound,
       decision: ReportReviewDecision.Pending,
     } as FilterQuery<ReportReviewCycleEntity>);
-    if (!cycle) throw new BadRequestException('No open review cycle to respond to');
+    if (!cycle)
+      throw new BadRequestException("No open review cycle to respond to");
 
     cycle.decision = dto.decision;
     cycle.decidedBy = this.em.getReference(UserEntity, user.userId);
@@ -600,21 +731,21 @@ export class ReportReviewsService {
     if (dto.decision === ReportReviewDecision.Approved) {
       doc.clientReviewState = ReportReviewState.Approved;
       doc.status = DocumentStatus.SignedOff;
-      title = 'The client approved the final report';
+      title = "The client approved the final report";
     } else if (doc.clientReviewRound >= MAX_REPORT_REVIEW_ROUNDS) {
       doc.clientReviewState = ReportReviewState.Locked;
-      title = 'The final report is locked after 3 cycles — override required';
+      title = "The final report is locked after 3 cycles — override required";
     } else {
       doc.clientReviewState = ReportReviewState.ChangesRequested;
-      title = 'The client requested changes to the final report';
+      title = "The client requested changes to the final report";
     }
 
     await this.notifications.emit({
       recipients: this.firmRecipients(doc),
-      type: 'report.review_decided',
+      type: "report.review_decided",
       title,
       body: dto.feedback,
-      entityType: 'document',
+      entityType: "document",
       entityId: doc.id,
       link: this.firmDocumentLink(doc),
       excludeUserId: user.userId,

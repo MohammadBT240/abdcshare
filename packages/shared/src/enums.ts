@@ -148,6 +148,17 @@ export enum PartnerReportInviteStatus {
   Revoked = 'Revoked',
 }
 
+/**
+ * Preferred reporting rhythm for a roster member.
+ * Soft preference only — never blocks ad-hoc submit (`None` = reminders off by default intent).
+ */
+export enum PartnerReportCadence {
+  Weekly = 'Weekly',
+  Monthly = 'Monthly',
+  Quarterly = 'Quarterly',
+  None = 'None',
+}
+
 export enum SubmissionStatus {
   /** Client is still uploading files; not visible to staff; no notification yet. */
   Draft = 'Draft',
