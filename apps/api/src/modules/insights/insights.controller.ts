@@ -3,7 +3,8 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { SearchService, type SearchResults } from './search.service';
-import { DashboardService, type DashboardSummary } from './dashboard.service';
+import { DashboardService } from './dashboard.service';
+import type { DashboardSummary } from './dashboard.types';
 
 @ApiTags('insights')
 @ApiBearerAuth()
