@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -11,6 +12,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import {
+  PartnerReportCadence,
   PartnerReportInviteStatus,
   PartnerReportStatus,
   ReportCurrency,
@@ -29,6 +31,12 @@ export class CreateInviteDto {
   @ApiProperty() @IsString() @MaxLength(150) fullName!: string;
   @ApiPropertyOptional({ enum: ReportingOfficerTitle })
   @IsOptional() @IsEnum(ReportingOfficerTitle) title?: ReportingOfficerTitle;
+  @ApiPropertyOptional({ enum: PartnerReportCadence, default: PartnerReportCadence.Weekly })
+  @IsOptional() @IsEnum(PartnerReportCadence) cadence?: PartnerReportCadence;
+  @ApiPropertyOptional({ default: true })
+  @IsOptional() @IsBoolean() remindersEnabled?: boolean;
+  @ApiPropertyOptional({ default: true })
+  @IsOptional() @IsBoolean() financialsEnabled?: boolean;
 }
 
 export class InviteResponseDto {
@@ -39,11 +47,12 @@ export class InviteResponseDto {
   @ApiProperty() createdAt!: Date;
 }
 
-/** Result of an invite attempt: a new Guest was provisioned, or an existing user was reminded. */
+/** Result of an invite attempt: Guest provisioned, Staff allowed, or existing reporter reminded. */
 export class InviteResultDto {
-  @ApiProperty({ enum: ['invited', 'reminded'] }) outcome!: 'invited' | 'reminded';
+  @ApiProperty({ enum: ['invited', 'allowed', 'reminded'] })
+  outcome!: 'invited' | 'allowed' | 'reminded';
   @ApiProperty() email!: string;
-  @ApiProperty({ description: 'The provisioned Guest, or the existing user who was reminded.' })
+  @ApiProperty({ description: 'The provisioned Guest, allowed Staff, or reminded reporter.' })
   userId!: string;
   @ApiPropertyOptional() inviteId?: string | null;
 }
@@ -51,6 +60,54 @@ export class InviteResultDto {
 export class InviteListResponseDto {
   @ApiProperty({ type: [InviteResponseDto] }) data!: InviteResponseDto[];
   @ApiProperty() meta!: PageMeta;
+}
+
+export class ReporterDto {
+  @ApiProperty() userId!: string;
+  @ApiProperty() fullName!: string;
+  @ApiProperty() email!: string;
+  @ApiProperty({ enum: ['partner', 'guest', 'staff', 'client'] })
+  kind!: 'partner' | 'guest' | 'staff' | 'client';
+  @ApiPropertyOptional({ enum: PartnerReportInviteStatus })
+  inviteStatus?: PartnerReportInviteStatus | null;
+  @ApiPropertyOptional() allowedAt?: Date | null;
+  @ApiProperty({ enum: PartnerReportCadence }) cadence!: PartnerReportCadence;
+  @ApiProperty() remindersEnabled!: boolean;
+  @ApiProperty() financialsEnabled!: boolean;
+  @ApiPropertyOptional() reportRequestedAt?: Date | null;
+  @ApiPropertyOptional() requestNote?: string | null;
+  @ApiPropertyOptional() lastSubmittedAt?: Date | null;
+  /** Soft expectation — never blocks submit. */
+  @ApiProperty({ enum: ['ok', 'requested', 'due'] })
+  expectation!: 'ok' | 'requested' | 'due';
+}
+
+export class ReporterListResponseDto {
+  @ApiProperty({ type: [ReporterDto] }) data!: ReporterDto[];
+}
+
+export class UpdateReporterDto {
+  @ApiPropertyOptional({ enum: PartnerReportCadence })
+  @IsOptional() @IsEnum(PartnerReportCadence) cadence?: PartnerReportCadence;
+  @ApiPropertyOptional()
+  @IsOptional() @IsBoolean() remindersEnabled?: boolean;
+  @ApiPropertyOptional()
+  @IsOptional() @IsBoolean() financialsEnabled?: boolean;
+}
+
+export class RequestReportDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) note?: string;
+}
+
+export class MyReportingStatusDto {
+  @ApiProperty() canSubmit!: boolean;
+  @ApiPropertyOptional({ enum: PartnerReportCadence }) cadence?: PartnerReportCadence | null;
+  @ApiProperty() remindersEnabled!: boolean;
+  @ApiProperty({ default: true }) financialsEnabled!: boolean;
+  @ApiPropertyOptional() reportRequestedAt?: Date | null;
+  @ApiPropertyOptional() requestNote?: string | null;
+  @ApiPropertyOptional() lastSubmittedAt?: Date | null;
+  @ApiProperty({ enum: ['ok', 'requested', 'due'] }) expectation!: 'ok' | 'requested' | 'due';
 }
 
 // ---- Report rows ----------------------------------------------------------
@@ -66,23 +123,30 @@ export class DecisionInput {
   @ApiProperty({ enum: ReportDecisionPriority }) @IsEnum(ReportDecisionPriority) priority!: ReportDecisionPriority;
 }
 
+export class BillingItemInput {
+  @ApiProperty() @IsString() @MaxLength(255) description!: string;
+  @ApiProperty({ description: 'Bill amount as a decimal string' }) @IsString() @MaxLength(40) amount!: string;
+  @ApiPropertyOptional({ description: 'Amount received against this bill (default 0)' })
+  @IsOptional() @IsString() @MaxLength(40) amountReceived?: string;
+}
+
 // ---- Report create / update ----------------------------------------------
 
 export class SaveReportDto {
   @ApiProperty() @IsString() @MaxLength(150) reportingOfficerName!: string;
-  @ApiProperty({ enum: ReportingOfficerTitle }) @IsEnum(ReportingOfficerTitle) officerTitle!: ReportingOfficerTitle;
-  @ApiProperty() @IsString() @MaxLength(150) department!: string;
+  @ApiPropertyOptional({ enum: ReportingOfficerTitle })
+  @IsOptional() @IsEnum(ReportingOfficerTitle) officerTitle?: ReportingOfficerTitle;
+  @ApiProperty({ description: 'Company or department' }) @IsString() @MaxLength(150) department!: string;
   @ApiProperty({ enum: ReportPeriodType }) @IsEnum(ReportPeriodType) periodType!: ReportPeriodType;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(60) periodLabel?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() executiveSummary?: string;
 
   @ApiPropertyOptional({ enum: ReportCurrency }) @IsOptional() @IsEnum(ReportCurrency) currency?: ReportCurrency;
-  @ApiPropertyOptional() @IsOptional() @IsString() feeRevenue?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() billingsRaised?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() collectionsReceived?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() outstandingWip?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) varianceVsBudget?: string;
+  @ApiPropertyOptional({ type: [BillingItemInput] })
+  @IsOptional() @IsArray() @ArrayMaxSize(100) @ValidateNested({ each: true }) @Type(() => BillingItemInput)
+  billingItems?: BillingItemInput[];
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) remark?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() peopleCapacity?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() outlook?: string;
@@ -117,22 +181,31 @@ export class DecisionDto {
   @ApiProperty({ enum: ReportDecisionPriority }) priority!: ReportDecisionPriority;
 }
 
+export class BillingItemDto {
+  @ApiProperty() description!: string;
+  @ApiProperty() amount!: string;
+  @ApiProperty() amountReceived!: string;
+}
+
 export class PartnerReportResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() submittedById!: string;
   @ApiPropertyOptional() submittedByName?: string | null;
   @ApiProperty() reportingOfficerName!: string;
-  @ApiProperty({ enum: ReportingOfficerTitle }) officerTitle!: ReportingOfficerTitle;
+  @ApiPropertyOptional({ enum: ReportingOfficerTitle }) officerTitle?: ReportingOfficerTitle | null;
   @ApiProperty() department!: string;
   @ApiProperty({ enum: ReportPeriodType }) periodType!: ReportPeriodType;
   @ApiPropertyOptional() periodLabel?: string | null;
   @ApiPropertyOptional() executiveSummary?: string | null;
   @ApiPropertyOptional({ enum: ReportCurrency }) currency?: ReportCurrency | null;
+  /** Sum of billingItems.amount (server-computed). */
   @ApiPropertyOptional() feeRevenue?: string | null;
-  @ApiPropertyOptional() billingsRaised?: string | null;
+  @ApiProperty({ type: [BillingItemDto] }) billingItems!: BillingItemDto[];
+  /** Sum of billingItems.amountReceived (server-computed). */
   @ApiPropertyOptional() collectionsReceived?: string | null;
-  @ApiPropertyOptional() outstandingWip?: string | null;
-  @ApiPropertyOptional() varianceVsBudget?: string | null;
+  /** feeRevenue − collectionsReceived (server-computed). */
+  @ApiPropertyOptional() outstanding?: string | null;
+  @ApiPropertyOptional() remark?: string | null;
   @ApiPropertyOptional() peopleCapacity?: string | null;
   @ApiPropertyOptional() outlook?: string | null;
   @ApiProperty({ enum: PartnerReportStatus }) status!: PartnerReportStatus;

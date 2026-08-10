@@ -10,6 +10,7 @@ import { UserEntity } from '../../../users/infrastructure/persistence/user.entit
 import { PartnerReportInviteEntity } from './partner-report-invite.entity';
 import { PartnerReportEngagementUpdateEntity } from './partner-report-engagement-update.entity';
 import { PartnerReportDecisionEntity } from './partner-report-decision.entity';
+import { PartnerReportBillingItemEntity } from './partner-report-billing-item.entity';
 
 /** A structured periodic report to the Chairman (Principal Partner). */
 @Entity({ tableName: 'partner_reports' })
@@ -25,9 +26,11 @@ export class PartnerReportEntity extends BaseEntity {
   @Property()
   reportingOfficerName!: string;
 
-  @Enum({ items: () => ReportingOfficerTitle })
-  officerTitle!: ReportingOfficerTitle;
+  /** Legacy / optional — no longer collected in the wizard. */
+  @Enum({ items: () => ReportingOfficerTitle, nullable: true })
+  officerTitle?: ReportingOfficerTitle | null;
 
+  /** Company or department of the reporting officer. */
   @Property()
   department!: string;
 
@@ -45,20 +48,20 @@ export class PartnerReportEntity extends BaseEntity {
   @Enum({ items: () => ReportCurrency, nullable: true })
   currency?: ReportCurrency | null;
 
+  /** Denormalized sum of billingItems amounts. */
   @Property({ columnType: 'numeric(18,2)', nullable: true })
   feeRevenue?: string | null;
 
-  @Property({ columnType: 'numeric(18,2)', nullable: true })
-  billingsRaised?: string | null;
-
+  /** Denormalized sum of billingItems.amountReceived. */
   @Property({ columnType: 'numeric(18,2)', nullable: true })
   collectionsReceived?: string | null;
 
+  /** Denormalized feeRevenue − collectionsReceived. */
   @Property({ columnType: 'numeric(18,2)', nullable: true })
-  outstandingWip?: string | null;
+  outstanding?: string | null;
 
   @Property({ nullable: true })
-  varianceVsBudget?: string | null;
+  remark?: string | null;
 
   // 06 — People & capacity
   @Property({ type: 'text', nullable: true })
@@ -82,6 +85,10 @@ export class PartnerReportEntity extends BaseEntity {
 
   @Property({ type: 'timestamptz', nullable: true })
   reviewedAt?: Date | null;
+
+  // 03b — Billings raised line items (fee revenue = sum)
+  @OneToMany(() => PartnerReportBillingItemEntity, (b) => b.report)
+  billingItems = new Collection<PartnerReportBillingItemEntity>(this);
 
   // 04 — Client & engagement updates
   @OneToMany(() => PartnerReportEngagementUpdateEntity, (u) => u.report)
