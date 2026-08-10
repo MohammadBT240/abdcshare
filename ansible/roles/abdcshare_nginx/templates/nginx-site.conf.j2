@@ -1,0 +1,97 @@
+# {{ ansible_managed }}
+# abdcshare reverse proxy — {{ item.id }} (nginx_tls={{ nginx_tls | default(true) | bool }}, le_cert_present={{ item.le_cert_present | default(false) | bool }})
+
+{% set _tls = nginx_tls | default(true) | bool %}
+{% set _cert = item.le_cert_present | default(false) | bool %}
+
+{% if not _tls %}
+# Bootstrap: HTTP only (ACME + proxy)
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ item.server_names | join(' ') }};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root {{ nginx_acme_webroot }};
+        allow all;
+    }
+
+    location / {
+        # BFF proxies base64 avatar JSON (~3 MB) and document downloads.
+        client_max_body_size {{ item.client_max_body_size | default('20m') }};
+        proxy_pass http://127.0.0.1:{{ item.port }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+{% elif _cert %}
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ item.server_names | join(' ') }};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root {{ nginx_acme_webroot }};
+        allow all;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {{ item.server_names | join(' ') }};
+
+    ssl_certificate {{ nginx_letsencrypt_live }}/{{ item.ssl_cert_name | default((nginx_le_cert_lineage if (nginx_le_cert_lineage | default('') | trim | length > 0) else item.server_names[0]), true) }}/fullchain.pem;
+    ssl_certificate_key {{ nginx_letsencrypt_live }}/{{ item.ssl_cert_name | default((nginx_le_cert_lineage if (nginx_le_cert_lineage | default('') | trim | length > 0) else item.server_names[0]), true) }}/privkey.pem;
+{% if nginx_include_letsencrypt_ssl_snippets | bool %}
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+{% endif %}
+
+    location / {
+        # BFF proxies base64 avatar JSON (~3 MB) and document downloads.
+        client_max_body_size {{ item.client_max_body_size | default('20m') }};
+        proxy_pass http://127.0.0.1:{{ item.port }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+{% else %}
+# No cert on disk yet (issuance skipped or failed): HTTP only — nginx -t must not reference missing cert files
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ item.server_names | join(' ') }};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root {{ nginx_acme_webroot }};
+        allow all;
+    }
+
+    location / {
+        client_max_body_size {{ item.client_max_body_size | default('20m') }};
+        proxy_pass http://127.0.0.1:{{ item.port }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+{% endif %}

@@ -1,0 +1,171 @@
+# Full abdcshare stack — pulls images from GHCR (no local build).
+#
+# Managed by Ansible (ansible/playbooks/deploy.yml). Manual usage from this directory:
+#   cp compose.env.example .env    (on the VM, Ansible renders .env from Vault — never commit it)
+#   docker compose -f docker-compose.stack.yml pull
+#   docker compose -f docker-compose.stack.yml up -d postgres redis
+#   docker compose -f docker-compose.stack.yml --profile migrate run --rm migrate
+#   docker compose -f docker-compose.stack.yml up -d
+#
+# First deploy only (creates the Platform Admin — set SEED_ADMIN_* in .env first):
+#   docker compose -f docker-compose.stack.yml --profile seed run --rm seed
+#
+# Staging lives on the same VM in a separate directory with its own .env and
+# COMPOSE_PROJECT_NAME=abdcshare-staging so networks/volumes never collide.
+#
+# postgres/redis are internal-only (no host ports). Only api/web publish ports,
+# and only on 127.0.0.1 — the host nginx is the sole public entrypoint.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: abdcshare
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: abdcshare
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U abdcshare -d abdcshare"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [abdcshare]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [abdcshare]
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/${REGISTRY_OWNER:?Set REGISTRY_OWNER (lowercase GitHub org/user)}/abdcshare-api:${IMAGE_TAG:-latest}
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-4100}:4000"
+    environment:
+      NODE_ENV: production
+      API_PORT: "4000"
+      API_GLOBAL_PREFIX: api
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-1209600}
+      PASSWORD_RESET_TTL: ${PASSWORD_RESET_TTL:-3600}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-r2}
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:?Set STORAGE_PUBLIC_BASE_URL in .env}
+      STORAGE_UPLOAD_TTL: ${STORAGE_UPLOAD_TTL:-900}
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_OBJECT_PREFIX: ${R2_OBJECT_PREFIX:-abdcshare}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [abdcshare]
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/${REGISTRY_OWNER}/abdcshare-worker:${IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:?Set EMAIL_FROM in .env}
+      WEB_APP_URL: ${WEB_APP_URL:?Set WEB_APP_URL in .env}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-r2}
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL}
+      R2_ENDPOINT: ${R2_ENDPOINT:-}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_OBJECT_PREFIX: ${R2_OBJECT_PREFIX:-abdcshare}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [abdcshare]
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/${REGISTRY_OWNER}/abdcshare-web:${IMAGE_TAG:-latest}
+    ports:
+      - "127.0.0.1:${WEB_HOST_PORT:-3100}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      API_BASE_URL: http://api:4000
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [abdcshare]
+    restart: unless-stopped
+
+  # One-shot: ensure DB exists + apply pending MikroORM migrations, then exit.
+  # SKIP_SEED=1 — production is never auto-seeded.
+  migrate:
+    profiles: [migrate]
+    image: ghcr.io/${REGISTRY_OWNER}/abdcshare-api:${IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      SKIP_SEED: "1"
+      DATABASE_URL: ${DATABASE_URL}
+    command: ["node", "dist/database/setup.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [abdcshare]
+
+  # One-shot, manual, first deploy only: reference data + Platform Admin.
+  # Requires SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD in .env. Idempotent.
+  seed:
+    profiles: [seed]
+    image: ghcr.io/${REGISTRY_OWNER}/abdcshare-api:${IMAGE_TAG:-latest}
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+    command: ["node", "dist/database/seed.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [abdcshare]
+
+volumes:
+  # Compose prefixes these with COMPOSE_PROJECT_NAME, so prod (abdcshare) and
+  # staging (abdcshare-staging) volumes never collide on the shared VM.
+  postgres_data:
+  redis_data:
+
+networks:
+  abdcshare:
+    driver: bridge

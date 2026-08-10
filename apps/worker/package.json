@@ -9,7 +9,7 @@
     "start:dev": "nest start --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
-    "test": "jest --passWithNoTests"
+    "test": "echo 'no worker tests yet — consumer tests planned (ARCHITECTURE.md §13)'"
   },
   "dependencies": {
     "@abdcshare/shared": "workspace:*",

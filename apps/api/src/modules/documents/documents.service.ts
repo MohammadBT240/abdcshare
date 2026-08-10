@@ -10,7 +10,6 @@ import { EntityManager, type FilterQuery } from "@mikro-orm/postgresql";
 import {
   DocumentCategory,
   DocumentStatus,
-  EngagementPhase,
   EVENT,
   FilePreviewStatus,
   hasPermission,

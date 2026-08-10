@@ -2,6 +2,47 @@
 
 Resumable status so any session (or dev) can continue exactly where we stopped.
 
+## Done — deployment pipeline (house standard, shared VM)
+- Full deploy layer built (see `docs/DEPLOYMENT.md` for the runbook):
+  - **Prod Dockerfiles** (`deploy/Dockerfile.{api,worker,web}`) — multi-stage, prod-only deps,
+    Next `output: 'standalone'`; root `.dockerignore` added (the old single-stage files copied
+    `.env` + `.pnpm-store` into images).
+  - **`deploy/docker-compose.stack.yml`** — GHCR pull-only stack (postgres 17, redis 7 AOF, api,
+    worker, web + `migrate`/`seed` one-shot profiles); ports bind 127.0.0.1 only; volumes prefixed
+    by `COMPOSE_PROJECT_NAME` (`abdcshare` / `abdcshare-staging`); `compose.env*.example` templates.
+  - **`ansible/`** — deploy playbook (rsync → render `.env` from Vault → pull → migrate → up →
+    health smoke checks → project-scoped image GC keeping 5 tags) + `abdcshare_nginx` role
+    (4 vhosts, Certbot webroot bootstrap, coexists with abdchub/QET site files on the shared host).
+  - **Workflows** — `deploy-staging.yml` (push to `staging`) and `deploy.yml` (push to `main`,
+    `environment: production` approval gate); CI-gated, Buildx + GHA cache, SHA-pinned deploys,
+    concurrency groups.
+- Domains: `abdcshare.com`/`www` + `api.` (prod), `staging.` + `staging-api.` (staging).
+  Host ports 3100/4100 (prod), 3101/4101 (staging) — verified free on the VM (abdchub: 3000/8080,
+  3002/8081; QET: 3001, 3003).
+- Migrate runs the api image's compiled `dist/database/setup.js` (`SKIP_SEED=1`); seed is a manual
+  one-shot profile (idempotent, creates Platform Admin from `SEED_ADMIN_*`).
+- Remaining manual steps before first deploy: DNS records, encrypted `vault.yml` per env, R2
+  buckets, GitHub secrets + `production` environment reviewer (DEPLOYMENT.md §7).
+
+## Done — CI gate repaired (was red repo-wide, blocked the deploy pipeline)
+- **Lint was broken everywhere**: ESLint 9 flat configs were never created per package, so every
+  `eslint src` died with "couldn't find eslint.config". Added `eslint.config.mjs` to api, worker,
+  web, shared, api-client (re-export `@abdcshare/config/eslint`); web's also loads
+  `@next/eslint-plugin-next` (recommended) + `react-hooks/rules-of-hooks`(error)/`exhaustive-deps`(warn)
+  — the classic pair `next lint` (removed in Next 16) used to enforce. The react-hooks plugin's full
+  recommended set (React Compiler-era rules) flags ~43 existing patterns — adopt separately.
+- Auto-fixed ~180 accumulated violations (mostly `import type`), removed dead imports, added
+  `argsIgnorePattern: '^_'` to the shared no-unused-vars rule.
+- **Two type errors** only surfaced by `next build`'s checker (would have broken the web image):
+  invalid Button variant `"secondary"` in `requests/[id]/page.tsx`, unchecked index in
+  `request-history-list.tsx`.
+- **web/worker `test` scripts** invoked jest that was never installed — now explicit no-op
+  placeholders until the planned Vitest/consumer tests exist (api keeps its real jest run).
+- Verified green with cold cache: typecheck 7/7, lint 5/5, build 5/5, test 5/5; all three Docker
+  images build (api 1.0GB, worker 1.7GB incl. LibreOffice, web 419MB); web container serves /login
+  (standalone), worker has `soffice` on PATH, api image resolves `@abdcshare/shared` and carries
+  `dist/database/{setup,seed}.js` + `dist/migrations` for the one-shot profiles.
+
 ## Done
 - **Planning docs** complete in `docs/` (domain, user stories, traceability, ERD, architecture,
   design system, execution plan, development guidelines).

@@ -2,6 +2,8 @@ import type { NextConfig } from 'next';
 
 const config: NextConfig = {
   reactStrictMode: true,
+  // Self-contained server bundle for the Docker image (deploy/Dockerfile.web).
+  output: 'standalone',
   transpilePackages: ['@abdcshare/shared', '@abdcshare/api-client'],
   // Avatar base64 uploads pass through the BFF proxy (~2 MB file → ~2.8 MB JSON).
   experimental: {

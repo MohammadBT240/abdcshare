@@ -1,0 +1,25 @@
+# Build context = repo root. Keep it minimal: never ship secrets, stores, or build output.
+.git
+.github
+.cursor
+.turbo
+**/.turbo
+.pnpm-store
+node_modules
+**/node_modules
+**/dist
+**/.next
+.env
+**/.env
+.env.*
+!.env.example
+**/.env.*
+!**/.env.example
+apps/api/storage
+docs
+deploy
+ansible
+terminals
+.DS_Store
+**/.DS_Store
+chairman-reporting-portal.html

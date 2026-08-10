@@ -1,0 +1,21 @@
+---
+- name: Render abdcshare nginx site configs
+  ansible.builtin.template:
+    src: nginx-site.conf.j2
+    dest: "/etc/nginx/sites-available/abdcshare-{{ item.id }}.conf"
+    mode: "0644"
+  loop: "{{ nginx_sites_effective | default(nginx_sites) }}"
+  loop_control:
+    label: "{{ item.id }}"
+  notify: Validate nginx config and reload
+
+- name: Enable abdcshare nginx sites
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/abdcshare-{{ item.id }}.conf"
+    dest: "/etc/nginx/sites-enabled/abdcshare-{{ item.id }}.conf"
+    state: link
+    force: true
+  loop: "{{ nginx_sites_effective | default(nginx_sites) }}"
+  loop_control:
+    label: "{{ item.id }}"
+  notify: Validate nginx config and reload

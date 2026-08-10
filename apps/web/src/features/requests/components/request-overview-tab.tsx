@@ -30,7 +30,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { UserAvatar } from "@/components/data/user-avatar";
 import { StatusPill, resolveStatusTone } from "@/components/data";
 import { FileTypeIcon } from "@/components/data/file-type-icon";
 import { FileViewerDialog } from "@/components/files/file-viewer-dialog";
@@ -42,7 +41,6 @@ import {
 } from "@/components/ui/tooltip";
 import { BffClientError } from "@/lib/bff/client";
 import { cn } from "@/lib/utils";
-import { useCatalogueList } from "@/features/catalogues/hooks/use-catalogue";
 import { useDocumentsList } from "@/features/documents/hooks/use-documents";
 import type { EngagementTeamMember } from "@/features/engagements/hooks/use-engagements";
 import { STAGE_STYLES } from "@/features/engagements/lib/stage-styles";
