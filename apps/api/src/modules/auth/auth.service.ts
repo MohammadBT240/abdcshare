@@ -1,10 +1,13 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/postgresql';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { EVENT } from '@abdcshare/shared';
+import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
+import { presignAvatar } from '../../common/storage/presign-avatar';
 import { UserEntity } from '../users/infrastructure/persistence/user.entity';
+import { PartnerReportReporterEntity } from '../partner-reports/infrastructure/persistence/partner-report-reporter.entity';
 import { OutboxService } from '../outbox/outbox.service';
 import { TokenService } from './application/token.service';
 import { PasswordResetTokenEntity } from './infrastructure/persistence/password-reset-token.entity';
@@ -23,6 +26,7 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly outbox: OutboxService,
     private readonly config: ConfigService,
+    @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
 
   private sha256(raw: string): string {
@@ -67,7 +71,11 @@ export class AuthService {
     await this.em.flush();
   }
 
-  private toAuthUser(user: UserEntity): AuthUserDto {
+  private async toAuthUser(user: UserEntity): Promise<AuthUserDto> {
+    const partnerReportAllowed =
+      user.role.roleName === 'Staff' || user.role.roleName === 'Client'
+        ? (await this.em.findOne(PartnerReportReporterEntity, { user: user.id })) != null
+        : false;
     return {
       id: user.id,
       fullName: user.fullName,
@@ -75,6 +83,8 @@ export class AuthService {
       role: user.role.roleName,
       mustChangePassword: user.mustChangePassword,
       partnerDesignation: user.partnerDesignation ?? null,
+      partnerReportAllowed,
+      avatarUrl: await presignAvatar(this.storage, user.avatarPath),
     };
   }
 
@@ -91,7 +101,7 @@ export class AuthService {
       clientId: user.client?.id ?? null,
       mustChangePassword: user.mustChangePassword,
     });
-    return { ...pair, user: this.toAuthUser(user) };
+    return { ...pair, user: await this.toAuthUser(user) };
   }
 
   async refresh(refreshToken: string): Promise<Pick<AuthTokensDto, 'accessToken' | 'refreshToken'>> {

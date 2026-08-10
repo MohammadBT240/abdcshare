@@ -7,7 +7,7 @@ describe('AuthService password reset', () => {
   it('requestPasswordReset is neutral when the email is unknown (no token, no event)', async () => {
     const em = { findOne: jest.fn(async () => null), create: jest.fn(), flush: jest.fn() };
     const outbox = { enqueue: jest.fn() };
-    const service = new AuthService(em as never, {} as never, outbox as never, config);
+    const service = new AuthService(em as never, {} as never, outbox as never, config, { presignDownload: jest.fn() } as never);
 
     await expect(service.requestPasswordReset({ email: 'nobody@x.com' })).resolves.toBeUndefined();
     expect(em.create).not.toHaveBeenCalled();
@@ -16,7 +16,7 @@ describe('AuthService password reset', () => {
 
   it('resetPassword rejects an invalid/expired token', async () => {
     const em = { findOne: jest.fn(async () => null) };
-    const service = new AuthService(em as never, {} as never, { enqueue: jest.fn() } as never, config);
+    const service = new AuthService(em as never, {} as never, { enqueue: jest.fn() } as never, config, { presignDownload: jest.fn() } as never);
     await expect(
       service.resetPassword({ token: 'bad', newPassword: 'longenough1' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);

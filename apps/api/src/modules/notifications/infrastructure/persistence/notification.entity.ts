@@ -24,7 +24,7 @@ export class NotificationEntity extends BaseEntity {
   @Property({ nullable: true })
   entityId?: string | null;
 
-  @Property({ nullable: true })
+  @Property({ type: 'text', nullable: true })
   link?: string | null;
 
   @Property({ default: false })

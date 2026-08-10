@@ -24,7 +24,7 @@ describe('EngagementTypesService.setAllowedRequestClasses', () => {
 
     expect(em.remove).toHaveBeenCalledTimes(1); // removed the one existing link
     expect(em.create).toHaveBeenCalledTimes(2); // de-duped 2,2 → {1,2}
-    expect(result.allowedRequestClassIds).toEqual([1, 2]); // sorted
+    expect(result.suggestedRequestClassIds).toEqual([1, 2]); // sorted
   });
 
   it('rejects when a request class does not exist', async () => {

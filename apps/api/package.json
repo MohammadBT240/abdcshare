@@ -40,6 +40,8 @@
     "class-validator": "^0.15.1",
     "dotenv": "^16.4.7",
     "ioredis": "^5.11.1",
+    "jszip": "^3.10.1",
+    "pdfkit": "^0.19.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "zod": "^3.24.1"
@@ -50,7 +52,9 @@
     "@nestjs/cli": "^11.0.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.10.6",
+    "@types/pdfkit": "^0.17.6",
     "eslint": "^9.18.0",
     "jest": "^30.4.2",
     "ts-jest": "^29.4.11",

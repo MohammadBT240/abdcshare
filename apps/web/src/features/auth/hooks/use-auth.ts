@@ -21,10 +21,19 @@ export function useAuth() {
 
   const role = (query.data?.role ?? '') as RoleName;
   const designation = query.data?.partnerDesignation ?? null;
+  const partnerReportAllowed = Boolean(query.data?.partnerReportAllowed);
   const permissions = resolvePermissions(role, designation);
 
-  const can = (permission: Permission): boolean =>
-    hasPermission(role, permission, designation);
+  const can = (permission: Permission): boolean => {
+    if (hasPermission(role, permission, designation)) return true;
+    if (
+      partnerReportAllowed &&
+      (permission === 'partner-report:submit' || permission === 'partner-report:view')
+    ) {
+      return true;
+    }
+    return false;
+  };
 
   return {
     user: query.data,

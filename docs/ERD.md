@@ -88,11 +88,11 @@ your confirm; trivial to add back as `{id,name,is_active}` lookups if needed.
 >
 > **Roles (v8):** `Platform Admin`, `Super Admin`, `Staff`, `Client`, **`Guest`** (invited by the Principal
 > Partner solely to submit a report; forced password change on first login). **`Auditor` is no longer a role** —
-> every Staff is a working practitioner; "Auditor" survives as the per-engagement **team member_role**
-> tag (Partner/Manager/Auditor). **Engagements are created by Super Admin only**; staff work inside the
-> engagements they're attached to. **Row-level scope:** Client → own client's rows; Staff → engagements
-> they're on the team of (+ their requests); Platform/Super Admin → unrestricted (see `common/security/
-> access-scope.ts`).
+> every Staff is a working practitioner; "Auditor" survives as a document participant role.
+> Engagement team roles are **Lead / Member** (creator is Lead; Lead has scoped ops permissions).
+> **Engagements are created by Super Admin only**; staff work inside the engagements they're attached to.
+> **Row-level scope:** Client → own client's rows; Staff → engagements they're on the team of (+ their
+> requests); Platform/Super Admin → unrestricted (see `common/security/access-scope.ts`).
 
 ---
 
@@ -125,7 +125,7 @@ Development, Shared Services, Other.
 
 **engagements** — top-level container for a client's work
 | id uuid PK · client_id FK · engagement_type_id FK · department_id FK · reference_code varchar UQ ·
-| title · period_label varchar null · **status enum(Planning,Execution,Reporting,Completed,Archived)** ·
+| title · period_label varchar null · **stage enum(Planning,Execution,Reporting,Completed,Archived)** ·
 | start_date / target_completion_date date null · completed_at timestamptz null · created_by FK |
 
 > **Stages (v7):** the working lifecycle is **Planning → Execution → Reporting → Completed → Archived**
@@ -136,8 +136,8 @@ Development, Shared Services, Other.
 
 - **engagement_types** `{ id int PK, name UQ, is_active }`.
 - **request_classes** `{ id int PK, code UQ null, name UQ, description text null, is_active }`.
-- **request_class_engagement_types** — composite PK (request_class_id, engagement_type_id): allowed request classes per type.
-- **engagement_team_members** — PK (engagement_id, user_id): member_role enum(Partner,Manager,Auditor), assigned_by FK, assigned_at.
+- **request_class_engagement_types** — composite PK (request_class_id, engagement_type_id): suggested request classes per type (soft defaults only).
+- **engagement_team_members** — PK (engagement_id, user_id): member_role enum(Lead,Member), assigned_by FK, assigned_at. Exactly one Lead per engagement (app-enforced).
 - **engagement_request_classes** — PK (engagement_id, request_class_id): sort_order, added_by FK.
 - **engagement_status_history** — id, engagement_id FK, from_status, to_status, changed_by FK, changed_at, note.
 - **engagement_sign_offs** — id, engagement_id FK, request_class_id FK null, signed_by FK, signed_at, note, revoked_by FK null, revoked_at, revoke_reason.
@@ -178,11 +178,24 @@ The Principal Partner invites by email → a **`Guest`-role user** is provisione
 `must_change_password`, credentials + login link emailed) → the guest logs in, changes password, and
 submits one report to the Chairman.
 
+**partner_report_reporters** *(Staff allow-list / unified roster prefs)* — user_id PK FK → users ·
+allowed_by_id FK → users · created_at · cadence enum(Weekly,Monthly,Quarterly,None) default Weekly ·
+reminders_enabled bool · report_requested_at null · request_note null · last_reminded_at null.
+Principal invite of an existing **Staff** email upserts a row here (no Guest account) and reminds them.
+Partners/Guests also get roster prefs on enable/invite. Cadence + reminders are **soft** (never block
+submit). Explicit **Request report** sets `report_requested_at` until the next submit.
+
+**Invite outcomes:** new email → `invited` (Guest); existing Staff → `allowed`; existing Partner/Guest →
+`reminded`; other roles → reject.
+
+**Export:** Principal (and report owners) can download a list CSV via `/partner-reports/export`,
+and a polished single-report PDF via `/partner-reports/:id/export`.
+
 **Automation / permissions:** submit → notifies the Chairman; review → notifies the author.
-`partner-report:submit` (Partner desig + Guest role), `partner-report:view` (authors see own / Chairman
-sees all), `partner-report:review` + `partner-report:view-all` + `partner-report:invite` (Principal
-Partner). **`mustChangePassword` is globally enforced** (MustChangePasswordGuard) so an invited guest must
-set a password before doing anything.
+`partner-report:submit` (Partner desig + Guest role + allow-listed Staff), `partner-report:view`
+(authors see own / Chairman sees all), `partner-report:review` + `partner-report:view-all` +
+`partner-report:invite` (Principal Partner). **`mustChangePassword` is globally enforced**
+(MustChangePasswordGuard) so an invited guest must set a password before doing anything.
 
 ---
 
@@ -191,7 +204,7 @@ set a password before doing anything.
 **requests** *(legacy `request_client`)*
 | id uuid PK · engagement_id FK · request_type_id FK (→ request_class derived) · stage_id FK → request_stages ·
 | status_id FK → request_statuses · **phase enum(Planning,Execution,Reporting) null** (the engagement
-| stage this request belongs to; defaults to the engagement's current stage) · description text ·
+| working stage this request was created in; stamped at create, does not auto-follow later transitions) · description text ·
 | due_date date null · created_by FK |
 
 - **request_types** *(legacy `request_type`)* `{ id int PK, request_class_id FK, name, expected_documents int (legacy documents_no), is_active }` — **grouped under request class** (UQ on request_class_id+name).
@@ -266,11 +279,12 @@ email_sent bool, email_sent_at null, created_at.
 
 ---
 
-## 12. Company profile (DECIDED — a settings singleton, not a library)
-**company_profile** — a **single row** holding the firm's branding/letterhead source: `id` (singleton),
-`name`, `logo_path` null, `email` null, `phone` null, `address` text null, `updated_by` FK null,
-`updated_at`. Managed via `GET`/`PATCH /api/company-profile` (`company-profile:view` / `:manage`).
-_(Supersedes the earlier "document library" idea.)_
+## 12. Company profiles (DECIDED — staff reference library)
+**company_profiles** — multi-row document library for firm capability / company profile packs that staff
+can browse and download: `id` uuid PK, `name`, `storage_key`, `file_name`, `mime_type` null,
+`size_bytes` null, `is_active` bool, `created_by` FK null, `created_at`, `updated_at`.
+Managed via `/api/company-profiles` (`company-profile:view` / `:manage`). Soft-delete via `is_active`.
+_(Replaces the interim settings-singleton idea; restores legacy library semantics with name + file only.)_
 
 ---
 
@@ -315,7 +329,7 @@ validation `result` before the user commits the import.)
 | *_final_reports(_files) ×6 | `documents`(FinalReport) + `document_files` | **unify** |
 | *_final_report_auditors/advisors/staffs | `document_participants` | **unify** |
 | reviews | `reviews` | keep |
-| company_profiles | `company_profile` (singleton settings) | keep (decided: singleton) |
+| company_profiles | `company_profiles` (name + file library) | keep (library) |
 | notifications / notification_preferences | `notifications` / `notification_preferences` | keep |
 | email_queue | `outbox` | adapt (Redis/BullMQ) |
 | activity_log | `activity_log` | keep |

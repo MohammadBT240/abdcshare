@@ -3,10 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { STORAGE } from './storage.port';
 import { LocalStorageAdapter } from './local-storage.adapter';
 import { R2StorageAdapter } from './r2-storage.adapter';
+import { LocalMultipartController } from './local-multipart.controller';
+import { LocalStorageController } from './local-storage.controller';
 
 /** Provides the active {@link StoragePort} (`local` or `r2`). */
 @Global()
 @Module({
+  controllers: [LocalMultipartController, LocalStorageController],
   providers: [
     {
       provide: STORAGE,

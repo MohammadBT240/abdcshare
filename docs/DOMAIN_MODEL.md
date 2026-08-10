@@ -48,21 +48,26 @@ A discrete body of work opened for **one client**. It is the top-level container
 else hangs off. Attributes:
 
 - **Client** — who the engagement is for (inherent).
-- **Engagement type** — e.g. Statutory Audit, Tax Compliance, Advisory. The type governs which
-  request classes / workflow templates are available.
+- **Engagement type** — e.g. Statutory Audit, Tax Compliance, Advisory. The type may **suggest**
+  default request classes on create; any active class can still be scoped onto an engagement.
+  Availability for requests (and optional working-paper class links) is gated by the engagement’s own
+  request-class scope, not by the type mapping.
 - **Period** — the reporting period the engagement covers (e.g. FY2025). *(optional / to confirm)*
-- **Status lifecycle** — `Planning → Fieldwork → Review → Completed → Archived`, each with
-  dates and an owner.
-- **Assigned team** — the people staffed on the engagement (e.g. Partner, Manager, Auditors),
-  each with an engagement role.
+- **Stage lifecycle** — `Planning → Execution → Reporting → Completed → Archived`, each with
+  dates and an owner. Requests/documents carry a **phase** (Planning/Execution/Reporting) stamped
+  at creation from the engagement’s working stage.
+- **Assigned team** — the people staffed on the engagement, each with an engagement role
+  (**Lead** or **Member**). The creator is Lead by default; Lead can elevate another member.
+  Lead has engagement-ops permissions scoped to that engagement only (update, team, classes,
+  stage transition, sign-off). Super Admin retains global powers.
 - **Department** — the internal unit that owns the engagement.
 
 ### Request Class  *(new — generalises the audit "FS line")*
 A grouping/classification *within an engagement* (for an audit: Cash & Bank, Receivables, Revenue,
 Payables, PP&E; for other engagement types, whatever grouping fits). Request classes are an
 **admin-maintained catalogue**. Request types are grouped under request classes, and requests,
-documents, and reports all inherit that grouping. A request class can be reused across engagements of a
-compatible type.
+documents (optionally) inherit that grouping. Final reports are engagement-level. A request class can be reused across engagements of a
+compatible engagement.
 
 ### Request Type
 A named template of work item (e.g. "Bank confirmation", "Lead schedule"), now **grouped under
@@ -84,10 +89,11 @@ Lookup catalogues that drive a request's workflow (e.g. stage: Not Started / In 
 Submitted / Reviewed; status: Open / Pending Client / Accepted / Returned). Admin-maintained.
 
 ### Document — Working Paper & Final Report
-Files attached to the work. **Working papers** are draft/supporting files; **final reports** are
-completed deliverables. In Quantum both are grouped by **request class within an engagement** rather
-than by the old service-line library. Stored privately (Cloudflare R2 or local fallback),
-downloaded only through authenticated endpoints.
+Files attached to the work. **Working papers** are draft/supporting files scoped to an
+**engagement**, with an **optional** request-class (and optional request) link. **Final reports**
+are engagement deliverables (not class-scoped), uploaded by Super Admin, and go through client
+draft-approval cycles. Stored privately (Cloudflare R2 or local fallback), downloaded only through
+authenticated endpoints.
 
 ### Department  *(formerly "service line")*
 An internal organisational unit (Assurance, Tax, Advisory, Business Development, Shared
@@ -106,8 +112,8 @@ In-app notifications (with per-user email preferences) and an immutable audit tr
 ## 3. Roles (v5 — Auditor dropped as a role)
 
 Four roles. **`Auditor` is no longer a role** — every Staff is a working practitioner, and "Auditor"
-survives only as a per-engagement **team tag** (member_role: Partner/Manager/Auditor) and a document
-**participant role** (Auditor/Advisor/Staff).
+survives only as a document **participant role** (Auditor/Advisor/Staff). Engagement staffing uses
+**Lead / Member** (see Assigned team above).
 
 | Role | Nature | Summary |
 |------|--------|---------|
@@ -151,8 +157,8 @@ User *───1 Role
 | **Request class** | Admin-maintained grouping/classification of request types / requests / reports within an engagement (an audit's financial-statement lines are one example). Formerly "FS line". |
 | **Request type** | Reusable template of a work item, defined under a request class. |
 | **Request** | A single work item inside an engagement, created from a request type. |
-| **Working paper** | Draft / supporting document attached to a request. |
-| **Final report** | Completed deliverable document, grouped by request class. |
+| **Working paper** | Draft / supporting document on an engagement; may optionally link a request class / request. |
+| **Final report** | Engagement deliverable document (not class-scoped); Super Admin upload + client review cycles. |
 | **Department** | Internal org unit (formerly "service line"); owns engagements and staff. |
 | **Stage / Status** | Workflow position and state of a request. |
 | **Client submission** | A document or response uploaded by a client against a request. |

@@ -1,0 +1,14 @@
+---
+description: Do not use thick colored accent bars on card edges (left or top)
+alwaysApply: true
+---
+
+# No accent edge bars on cards
+
+Never use thick colored accent bars on cards, metric tiles, or panels — neither on the left edge nor along the top edge.
+
+Avoid patterns such as:
+- `border-l-4 border-l-primary` / `border-l-sky-500` (left accent stripe)
+- A solid colored top strip (`h-1.5 bg-teal-700`, `border-t-4 border-t-primary`, full-bleed PDF header bars used only as decoration)
+
+Prefer uniform borders (`border border-border`), soft background tints, or illustrations for differentiation instead.

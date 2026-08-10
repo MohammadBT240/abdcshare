@@ -2,6 +2,15 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logge
 import type { Response } from 'express';
 import { ERROR_CODE, type ApiErrorBody, type ErrorCode } from '@abdcshare/shared';
 
+function httpExceptionMessage(exception: HttpException): string {
+  const r = exception.getResponse();
+  if (typeof r === 'string') return r;
+  const msg = (r as { message?: string | string[] }).message;
+  if (Array.isArray(msg)) return msg.join(', ');
+  if (typeof msg === 'string') return msg;
+  return exception.message;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -14,14 +23,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
-      const r = exception.getResponse();
-      message = typeof r === 'string' ? r : ((r as { message?: string }).message ?? exception.message);
+      message = httpExceptionMessage(exception);
       code = STATUS_CODE_MAP[status] ?? ERROR_CODE.Internal;
     } else {
       this.logger.error(exception);
     }
 
-    const body: ApiErrorBody = { error: message, code };
+    // `error` is the shared ApiErrorBody field; `message` mirrors Nest/BFF clients.
+    const body: ApiErrorBody & { message: string } = { error: message, message, code };
     res.status(status).json(body);
   }
 }

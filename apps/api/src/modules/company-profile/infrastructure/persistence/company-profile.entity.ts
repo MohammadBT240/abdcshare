@@ -1,28 +1,38 @@
-import { Entity, ManyToOne, PrimaryKey, Property } from '@mikro-orm/core';
+import { Entity, ManyToOne, OptionalProps, PrimaryKey, Property } from '@mikro-orm/core';
+import { randomUUID } from 'node:crypto';
 import { UserEntity } from '../../../users/infrastructure/persistence/user.entity';
 
-@Entity({ tableName: 'company_profile' })
+/** Staff reference document in the company profiles library. */
+@Entity({ tableName: 'company_profiles' })
 export class CompanyProfileEntity {
-  @PrimaryKey()
-  id!: number; // singleton row (id = 1); singleton enforced in the service, not a column default
+  [OptionalProps]?: 'id' | 'isActive' | 'createdAt' | 'updatedAt';
+
+  @PrimaryKey({ type: 'uuid' })
+  id: string = randomUUID();
 
   @Property()
   name!: string;
 
-  @Property({ nullable: true })
-  logoPath?: string | null;
+  @Property()
+  storageKey!: string;
+
+  @Property()
+  fileName!: string;
 
   @Property({ nullable: true })
-  email?: string | null;
+  mimeType?: string | null;
 
-  @Property({ nullable: true })
-  phone?: string | null;
+  @Property({ type: 'integer', nullable: true })
+  sizeBytes?: number | null;
 
-  @Property({ type: 'text', nullable: true })
-  address?: string | null;
+  @Property({ default: true })
+  isActive: boolean = true;
 
   @ManyToOne(() => UserEntity, { nullable: true })
-  updatedBy?: UserEntity | null;
+  createdBy?: UserEntity | null;
+
+  @Property({ type: 'timestamptz' })
+  createdAt: Date = new Date();
 
   @Property({ type: 'timestamptz', onUpdate: () => new Date() })
   updatedAt: Date = new Date();

@@ -1,5 +1,5 @@
 import { Collection, Entity, Enum, ManyToOne, OneToMany, Property } from '@mikro-orm/core';
-import { EngagementPhase } from '@abdcshare/shared';
+import { EngagementPhase, FilePreviewStatus } from '@abdcshare/shared';
 import { BaseEntity } from '../../../../database/base.entity';
 import { EngagementEntity } from '../../../engagements/infrastructure/persistence/engagement.entity';
 import { RequestTypeEntity } from '../../../request-types/infrastructure/persistence/request-type.entity';
@@ -35,6 +35,36 @@ export class RequestEntity extends BaseEntity {
 
   @Property({ type: 'date', nullable: true })
   dueDate?: Date | null;
+
+  /** Target client submission files for progress (snapshot from type at create). */
+  @Property({ default: 1 })
+  expectedDocumentCount: number = 1;
+
+  /** Optional client-visible expectation brief (single file). */
+  @Property({ nullable: true })
+  briefStorageKey?: string | null;
+
+  @Property({ nullable: true })
+  briefFileName?: string | null;
+
+  @Property({ nullable: true })
+  briefContentType?: string | null;
+
+  @Property({ type: 'bigint', nullable: true })
+  briefSizeBytes?: number | null;
+
+  @Property({ type: 'timestamptz', nullable: true })
+  briefUploadedAt?: Date | null;
+
+  /** Converted PDF for Office briefs (same pipeline as submission files). */
+  @Property({ nullable: true })
+  briefPreviewStorageKey?: string | null;
+
+  @Enum({ items: () => FilePreviewStatus })
+  briefPreviewStatus: FilePreviewStatus = FilePreviewStatus.None;
+
+  @Property({ type: 'text', nullable: true })
+  briefPreviewError?: string | null;
 
   @ManyToOne(() => UserEntity, { nullable: true })
   createdBy?: UserEntity | null;

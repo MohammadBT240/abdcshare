@@ -1,27 +1,47 @@
-import { NextResponse, type NextRequest } from 'next/server';
-import { ACCESS_COOKIE } from '@/lib/auth/constants';
+import { NextResponse, type NextRequest } from "next/server";
+import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/auth/constants";
 
 function isProtectedAppRoute(pathname: string): boolean {
-  return pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+  const protectedRoots = [
+    "/dashboard",
+    "/admin",
+    "/engagements",
+    "/requests",
+    "/reviews",
+    "/final-reports",
+    "/reports",
+    "/partner-reports",
+    "/settings",
+  ];
+  return protectedRoots.some(
+    (root) => pathname === root || pathname.startsWith(`${root}/`),
+  );
+}
+
+function hasSession(req: NextRequest): boolean {
+  return Boolean(
+    req.cookies.get(ACCESS_COOKIE)?.value ||
+      req.cookies.get(REFRESH_COOKIE)?.value,
+  );
 }
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const hasAccess = Boolean(req.cookies.get(ACCESS_COOKIE)?.value);
+  const signedIn = hasSession(req);
 
-  if (isProtectedAppRoute(pathname) && !hasAccess) {
-    const login = new URL('/login', req.url);
-    login.searchParams.set('redirect', pathname);
+  if (isProtectedAppRoute(pathname) && !signedIn) {
+    const login = new URL("/login", req.url);
+    login.searchParams.set("redirect", pathname);
     return NextResponse.redirect(login);
   }
 
-  if (hasAccess && pathname === '/login') {
-    return NextResponse.redirect(new URL('/dashboard', req.url));
+  if (signedIn && pathname === "/login") {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  if (pathname === '/change-password' && !hasAccess) {
-    const login = new URL('/login', req.url);
-    login.searchParams.set('redirect', '/change-password');
+  if (pathname === "/change-password" && !signedIn) {
+    const login = new URL("/login", req.url);
+    login.searchParams.set("redirect", "/change-password");
     return NextResponse.redirect(login);
   }
 
@@ -29,5 +49,28 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard', '/dashboard/:path*', '/login', '/change-password', '/forgot-password', '/reset-password'],
+  matcher: [
+    "/dashboard",
+    "/dashboard/:path*",
+    "/admin",
+    "/admin/:path*",
+    "/engagements",
+    "/engagements/:path*",
+    "/requests",
+    "/requests/:path*",
+    "/reviews",
+    "/reviews/:path*",
+    "/final-reports",
+    "/final-reports/:path*",
+    "/reports",
+    "/reports/:path*",
+    "/partner-reports",
+    "/partner-reports/:path*",
+    "/settings",
+    "/settings/:path*",
+    "/login",
+    "/change-password",
+    "/forgot-password",
+    "/reset-password",
+  ],
 };

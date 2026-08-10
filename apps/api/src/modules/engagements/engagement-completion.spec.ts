@@ -1,14 +1,36 @@
 import { BadRequestException } from '@nestjs/common';
-import { EngagementStatus } from '@abdcshare/shared';
+import { EngagementStage } from '@abdcshare/shared';
+import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { EngagementsService } from './engagements.service';
 import { EngagementEntity } from './infrastructure/persistence/engagement.entity';
 import { EngagementRequestClassEntity } from './infrastructure/persistence/engagement-request-class.entity';
 import { EngagementSignOffEntity } from './infrastructure/persistence/engagement-sign-off.entity';
 
+const sa = {
+  userId: 'u1',
+  email: '',
+  role: 'Super Admin',
+  mustChangePassword: false,
+} as AuthenticatedUser;
+
+function mockOutbox() {
+  return { enqueue: jest.fn() };
+}
+
+function mockNotifications() {
+  return { emit: jest.fn(async () => undefined) };
+}
+
 describe('EngagementsService.transition → Completed (sign-off gate)', () => {
   it('blocks completion while an in-scope request class is unsigned', async () => {
     const em = {
-      findOneOrFail: jest.fn(async () => ({ status: EngagementStatus.Reporting })),
+      findOne: jest.fn(async (entity: unknown) => {
+        if (entity === EngagementEntity) {
+          return { id: 'e1', createdBy: { id: sa.userId } };
+        }
+        return null;
+      }),
+      findOneOrFail: jest.fn(async () => ({ stage: EngagementStage.Reporting })),
       count: jest.fn(async () => 0), // no engagement-wide sign-off
       find: jest.fn(async (entity: unknown) => {
         if (entity === EngagementRequestClassEntity) return [{ requestClass: { id: 1 } }]; // one class in scope
@@ -18,16 +40,25 @@ describe('EngagementsService.transition → Completed (sign-off gate)', () => {
       create: jest.fn(),
       flush: jest.fn(),
     };
-    const service = new EngagementsService(em as never);
+    const service = new EngagementsService(em as never, mockOutbox() as never, mockNotifications() as never, { presignDownload: jest.fn() } as never);
     await expect(
-      service.transition('e1', { toStatus: EngagementStatus.Completed }, 'u1'),
+      service.transition('e1', { toStage: EngagementStage.Completed }, sa),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(em.create).not.toHaveBeenCalled(); // never wrote the status-history row
+    expect(em.create).not.toHaveBeenCalled(); // never wrote the stage-history row
   });
 
   it('allows completion when an engagement-wide sign-off exists', async () => {
-    const engagement = { status: EngagementStatus.Reporting, completedAt: null as Date | null };
+    const engagement = {
+      stage: EngagementStage.Reporting,
+      completedAt: null as Date | null,
+      referenceCode: 'ENG-1',
+      createdBy: { id: sa.userId },
+    };
     const em = {
+      findOne: jest.fn(async (entity: unknown) => {
+        if (entity === EngagementEntity) return engagement;
+        return null;
+      }),
       findOneOrFail: jest.fn(async (entity: unknown) =>
         entity === EngagementEntity ? engagement : engagement,
       ),
@@ -37,11 +68,15 @@ describe('EngagementsService.transition → Completed (sign-off gate)', () => {
       getReference: jest.fn(),
       flush: jest.fn(async () => undefined),
     };
-    const service = new EngagementsService(em as never);
+    const outbox = mockOutbox();
+    const notifications = mockNotifications();
+    const service = new EngagementsService(em as never, outbox as never, notifications as never, { presignDownload: jest.fn() } as never);
     jest.spyOn(service, 'getOne').mockResolvedValue({ id: 'e1' } as never);
 
-    await service.transition('e1', { toStatus: EngagementStatus.Completed }, 'u1');
-    expect(engagement.status).toBe(EngagementStatus.Completed);
+    await service.transition('e1', { toStage: EngagementStage.Completed }, sa);
+    expect(engagement.stage).toBe(EngagementStage.Completed);
     expect(engagement.completedAt).toBeInstanceOf(Date);
+    expect(outbox.enqueue).toHaveBeenCalled();
+    expect(notifications.emit).toHaveBeenCalled();
   });
 });

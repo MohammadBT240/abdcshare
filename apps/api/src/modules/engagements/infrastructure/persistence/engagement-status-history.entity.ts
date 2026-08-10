@@ -1,12 +1,12 @@
 import { Entity, Enum, ManyToOne, OptionalProps, PrimaryKey, Property } from '@mikro-orm/core';
 import { randomUUID } from 'node:crypto';
-import { EngagementStatus } from '@abdcshare/shared';
+import { EngagementStage } from '@abdcshare/shared';
 import { EngagementEntity } from './engagement.entity';
 import { UserEntity } from '../../../users/infrastructure/persistence/user.entity';
 
-/** Append-only audit of engagement status transitions. */
+/** Append-only audit of engagement stage transitions. */
 @Entity({ tableName: 'engagement_status_history' })
-export class EngagementStatusHistoryEntity {
+export class EngagementStageHistoryEntity {
   [OptionalProps]?: 'id' | 'changedAt';
 
   @PrimaryKey({ type: 'uuid' })
@@ -15,11 +15,11 @@ export class EngagementStatusHistoryEntity {
   @ManyToOne(() => EngagementEntity, { deleteRule: 'cascade' })
   engagement!: EngagementEntity;
 
-  @Enum({ items: () => EngagementStatus, nullable: true })
-  fromStatus?: EngagementStatus | null;
+  @Enum({ items: () => EngagementStage, nullable: true, fieldName: 'from_stage' })
+  fromStage?: EngagementStage | null;
 
-  @Enum({ items: () => EngagementStatus })
-  toStatus!: EngagementStatus;
+  @Enum({ items: () => EngagementStage, fieldName: 'to_stage' })
+  toStage!: EngagementStage;
 
   @ManyToOne(() => UserEntity, { nullable: true })
   changedBy?: UserEntity | null;

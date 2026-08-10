@@ -36,3 +36,10 @@ export class PreferenceResponseDto {
   @ApiProperty() emailEnabled!: boolean;
   @ApiProperty() inAppEnabled!: boolean;
 }
+
+export class NotificationTypeCatalogItemDto {
+  @ApiProperty() type!: string;
+  @ApiProperty() label!: string;
+  @ApiProperty() description!: string;
+  @ApiProperty() category!: string;
+}

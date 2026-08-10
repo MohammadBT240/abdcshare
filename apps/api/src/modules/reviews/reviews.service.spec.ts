@@ -17,3 +17,27 @@ describe('ReviewsService.submit — target validation', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('ReviewsService.list — decision queue', () => {
+  it('allows an unscoped pending queue for reviewers', async () => {
+    const em = {
+      findAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    const service = new ReviewsService(em as never, { emit: jest.fn() } as never);
+    const reviewer = {
+      userId: 'reviewer-1',
+      email: '',
+      role: 'Super Admin',
+      mustChangePassword: false,
+    } as AuthenticatedUser;
+
+    await expect(
+      service.list({ status: 'ForReview' as never, page: 1, pageSize: 20 }, reviewer),
+    ).resolves.toMatchObject({ data: [], meta: { total: 0 } });
+    expect(em.findAndCount).toHaveBeenCalledWith(
+      expect.anything(),
+      { reviewer: reviewer.userId, status: 'ForReview' },
+      expect.any(Object),
+    );
+  });
+});

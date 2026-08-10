@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerApiClient } from '@/lib/auth/api';
 import { clearAuthCookies, getRefreshToken, setAuthCookies } from '@/lib/auth/cookies';
 import { jsonError } from '@/lib/bff/auth-helpers';
+import type { AuthTokens } from '@abdcshare/api-client';
 
 export async function POST(req: Request): Promise<NextResponse> {
   const body = (await req.json()) as { refreshToken?: string };
@@ -12,11 +13,13 @@ export async function POST(req: Request): Promise<NextResponse> {
   const { data, response, error } = await client.POST('/api/auth/refresh', {
     body: { refreshToken: token },
   });
-  if (!response.ok || !data) {
+
+  const tokens = data as Pick<AuthTokens, 'accessToken' | 'refreshToken'> | undefined;
+  if (!response.ok || !tokens?.accessToken || !tokens.refreshToken) {
     await clearAuthCookies();
-    return jsonError(response.status, error);
+    return jsonError(response.status || 500, error ?? { message: 'Session expired' });
   }
 
-  await setAuthCookies(data.accessToken, data.refreshToken);
+  await setAuthCookies(tokens.accessToken, tokens.refreshToken);
   return NextResponse.json({ ok: true });
 }
