@@ -20,8 +20,16 @@ export interface TokenPair {
   refreshToken: string;
 }
 
+/** Concurrent / slightly-late rotates of the same token return the same pair. */
+const ROTATION_GRACE_MS = 30_000;
+
 @Injectable()
 export class TokenService {
+  /** In-flight rotates keyed by refresh-token hash (same process). */
+  private readonly inflight = new Map<string, Promise<TokenPair>>();
+  /** Recently issued pairs for a just-rotated (old) hash — grace for races. */
+  private readonly recentByOldHash = new Map<string, { pair: TokenPair; until: number }>();
+
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
@@ -67,42 +75,108 @@ export class TokenService {
     return { accessToken: await this.signAccess(subject), refreshToken: raw };
   }
 
-  /** Rotate a refresh token; detect reuse (revoked token replayed → revoke the whole family). */
+  private subjectFromUser(user: UserEntity): TokenSubject {
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role.roleName,
+      partnerDesignation: user.partnerDesignation ?? null,
+      clientId: user.client?.id ?? null,
+      mustChangePassword: user.mustChangePassword,
+    };
+  }
+
+  private rememberGrace(oldHash: string, pair: TokenPair): void {
+    const until = Date.now() + ROTATION_GRACE_MS;
+    this.recentByOldHash.set(oldHash, { pair, until });
+    // Opportunistic cleanup of expired grace entries.
+    for (const [key, entry] of this.recentByOldHash) {
+      if (entry.until <= Date.now()) this.recentByOldHash.delete(key);
+    }
+  }
+
+  private gracePair(oldHash: string): TokenPair | null {
+    const entry = this.recentByOldHash.get(oldHash);
+    if (!entry) return null;
+    if (entry.until <= Date.now()) {
+      this.recentByOldHash.delete(oldHash);
+      return null;
+    }
+    return entry.pair;
+  }
+
+  /**
+   * Rotate a refresh token.
+   * Concurrent presents of the same token share one rotate (and a short grace
+   * window) so polling races are not treated as theft. True reuse after grace
+   * still revokes the whole family.
+   */
   async rotate(rawRefresh: string): Promise<TokenPair> {
-    const row = await this.em.findOne(RefreshTokenEntity, { tokenHash: this.hash(rawRefresh) }, { populate: ['user', 'user.role'] });
+    const oldHash = this.hash(rawRefresh);
+
+    const cached = this.gracePair(oldHash);
+    if (cached) return cached;
+
+    const existing = this.inflight.get(oldHash);
+    if (existing) return existing;
+
+    const run = this.rotateInner(rawRefresh, oldHash).finally(() => {
+      this.inflight.delete(oldHash);
+    });
+    this.inflight.set(oldHash, run);
+    return run;
+  }
+
+  private async rotateInner(rawRefresh: string, oldHash: string): Promise<TokenPair> {
+    const cached = this.gracePair(oldHash);
+    if (cached) return cached;
+
+    const row = await this.em.findOne(
+      RefreshTokenEntity,
+      { tokenHash: oldHash },
+      { populate: ['user', 'user.role'] },
+    );
     if (!row) throw new UnauthorizedException('Invalid refresh token');
 
     if (row.revokedAt) {
-      // Reuse of an already-rotated token → compromise; revoke the family.
-      await this.em.nativeUpdate(RefreshTokenEntity, { familyId: row.familyId, revokedAt: null }, { revokedAt: new Date() });
+      const grace = this.gracePair(oldHash);
+      if (grace) return grace;
+
+      // Outside grace: reuse of an already-rotated token → compromise.
+      await this.em.nativeUpdate(
+        RefreshTokenEntity,
+        { familyId: row.familyId, revokedAt: null },
+        { revokedAt: new Date() },
+      );
       throw new UnauthorizedException('Refresh token reuse detected');
     }
-    if (row.expiresAt.getTime() < Date.now()) throw new UnauthorizedException('Refresh token expired');
+    if (row.expiresAt.getTime() < Date.now()) {
+      throw new UnauthorizedException('Refresh token expired');
+    }
 
     row.revokedAt = new Date();
     await this.em.flush();
 
-    const user = row.user;
-    return this.issueWithFamily(
-      {
-        id: user.id,
-        email: user.email,
-        role: user.role.roleName,
-        partnerDesignation: user.partnerDesignation ?? null,
-        clientId: user.client?.id ?? null,
-        mustChangePassword: user.mustChangePassword,
-      },
-      row.familyId,
-    );
+    const pair = await this.issueWithFamily(this.subjectFromUser(row.user), row.familyId);
+    this.rememberGrace(oldHash, pair);
+    return pair;
   }
 
   /** Revoke a single presented refresh token (logout). */
   async revoke(rawRefresh: string): Promise<void> {
-    await this.em.nativeUpdate(RefreshTokenEntity, { tokenHash: this.hash(rawRefresh) }, { revokedAt: new Date() });
+    await this.em.nativeUpdate(
+      RefreshTokenEntity,
+      { tokenHash: this.hash(rawRefresh) },
+      { revokedAt: new Date() },
+    );
   }
 
   /** Revoke every active refresh token for a user (e.g. after password change). */
   async revokeAllForUser(userId: string): Promise<void> {
-    await this.em.nativeUpdate(RefreshTokenEntity, { user: userId, revokedAt: null }, { revokedAt: new Date() });
+    await this.em.nativeUpdate(
+      RefreshTokenEntity,
+      { user: userId, revokedAt: null },
+      { revokedAt: new Date() },
+    );
   }
 }
