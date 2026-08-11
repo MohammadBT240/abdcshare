@@ -12,24 +12,29 @@ certbot_skip_ids: []
 nginx_include_letsencrypt_ssl_snippets: true
 
 # Host ports must match group_vars/<env>/main.yml (API_HOST_PORT / WEB_HOST_PORT).
+# Company profiles / documents allow up to 100 MB; keep a small buffer for multipart overhead.
 nginx_sites:
   - id: api
     server_names:
       - api.abdcshare.com
     port: 4100
+    client_max_body_size: 105m
 
   - id: web
     server_names:
       - abdcshare.com
       - www.abdcshare.com
     port: 3100
+    client_max_body_size: 105m
 
   - id: staging-api
     server_names:
       - staging-api.abdcshare.com
     port: 4101
+    client_max_body_size: 105m
 
   - id: staging-web
     server_names:
       - staging.abdcshare.com
     port: 3101
+    client_max_body_size: 105m
