@@ -5,9 +5,10 @@ const config: NextConfig = {
   // Self-contained server bundle for the Docker image (deploy/Dockerfile.web).
   output: 'standalone',
   transpilePackages: ['@abdcshare/shared', '@abdcshare/api-client'],
-  // Avatar base64 uploads pass through the BFF proxy (~2 MB file → ~2.8 MB JSON).
+  // BFF proxy carries multipart uploads (company profiles / documents up to 100 MB)
+  // and smaller avatar base64 JSON. Must stay ≥ nginx client_max_body_size.
   experimental: {
-    middlewareClientMaxBodySize: '4mb',
+    middlewareClientMaxBodySize: '105mb',
   },
   async redirects() {
     return [

@@ -18,7 +18,7 @@ server {
 
     location / {
         # BFF proxies base64 avatar JSON (~3 MB) and document downloads.
-        client_max_body_size {{ item.client_max_body_size | default('20m') }};
+        client_max_body_size {{ item.client_max_body_size | default('105m') }};
         proxy_pass http://127.0.0.1:{{ item.port }};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -59,7 +59,7 @@ server {
 
     location / {
         # BFF proxies base64 avatar JSON (~3 MB) and document downloads.
-        client_max_body_size {{ item.client_max_body_size | default('20m') }};
+        client_max_body_size {{ item.client_max_body_size | default('105m') }};
         proxy_pass http://127.0.0.1:{{ item.port }};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -83,7 +83,7 @@ server {
     }
 
     location / {
-        client_max_body_size {{ item.client_max_body_size | default('20m') }};
+        client_max_body_size {{ item.client_max_body_size | default('105m') }};
         proxy_pass http://127.0.0.1:{{ item.port }};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
