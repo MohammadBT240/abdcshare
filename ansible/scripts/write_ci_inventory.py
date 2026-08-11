@@ -23,7 +23,12 @@ def write_inventory(group: str, host_alias: str, out_path: Path) -> None:
     def dq(s: str) -> str:
         return f'"{yaml_escape_double_quoted(s)}"'
 
-    ssh_args = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    # Keepalives prevent CI SSH drops during long first-time docker pulls
+    # (worker image especially). 30s × 120 ≈ 60 minutes of silence allowed.
+    ssh_args = (
+        "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+        "-o ServerAliveInterval=30 -o ServerAliveCountMax=120"
+    )
 
     text = f"""---
 # Generated in CI. See ansible/scripts/write_ci_inventory.py

@@ -164,5 +164,7 @@ migrations additive/backward-compatible so old code can run against new schema.
 - **DB backups**: no project on this VM has automated Postgres backups yet — add a
   nightly `pg_dump` to R2 (covers abdchub/QET too).
 - **SSH auth**: CI deploys use password auth (house pattern); move to a dedicated
-  deploy SSH key.
+  deploy SSH key. CI inventory already sends SSH keepalives
+  (`ServerAliveInterval=30`, `ServerAliveCountMax=120`) and the stack pull/up
+  task allows up to 60 minutes so first-image pulls do not drop the session.
 - **Monitoring**: worker/queue metrics (Bull Board) and log shipping are not set up.
