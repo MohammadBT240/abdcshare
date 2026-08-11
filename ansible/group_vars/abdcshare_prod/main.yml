@@ -19,7 +19,9 @@ password_reset_ttl: 3600
 storage_driver: "r2"
 storage_upload_ttl: 900
 r2_bucket: "abdcshare-uploads"
-r2_endpoint: ""
+# R2's S3-compatible endpoint — derived from the account id in vault.yml.
+# Must be a valid URL: the api/worker env schemas reject an empty string.
+r2_endpoint: "https://{{ vault_r2_account_id }}.r2.cloudflarestorage.com"
 r2_object_prefix: "abdcshare"
 
 email_from: "ABDC Share <no-reply@abdcshare.com>"
