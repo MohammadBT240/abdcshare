@@ -11,6 +11,8 @@ describe('CompanyProfileService', () => {
       findAndCount: jest.fn(async (_e: unknown, where: Record<string, unknown>) => {
         const filtered = rows.filter((r) => {
           if (where.isActive !== undefined && r.isActive !== where.isActive) return false;
+          const sk = where.storageKey as { $ne?: null } | undefined;
+          if (sk && '$ne' in sk && sk.$ne === null && (r.storageKey == null)) return false;
           const nameFilter = where.name as { $ilike?: string } | undefined;
           if (nameFilter?.$ilike) {
             const needle = nameFilter.$ilike.replace(/%/g, '').toLowerCase();
@@ -41,32 +43,46 @@ describe('CompanyProfileService', () => {
       persistAndFlush: jest.fn(async () => undefined),
       flush: jest.fn(async () => undefined),
       populate: jest.fn(async () => undefined),
+      removeAndFlush: jest.fn(async (row: CompanyProfileEntity) => {
+        const idx = rows.indexOf(row);
+        if (idx >= 0) rows.splice(idx, 1);
+      }),
       getReference: jest.fn((_e: unknown, id: string) => ({ id })),
       ...overrides,
     };
     const storage = {
       upload: jest.fn(async () => ({ storageKey: 'company-profiles/key.pdf' })),
+      head: jest.fn(async () => ({ sizeBytes: 1024 })),
       presignDownload: jest.fn(async () => 'https://example.com/file.pdf'),
-      presignUpload: jest.fn(),
+      presignUpload: jest.fn(async () => ({
+        storageKey: 'company-profiles/new.pdf',
+        uploadUrl: 'https://upload.example.com',
+        method: 'PUT' as const,
+        headers: {},
+        expiresIn: 900,
+      })),
     };
     const service = new CompanyProfileService(em as never, storage as never);
     return { service, em, storage, rows };
   }
 
-  const pdf = {
-    originalname: 'pack.pdf',
-    mimetype: 'application/pdf',
-    size: 1024,
-    buffer: Buffer.from('pdf'),
-  };
-
-  it('lists only active profiles and supports name search', async () => {
+  it('lists only active complete profiles and supports name search', async () => {
     const { service, rows } = build();
     rows.push(
       {
         id: 'a',
         name: 'Alpha pack',
         fileName: 'a.pdf',
+        storageKey: 'company-profiles/a.pdf',
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as CompanyProfileEntity,
+      {
+        id: 'draft',
+        name: 'Draft',
+        fileName: null,
+        storageKey: null,
         isActive: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -75,6 +91,7 @@ describe('CompanyProfileService', () => {
         id: 'b',
         name: 'Beta',
         fileName: 'b.pdf',
+        storageKey: 'company-profiles/b.pdf',
         isActive: false,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -89,26 +106,61 @@ describe('CompanyProfileService', () => {
     expect(searched.data).toHaveLength(1);
   });
 
-  it('creates a profile with name + file', async () => {
+  it('creates a draft with name only', async () => {
     const { service, storage, em } = build();
-    const result = await service.create('Firm pack', pdf, userId);
-    expect(storage.upload).toHaveBeenCalled();
+    const result = await service.createDraft({ name: 'Firm pack' }, userId);
+    expect(storage.upload).not.toHaveBeenCalled();
     expect(em.persistAndFlush).toHaveBeenCalled();
     expect(result.name).toBe('Firm pack');
-    expect(result.fileName).toBe('pack.pdf');
+    expect(result.fileName).toBeNull();
     expect(result.id).toBe('profile-1');
   });
 
-  it('rejects create without name or file', async () => {
+  it('rejects draft create without name', async () => {
     const { service } = build();
-    await expect(service.create('', pdf, userId)).rejects.toBeInstanceOf(BadRequestException);
-    await expect(service.create('Name', undefined, userId)).rejects.toBeInstanceOf(
+    await expect(service.createDraft({ name: '' }, userId)).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });
 
-  it('soft-deletes and hides from get', async () => {
-    const { service, rows } = build();
+  it('confirms an uploaded file onto a draft', async () => {
+    const { service, rows, storage } = build();
+    rows.push({
+      id: 'profile-1',
+      name: 'Firm pack',
+      fileName: null,
+      storageKey: null,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as CompanyProfileEntity);
+
+    const result = await service.confirmUpload('profile-1', {
+      storageKey: 'company-profiles/pack.pdf',
+      fileName: 'pack.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+    });
+    expect(storage.head).toHaveBeenCalled();
+    expect(result.fileName).toBe('pack.pdf');
+    expect(rows[0]?.storageKey).toBe('company-profiles/pack.pdf');
+  });
+
+  it('hard-deletes drafts and soft-deletes complete profiles', async () => {
+    const { service, rows, em } = build();
+    rows.push({
+      id: 'draft-1',
+      name: 'Draft',
+      fileName: null,
+      storageKey: null,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as CompanyProfileEntity);
+
+    await service.remove('draft-1');
+    expect(em.removeAndFlush).toHaveBeenCalled();
+
     rows.push({
       id: 'profile-1',
       name: 'X',
@@ -119,8 +171,8 @@ describe('CompanyProfileService', () => {
       updatedAt: new Date(),
     } as CompanyProfileEntity);
 
-    await service.softDelete('profile-1');
-    expect(rows[0]?.isActive).toBe(false);
+    await service.remove('profile-1');
+    expect(rows.find((r) => r.id === 'profile-1')?.isActive).toBe(false);
     await expect(service.get('profile-1')).rejects.toBeInstanceOf(NotFoundException);
   });
 

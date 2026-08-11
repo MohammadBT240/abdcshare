@@ -139,6 +139,7 @@ The seed is idempotent (reference data + Platform Admin with `mustChangePassword
    `ansible-vault encrypt` each, commit.
 3. **R2**: create `abdcshare-uploads` + `abdcshare-uploads-staging` buckets; CORS must
    allow PUT/GET/HEAD from the web origins with `ExposeHeaders: ETag`.
+   Required for Uppy direct uploads (submissions, documents, company profiles, planning docs).
 4. **GitHub**: set the secrets (§3), create the `production` environment with a
    required reviewer.
 5. Push the `staging` branch → watch the pipeline → run the seed profile (§6) →

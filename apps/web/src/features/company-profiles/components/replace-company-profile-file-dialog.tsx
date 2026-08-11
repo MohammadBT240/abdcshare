@@ -25,6 +25,7 @@ export function ReplaceCompanyProfileFileDialog({
 }) {
   const replace = useReplaceCompanyProfileFile();
   const [files, setFiles] = useState<File[]>([]);
+  const [percent, setPercent] = useState<number | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,12 +35,25 @@ export function ReplaceCompanyProfileFileDialog({
       return;
     }
     try {
-      await replace.mutateAsync({ id: profile.id, file });
+      setPercent(0);
+      await replace.mutateAsync({
+        id: profile.id,
+        file,
+        onProgress: (p) => setPercent(p),
+      });
       toast.success('File replaced');
       setFiles([]);
+      setPercent(null);
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof BffClientError ? err.message : 'Replace failed');
+      setPercent(null);
+      toast.error(
+        err instanceof BffClientError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Replace failed',
+      );
     }
   }
 
@@ -47,7 +61,10 @@ export function ReplaceCompanyProfileFileDialog({
     <FormDialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) setFiles([]);
+        if (!next) {
+          setFiles([]);
+          setPercent(null);
+        }
         onOpenChange(next);
       }}
       title="Replace file"
@@ -64,12 +81,12 @@ export function ReplaceCompanyProfileFileDialog({
             loading={replace.isPending}
             disabled={files.length === 0}
           >
-            Replace
+            {replace.isPending && percent != null ? `Replace ${percent}%` : 'Replace'}
           </LoadingButton>
         </>
       }
     >
-      <form id="replace-company-profile-form" onSubmit={handleSubmit}>
+      <form id="replace-company-profile-form" onSubmit={handleSubmit} className="space-y-4">
         <FormField label="Document" required>
           <FileUpload
             files={files}
@@ -80,6 +97,17 @@ export function ReplaceCompanyProfileFileDialog({
             description="PDF, DOC, or DOCX — up to 100 MB."
           />
         </FormField>
+        {replace.isPending && percent != null ? (
+          <div className="space-y-1">
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary transition-[width]"
+                style={{ width: `${Math.min(100, percent)}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Uploading to storage… {percent}%</p>
+          </div>
+        ) : null}
       </form>
     </FormDialog>
   );

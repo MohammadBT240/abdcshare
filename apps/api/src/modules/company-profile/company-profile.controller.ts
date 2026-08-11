@@ -9,27 +9,29 @@ import {
   Patch,
   Post,
   Query,
-  UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Paginated } from '@abdcshare/shared';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { CompanyProfileService } from './company-profile.service';
-import { COMPANY_PROFILE_MAX_BYTES } from './company-profile.constants';
 import {
+  MultipartAbortDto,
+  MultipartCompleteDto,
+  MultipartCreateDto,
+  MultipartSignPartsDto,
+} from '../../common/storage/multipart.dto';
+import { CompanyProfileService } from './company-profile.service';
+import {
+  CompanyProfileConfirmDto,
   CompanyProfileDownloadDto,
   CompanyProfileListQueryDto,
+  CompanyProfilePresignDto,
   CompanyProfilePreviewDto,
   CompanyProfileResponseDto,
+  CreateCompanyProfileDto,
+  PresignedUploadResponseDto,
   RenameCompanyProfileDto,
 } from './presentation/dto/company-profile.dto';
-
-const fileInterceptor = FileInterceptor('file', {
-  limits: { fileSize: COMPANY_PROFILE_MAX_BYTES },
-});
 
 @ApiTags('company-profiles')
 @ApiBearerAuth()
@@ -47,24 +49,68 @@ export class CompanyProfileController {
 
   @Post()
   @RequirePermission('company-profile:manage')
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['name', 'file'],
-      properties: {
-        name: { type: 'string' },
-        file: { type: 'string', format: 'binary' },
-      },
-    },
-  })
-  @UseInterceptors(fileInterceptor)
   create(
-    @Body('name') name: string,
-    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() dto: CreateCompanyProfileDto,
     @CurrentUser('userId') userId: string,
   ): Promise<CompanyProfileResponseDto> {
-    return this.companyProfile.create(name, file, userId);
+    return this.companyProfile.createDraft(dto, userId);
+  }
+
+  @Post(':id/files/presign')
+  @RequirePermission('company-profile:manage')
+  presign(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CompanyProfilePresignDto,
+  ): Promise<PresignedUploadResponseDto> {
+    return this.companyProfile.presignUpload(id, dto);
+  }
+
+  @Post(':id/files')
+  @RequirePermission('company-profile:manage')
+  confirm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CompanyProfileConfirmDto,
+  ): Promise<CompanyProfileResponseDto> {
+    return this.companyProfile.confirmUpload(id, dto);
+  }
+
+  @Post(':id/files/multipart')
+  @RequirePermission('company-profile:manage')
+  createMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MultipartCreateDto,
+  ) {
+    return this.companyProfile.createMultipart(id, dto);
+  }
+
+  @Post(':id/files/multipart/:uploadId/parts')
+  @RequirePermission('company-profile:manage')
+  signMultipartParts(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartSignPartsDto,
+  ) {
+    return this.companyProfile.signMultipartParts(id, uploadId, dto);
+  }
+
+  @Post(':id/files/multipart/:uploadId/complete')
+  @RequirePermission('company-profile:manage')
+  completeMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartCompleteDto,
+  ): Promise<CompanyProfileResponseDto> {
+    return this.companyProfile.completeMultipart(id, uploadId, dto);
+  }
+
+  @Post(':id/files/multipart/:uploadId/abort')
+  @RequirePermission('company-profile:manage')
+  abortMultipart(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('uploadId') uploadId: string,
+    @Body() dto: MultipartAbortDto,
+  ) {
+    return this.companyProfile.abortMultipart(id, uploadId, dto);
   }
 
   @Get(':id/download')
@@ -77,26 +123,6 @@ export class CompanyProfileController {
   @RequirePermission('company-profile:view')
   preview(@Param('id', ParseUUIDPipe) id: string): Promise<CompanyProfilePreviewDto> {
     return this.companyProfile.preview(id);
-  }
-
-  @Post(':id/file')
-  @RequirePermission('company-profile:manage')
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['file'],
-      properties: {
-        file: { type: 'string', format: 'binary' },
-      },
-    },
-  })
-  @UseInterceptors(fileInterceptor)
-  replaceFile(
-    @Param('id', ParseUUIDPipe) id: string,
-    @UploadedFile() file: Express.Multer.File | undefined,
-  ): Promise<CompanyProfileResponseDto> {
-    return this.companyProfile.replaceFile(id, file);
   }
 
   @Get(':id')
@@ -117,7 +143,7 @@ export class CompanyProfileController {
   @Delete(':id')
   @HttpCode(204)
   @RequirePermission('company-profile:manage')
-  softDelete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.companyProfile.softDelete(id);
+  remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.companyProfile.remove(id);
   }
 }
