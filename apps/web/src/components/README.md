@@ -12,4 +12,4 @@ Layered components for uniform UX across the app.
 
 Prefer `FilterBar` outside `DataTable` for list pages. Features must not import `react-day-picker` or `cmdk` directly.
 
-**Uploads:** Avatars stay small (2 MB, base64 via API). Documents / company profiles use multipart (`bffFormData`) up to `DOCUMENT_MAX_BYTES` (100 MB) — never send large binaries as JSON.
+**Uploads:** Avatars stay small (2 MB, base64 via API). Company profiles, planning docs, submissions, and working papers use Uppy → R2 (presign/multipart). Never send large binaries as JSON through the BFF.

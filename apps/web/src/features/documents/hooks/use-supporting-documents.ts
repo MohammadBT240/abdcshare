@@ -2,7 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import type { PageMeta } from '@abdcshare/api-client';
-import { bffApi, bffFormData } from '@/lib/bff/client';
+import { bffApi } from '@/lib/bff/client';
+import { uploadFilesWithUppy } from '@/lib/uploads/uppy-client';
 
 export interface SupportingDocumentFile {
   id: string;
@@ -54,7 +55,15 @@ export function useSupportingDocuments(engagementId: string) {
 export function useCreateSupportingDocument(engagementId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ title, file }: { title: string; file: File }) => {
+    mutationFn: async ({
+      title,
+      file,
+      onProgress,
+    }: {
+      title: string;
+      file: File;
+      onProgress?: (percent: number) => void;
+    }) => {
       const created = await bffApi<SupportingDocument>('/api/documents', {
         method: 'POST',
         body: JSON.stringify({
@@ -64,9 +73,18 @@ export function useCreateSupportingDocument(engagementId: string) {
           phase: 'Planning',
         }),
       });
-      const form = new FormData();
-      form.append('file', file);
-      return bffFormData<SupportingDocument>(`/api/documents/${created.id}/files/upload`, form);
+      try {
+        await uploadFilesWithUppy(
+          { kind: 'document', parentId: created.id, onProgress },
+          [file],
+        );
+      } catch (err) {
+        await bffApi<void>(`/api/documents/${created.id}`, { method: 'DELETE' }).catch(
+          () => undefined,
+        );
+        throw err;
+      }
+      return bffApi<SupportingDocument>(`/api/documents/${created.id}`);
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: supportingListKey(engagementId) });

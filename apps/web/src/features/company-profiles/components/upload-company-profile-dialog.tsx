@@ -22,10 +22,12 @@ export function UploadCompanyProfileDialog({
   const create = useCreateCompanyProfile();
   const [name, setName] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [percent, setPercent] = useState<number | null>(null);
 
   function reset() {
     setName('');
     setFiles([]);
+    setPercent(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -36,12 +38,18 @@ export function UploadCompanyProfileDialog({
       return;
     }
     try {
-      await create.mutateAsync({ name: name.trim(), file });
+      setPercent(0);
+      await create.mutateAsync({
+        name: name.trim(),
+        file,
+        onProgress: (p) => setPercent(p),
+      });
       toast.success('Company profile uploaded');
       reset();
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof BffClientError ? err.message : 'Upload failed');
+      setPercent(null);
+      toast.error(err instanceof BffClientError ? err.message : err instanceof Error ? err.message : 'Upload failed');
     }
   }
 
@@ -66,7 +74,7 @@ export function UploadCompanyProfileDialog({
             loading={create.isPending}
             disabled={!name.trim() || files.length === 0}
           >
-            Upload
+            {create.isPending && percent != null ? `Upload ${percent}%` : 'Upload'}
           </LoadingButton>
         </>
       }
@@ -91,6 +99,17 @@ export function UploadCompanyProfileDialog({
             description="PDF, DOC, or DOCX — up to 100 MB."
           />
         </FormField>
+        {create.isPending && percent != null ? (
+          <div className="space-y-1">
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary transition-[width]"
+                style={{ width: `${Math.min(100, percent)}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Uploading to storage… {percent}%</p>
+          </div>
+        ) : null}
       </form>
     </FormDialog>
   );
