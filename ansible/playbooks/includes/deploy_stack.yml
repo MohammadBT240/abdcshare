@@ -63,6 +63,8 @@
     fi
   args:
     executable: /bin/bash
+  # First pull of api/worker/web (LibreOffice worker) can exceed default limits.
+  timeout: 3600
   environment:
     GHCR_PULL_TOKEN: "{{ ghcr_pull_token | default('') }}"
     GHCR_USERNAME: "{{ ghcr_username | default('') }}"
