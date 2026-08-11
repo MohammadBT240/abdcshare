@@ -44,7 +44,13 @@ async function main(): Promise<void> {
   console.log('DB setup complete.');
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    // One-shot script: force exit so a lingering connection handle can never
+    // keep the container alive (the compose migrate step must terminate).
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

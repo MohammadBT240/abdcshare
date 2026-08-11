@@ -99,8 +99,13 @@ if (require.main === module) {
     const orm = await MikroORM.init(config);
     await runSeed(orm);
     await orm.close(true);
-  })().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+  })()
+    .then(() => {
+      // One-shot script: force exit so the seed container always terminates.
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
 }
