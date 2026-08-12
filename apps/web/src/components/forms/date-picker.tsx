@@ -51,7 +51,11 @@ export function DatePicker({
         onOpenAutoFocus={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => {
           const target = e.target as HTMLElement | null;
-          if (target?.closest('[data-slot="calendar"], .rdp-root, [class*="rdp"]')) {
+          if (
+            target?.closest('[data-slot="calendar"], .rdp-root, [class*="rdp"]') ||
+            target?.closest('select') ||
+            target?.tagName === 'OPTION'
+          ) {
             e.preventDefault();
           }
         }}

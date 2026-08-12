@@ -5,6 +5,13 @@ import { Providers } from './providers';
 export const metadata: Metadata = {
   title: 'abdcshare',
   description: 'ABDC document-share portal',
+  icons: {
+    icon: [
+      { url: '/favicon.png', type: 'image/png', sizes: '32x32' },
+      { url: '/favicon.ico', sizes: '32x32' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', type: 'image/png', sizes: '180x180' }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
