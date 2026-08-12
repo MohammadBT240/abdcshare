@@ -506,9 +506,12 @@ Client-facing draft-review loop for **final reports**, on top of document versio
 
 **Bucket 3:**
 - **Audit / activity log** — `AuditService.record()` + a **global `AuditInterceptor`** (zero-touch: logs
-  every authenticated mutation with actor/route/entity/ip; skips `/auth/`; uuid ids only). `GET /api/audit`
-  (`audit:view`, paginated, filter entityType/entityId/actorId). **No migration** (`activity_log` already
-  in schema; entity got `OptionalProps`).
+  every authenticated mutation with actor/route/entity/ip; skips `/auth/`; uuid ids only). Successful
+  **LOGIN** recorded explicitly from `AuthService`. `GET /api/audit` + `GET /api/audit/export` (`audit:view`
+  for **Platform Admin** and **Principal Partner** only; filters entityType/entityId/actorId/dateFrom/dateTo;
+  actor name/email; CSV cap 10k). **Web:** `/admin/activity` viewer (user picker filter) + sidebar +
+  governance dashboard deep-link. **No migration** (`activity_log` already in schema; entity got
+  `OptionalProps`).
 - **Engagement sign-offs** — `engagement_sign_offs` (per request class or engagement-wide; revocable).
   `GET/POST /api/engagements/:id/sign-offs`, `.../:signOffId/revoke` (`review:signoff`). **Completion gate:**
   can't transition to `Completed` unless an engagement-wide sign-off exists OR every in-scope request class
@@ -684,7 +687,6 @@ Staff/client product surfaces on top of Phase 3–4 APIs (plus upgrades above).
 - **Known small fix in-tree:** RowActions icons must be JSX elements (not component refs) on list pages.
 
 **Still deferred from Slice 3+ (API often exists; web missing or stubbed):**
-- **Audit viewer UI** — `GET /api/audit` exists; no admin screen.
 - **Global search UI** — `GET /api/search` exists; no header search.
 - Bulk CSV user import; chart-library analytics (beyond Progress bars).
 
@@ -731,11 +733,10 @@ Staff/client product surfaces on top of Phase 3–4 APIs (plus upgrades above).
 ## Pending / next
 1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
    replace sidebar `#` stub.
-2. **Audit viewer** — filter/browse activity log (`audit:view`).
-3. **Global search UI** — header/command search over scoped `GET /api/search`.
-4. **Land `feature/engagement-UI`** — commit remaining Documents-tab + sidebar cleanup; smoke staff↔client
+2. **Global search UI** — header/command search over scoped `GET /api/search`.
+3. **Land `feature/engagement-UI`** — commit remaining Documents-tab + sidebar cleanup; smoke staff↔client
    loop; open PR when ready.
-5. **v1 hardening (Phase 5)** — authz matrix pass, empty/error/a11y polish, observability; API e2e
+4. **v1 hardening (Phase 5)** — authz matrix pass, empty/error/a11y polish, observability; API e2e
    (Supertest + live DB) — unit specs ~22 files.
 6. **Extract shared persistence** — worker still duplicates `outbox.entity.ts`; notifications
    `email_sent` update uses raw SQL to avoid duplicating the entity.

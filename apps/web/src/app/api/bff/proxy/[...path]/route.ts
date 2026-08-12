@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { forwardedIpHeadersFromRequest } from '@/lib/bff/client-ip';
 import { upstreamWithAuth } from '@/lib/bff/upstream';
 import { mapApiError } from '@/lib/bff/errors';
 
@@ -25,6 +26,7 @@ const ALLOWED_PREFIXES = [
   'final-reports',
   'partner-reports',
   'notifications',
+  'audit',
 ] as const;
 
 function isAllowed(segments: string[]): boolean {
@@ -60,6 +62,7 @@ async function handle(
     method,
     body,
     contentType,
+    forwardHeaders: forwardedIpHeadersFromRequest(req),
   });
 
   if ('unauthorized' in result) {

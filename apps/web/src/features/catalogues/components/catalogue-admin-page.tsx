@@ -192,13 +192,32 @@ function CatalogueAdminInner({
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-            ) : null}
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  try {
+                    await mutations.update.mutateAsync({
+                      id: row.original.id,
+                      body: { isActive: true },
+                    });
+                    toast.success('Reactivated');
+                  } catch (err) {
+                    toast.error(err instanceof BffClientError ? err.message : 'Failed');
+                  }
+                }}
+              >
+                Reactivate
+              </Button>
+            )}
           </div>
         ),
       });
     }
     return cols;
-  }, [fieldList, canManage, allowRequestClassMapping, mutations.deactivate]);
+  }, [fieldList, canManage, allowRequestClassMapping, mutations.deactivate, mutations.update]);
 
   async function save() {
     try {
