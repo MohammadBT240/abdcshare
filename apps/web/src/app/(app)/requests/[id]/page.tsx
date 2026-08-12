@@ -283,7 +283,7 @@ function RequestDetailInner({ id }: { id: string }) {
               <Button
                 type="button"
                 size="sm"
-                variant={activeTab === "submissions" ? "secondary" : "default"}
+                variant={activeTab === "submissions" ? "outline" : "default"}
                 className="h-8"
                 onClick={() => setTab("submissions")}
               >

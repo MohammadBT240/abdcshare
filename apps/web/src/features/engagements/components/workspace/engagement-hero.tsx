@@ -2,7 +2,6 @@
 
 import { IconBriefcase, IconCalendar, IconUsers, IconFileText, IconArrowRight } from '@tabler/icons-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { EngagementStageBadge } from '@/features/engagements/components/engagement-stage-badge';

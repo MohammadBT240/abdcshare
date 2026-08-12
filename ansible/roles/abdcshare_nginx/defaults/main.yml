@@ -1,0 +1,33 @@
+---
+# Override in group_vars (see group_vars/all.yml).
+
+nginx_configure: true
+
+# When false, templates emit HTTP + ACME only (used internally when certbot_bootstrap runs).
+nginx_tls: true
+
+# Automate Certbot (webroot). Requires nginx listening on :80 with /.well-known (bootstrap does this).
+certbot_enabled: false
+# First-time on a host: run HTTP-only nginx -> certbot -> HTTPS. Set false after certs exist.
+certbot_bootstrap: false
+# Required if certbot_enabled: address for Let's Encrypt registration / expiry notices.
+certbot_email: ""
+# Use Let's Encrypt staging (for testing rate limits / validation).
+certbot_test_cert: false
+# Site ids to skip for certbot certonly (e.g. apex abdcshare.com if DNS does not point at this VM yet).
+certbot_skip_ids: []
+
+# Root for Certbot/Let's Encrypt material on the host (default layout).
+nginx_letsencrypt_live: /etc/letsencrypt/live
+
+# HTTP-01 challenges (Certbot webroot). Adjust if your Certbot nginx plugin uses another root.
+nginx_acme_webroot: /var/www/html
+
+# Include Certbot-supplied SSL options when present on the host (Debian/Ubuntu packages).
+nginx_include_letsencrypt_ssl_snippets: true
+
+# Optional: default Let's Encrypt live/<name>/ for all sites (unified SAN cert). Per-site ssl_cert_name overrides.
+# Omit this key entirely for per-site certs — do not set to "".
+
+# Site definitions rendered to /etc/nginx/sites-available/abdcshare-{{ id }}.conf
+nginx_sites: []

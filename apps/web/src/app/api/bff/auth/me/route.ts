@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchMeWithRefresh, jsonError } from '@/lib/bff/auth-helpers';
+import { fetchMeWithRefresh } from '@/lib/bff/auth-helpers';
 
 export async function GET(): Promise<NextResponse> {
   const result = await fetchMeWithRefresh();

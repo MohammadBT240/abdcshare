@@ -137,7 +137,7 @@ function CompanyProfilesPageInner() {
           onOpenChange={(open) => {
             if (!open) setViewerTarget(null);
           }}
-          fileName={viewerTarget.fileName}
+          fileName={viewerTarget.fileName ?? 'document'}
           mimeType={viewerTarget.mimeType}
           sizeBytes={viewerTarget.sizeBytes}
           getPreview={() => fetchCompanyProfilePreview(viewerTarget.id)}

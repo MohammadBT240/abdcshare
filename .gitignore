@@ -12,6 +12,14 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 
+# Deployment — never commit rendered env files, vault passwords, or real inventory.
+# Encrypted group_vars/*/vault.yml ARE committed (ansible-vault, AES256).
+deploy/.env
+ansible/.vault_pass*
+ansible/inventory/production.ini
+ansible/inventory/ci.yml
+ansible/inventory/group_vars
+
 # Metronic / legacy theme dumps — do not commit; use Tabler + public/logos only
 apps/web/public/auth/
 apps/web/public/avatars/

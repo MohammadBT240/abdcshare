@@ -1,0 +1,39 @@
+---
+# HTTP-01 via webroot; nginx must already serve /.well-known from nginx_acme_webroot (bootstrap HTTP phase).
+
+- name: Require certbot_email when Certbot is enabled
+  ansible.builtin.assert:
+    that:
+      - certbot_email is defined
+      - certbot_email | string | length > 0
+    fail_msg: "Set certbot_email (e.g. in group_vars/all.yml) when certbot_enabled is true."
+
+- name: Install Certbot (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: certbot
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+
+- name: Ensure ACME webroot exists
+  ansible.builtin.file:
+    path: "{{ nginx_acme_webroot }}"
+    state: directory
+    mode: "0755"
+
+- name: Request Let's Encrypt certificate per site (webroot)
+  ansible.builtin.shell: >-
+    certbot certonly --webroot -w "{{ nginx_acme_webroot }}"
+    {% for d in item.server_names %} -d "{{ d }}"{% endfor %}
+    --non-interactive --agree-tos --email "{{ certbot_email }}"
+    --keep-until-expiring
+    {% if certbot_test_cert | default(false) | bool %} --test-cert{% endif %}
+  args:
+    creates: "{{ nginx_letsencrypt_live }}/{{ item.ssl_cert_name | default((nginx_le_cert_lineage if (nginx_le_cert_lineage | default('') | trim | length > 0) else item.server_names[0]), true) }}/fullchain.pem"
+  loop: "{{ nginx_sites_effective | default(nginx_sites) }}"
+  when:
+    - not (item.le_cert_present | default(false) | bool)
+    - item.id not in (certbot_skip_ids | default([]))
+    - item.request_le_cert | default(true) | bool
+  loop_control:
+    label: "{{ item.id }}"

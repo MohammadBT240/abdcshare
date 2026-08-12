@@ -21,7 +21,7 @@ export async function withAuthedRetry<T>(
   let client = await getAuthedApiClient();
   if (!client) return null;
 
-  let result = await execute(client);
+  const result = await execute(client);
   if (result.response.status !== 401) return result;
 
   client = await getAuthedApiClient({ forceRefresh: true });

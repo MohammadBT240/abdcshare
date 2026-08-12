@@ -1,10 +1,43 @@
 # syntax=docker/dockerfile:1
-FROM node:22-alpine AS base
-RUN corepack enable
+# Build from repo root:
+#   docker build -f deploy/Dockerfile.web -t abdcshare-web .
+#
+# No NEXT_PUBLIC_* build args: all configuration (API_BASE_URL, WEB_PORT) is
+# read at runtime through the BFF, so the same image serves staging and prod.
+
+FROM node:22-bookworm-slim AS deps
 WORKDIR /repo
-COPY . .
-RUN pnpm install --frozen-lockfile
+RUN corepack enable
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/worker/package.json ./apps/worker/
+COPY apps/web/package.json ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/config/package.json ./packages/config/
+COPY packages/api-client/package.json ./packages/api-client/
+RUN corepack install
+RUN pnpm install --frozen-lockfile --filter @abdcshare/web...
+
+FROM deps AS builder
+COPY tsconfig.base.json ./
+COPY packages/config ./packages/config
+COPY packages/shared ./packages/shared
+COPY packages/api-client ./packages/api-client
+COPY apps/web ./apps/web
+ENV NEXT_TELEMETRY_DISABLED=1
+# Topological build: shared + api-client (tsc), then next build (standalone output).
 RUN pnpm --filter @abdcshare/web... build
-WORKDIR /repo/apps/web
+
+# Standalone output nests the monorepo layout: .next/standalone/apps/web/server.js
+FROM node:22-bookworm-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0 \
+    NEXT_TELEMETRY_DISABLED=1
+COPY --from=builder /repo/apps/web/.next/standalone ./
+COPY --from=builder /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /repo/apps/web/public ./apps/web/public
+WORKDIR /app/apps/web
 EXPOSE 3000
-CMD ["pnpm", "start"]
+CMD ["node", "server.js"]

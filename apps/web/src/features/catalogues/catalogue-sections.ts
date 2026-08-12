@@ -16,12 +16,7 @@ export const CATALOGUE_SECTIONS: CatalogueSection[] = [
   {
     href: '/admin/catalogues/request-classes',
     title: 'Request classes',
-    description: 'High-level request groupings',
-  },
-  {
-    href: '/admin/catalogues/request-types',
-    title: 'Request types',
-    description: 'Types within a request class',
+    description: 'Classes and their request types',
   },
   {
     href: '/admin/catalogues/request-statuses',

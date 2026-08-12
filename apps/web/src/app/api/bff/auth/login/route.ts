@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { createServerApiClient } from '@/lib/auth/api';
 import { setAuthCookies } from '@/lib/auth/cookies';
 import { jsonError } from '@/lib/bff/auth-helpers';
+import { forwardedIpHeadersFromRequest } from '@/lib/bff/client-ip';
 import type { AuthTokens } from '@abdcshare/api-client';
 
 export async function POST(req: Request): Promise<NextResponse> {
   const body = (await req.json()) as { email?: string; password?: string };
-  const client = createServerApiClient();
+  const client = createServerApiClient(undefined, forwardedIpHeadersFromRequest(req));
   // openapi-fetch already consumes the response body into `data` / `error` —
   // do not call response.json() / clone() again.
   const { data, response, error } = await client.POST('/api/auth/login', {

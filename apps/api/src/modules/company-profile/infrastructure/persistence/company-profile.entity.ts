@@ -5,7 +5,7 @@ import { UserEntity } from '../../../users/infrastructure/persistence/user.entit
 /** Staff reference document in the company profiles library. */
 @Entity({ tableName: 'company_profiles' })
 export class CompanyProfileEntity {
-  [OptionalProps]?: 'id' | 'isActive' | 'createdAt' | 'updatedAt';
+  [OptionalProps]?: 'id' | 'isActive' | 'createdAt' | 'updatedAt' | 'storageKey' | 'fileName';
 
   @PrimaryKey({ type: 'uuid' })
   id: string = randomUUID();
@@ -13,11 +13,12 @@ export class CompanyProfileEntity {
   @Property()
   name!: string;
 
-  @Property()
-  storageKey!: string;
+  /** Null until Uppy confirm (draft row). */
+  @Property({ nullable: true })
+  storageKey?: string | null;
 
-  @Property()
-  fileName!: string;
+  @Property({ nullable: true })
+  fileName?: string | null;
 
   @Property({ nullable: true })
   mimeType?: string | null;

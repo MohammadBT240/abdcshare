@@ -1,0 +1,8 @@
+---
+- name: Validate nginx config and reload
+  ansible.builtin.shell: |
+    set -e
+    nginx -t
+    systemctl reload nginx
+  args:
+    executable: /bin/bash

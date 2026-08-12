@@ -86,7 +86,7 @@ export function CompanyProfileCard({
   onRemove: () => void;
   className?: string;
 }) {
-  const label = fileKindLabel(profile.mimeType, profile.fileName);
+  const label = fileKindLabel(profile.mimeType, profile.fileName ?? undefined);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -113,7 +113,7 @@ export function CompanyProfileCard({
         <div className="flex items-start gap-3 p-4 pb-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted/50 ring-1 ring-inset ring-black/5 dark:ring-white/10">
             <FileTypeIcon
-              fileName={profile.fileName}
+              fileName={profile.fileName ?? 'document'}
               mimeType={profile.mimeType}
               size={28}
             />
@@ -147,12 +147,12 @@ export function CompanyProfileCard({
               <span
                 className={cn(
                   'inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ring-1 ring-inset',
-                  fileKindBadge(profile.mimeType, profile.fileName),
+                  fileKindBadge(profile.mimeType, profile.fileName ?? undefined),
                 )}
               >
                 {label}
               </span>
-              <p className="truncate text-sm text-muted-foreground">{profile.fileName}</p>
+              <p className="truncate text-sm text-muted-foreground">{profile.fileName ?? '—'}</p>
             </div>
           </div>
         </div>

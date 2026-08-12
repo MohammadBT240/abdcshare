@@ -1,0 +1,49 @@
+---
+# Sets abdcshare_le_cert_stat, nginx_sites_effective, abdcshare_le_need_http_bootstrap (for certbot bootstrap path).
+
+- name: Stat Let's Encrypt fullchain per site
+  ansible.builtin.stat:
+    path: "{{ nginx_letsencrypt_live }}/{{ item.ssl_cert_name | default((nginx_le_cert_lineage if (nginx_le_cert_lineage | default('') | trim | length > 0) else item.server_names[0]), true) }}/fullchain.pem"
+  loop: "{{ nginx_sites }}"
+  register: abdcshare_le_cert_stat
+  loop_control:
+    label: "{{ item.id }}"
+  when: nginx_sites | length > 0
+
+- name: Clear merged site lists before rebuilding
+  ansible.builtin.set_fact:
+    nginx_sites_effective: []
+    abdcshare_bootstrap_parts: []
+  when: nginx_sites | length > 0
+
+- name: Default empty effective site list when no sites defined
+  ansible.builtin.set_fact:
+    nginx_sites_effective: []
+    abdcshare_le_need_http_bootstrap: false
+  when: nginx_sites | length == 0
+
+- name: Merge le_cert_present into each site definition
+  ansible.builtin.set_fact:
+    nginx_sites_effective: "{{ (nginx_sites_effective | default([])) + [ __merged ] }}"
+  vars:
+    __merged: "{{ item.item | combine({'le_cert_present': item.stat.exists}) }}"
+  loop: "{{ abdcshare_le_cert_stat.results }}"
+  when: nginx_sites | length > 0
+
+- name: Compute per-site flags for Certbot bootstrap
+  ansible.builtin.set_fact:
+    abdcshare_bootstrap_parts: "{{ (abdcshare_bootstrap_parts | default([])) + [ __need ] }}"
+  vars:
+    __need: >-
+      {{
+        (not item.stat.exists)
+        and (item.item.id not in (certbot_skip_ids | default([])))
+        and (item.item.request_le_cert | default(true) | bool)
+      }}
+  loop: "{{ abdcshare_le_cert_stat.results }}"
+  when: nginx_sites | length > 0
+
+- name: Decide whether HTTP-only bootstrap is needed before Certbot
+  ansible.builtin.set_fact:
+    abdcshare_le_need_http_bootstrap: "{{ (abdcshare_bootstrap_parts | default([]) | select('equalto', true) | list | length) > 0 }}"
+  when: nginx_sites | length > 0

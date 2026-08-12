@@ -11,7 +11,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
-import { SubmissionStatus } from "@abdcshare/shared";
+import type { SubmissionStatus } from "@abdcshare/shared";
 import { UserAvatar } from "@/components/data/user-avatar";
 import { FileTypeIcon } from "@/components/data/file-type-icon";
 import { StatusPill, formatStatusLabel, resolveStatusTone } from "@/components/data";

@@ -8,6 +8,7 @@ import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { presignAvatar } from '../../common/storage/presign-avatar';
 import { UserEntity } from '../users/infrastructure/persistence/user.entity';
 import { PartnerReportReporterEntity } from '../partner-reports/infrastructure/persistence/partner-report-reporter.entity';
+import { AuditService } from '../audit/audit.service';
 import { OutboxService } from '../outbox/outbox.service';
 import { TokenService } from './application/token.service';
 import { PasswordResetTokenEntity } from './infrastructure/persistence/password-reset-token.entity';
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly outbox: OutboxService,
     private readonly config: ConfigService,
+    private readonly audit: AuditService,
     @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
 
@@ -88,7 +90,7 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto): Promise<AuthTokensDto> {
+  async login(dto: LoginDto, ipAddress?: string | null): Promise<AuthTokensDto> {
     const user = await this.em.findOne(UserEntity, { email: dto.email.toLowerCase() }, { populate: ['role'] });
     if (!user || !user.isActive || !(await bcrypt.compare(dto.password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid credentials');
@@ -100,6 +102,13 @@ export class AuthService {
       partnerDesignation: user.partnerDesignation ?? null,
       clientId: user.client?.id ?? null,
       mustChangePassword: user.mustChangePassword,
+    });
+    await this.audit.record({
+      actorId: user.id,
+      action: 'LOGIN',
+      entityType: 'auth',
+      entityId: user.id,
+      ipAddress: ipAddress ?? null,
     });
     return { ...pair, user: await this.toAuthUser(user) };
   }

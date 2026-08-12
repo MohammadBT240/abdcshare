@@ -1,0 +1,104 @@
+---
+- name: Require deploy_dir
+  ansible.builtin.assert:
+    that:
+      - deploy_dir is defined
+      - deploy_dir | length > 0
+    fail_msg: "Set deploy_dir in group_vars for this host."
+
+- name: Require vault secrets
+  ansible.builtin.assert:
+    that:
+      - vault_postgres_password is defined
+      - vault_jwt_access_secret is defined
+      - vault_jwt_refresh_secret is defined
+      - vault_postgres_password | string | length > 0
+      - vault_jwt_access_secret | string | length > 0
+      - vault_jwt_refresh_secret | string | length > 0
+    fail_msg: "Define vault_* secrets in group_vars/<group>/vault.yml (ansible-vault encrypt)."
+
+- name: Require registry_owner
+  ansible.builtin.assert:
+    that:
+      - registry_owner is defined
+      - registry_owner | string | length > 0
+    fail_msg: "Set registry_owner in group_vars for this host."
+
+- name: Ensure deploy directory exists on server
+  ansible.builtin.file:
+    path: "{{ deploy_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Rsync deploy/ to server (compose — not .env)
+  ansible.posix.synchronize:
+    src: "{{ repo_deploy_src }}/"
+    dest: "{{ deploy_dir }}/"
+    delete: false
+    rsync_opts:
+      - "--exclude=.git"
+      - "--exclude=.env"
+
+- name: Render .env from Vault + main.yml
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ deploy_dir }}/.env"
+    mode: "0600"
+  no_log: true
+
+- name: Apply Docker stack (pull -> migrate -> up)
+  ansible.builtin.shell: |
+    set -e
+    cd "{{ deploy_dir }}"
+    if [ -n "${GHCR_PULL_TOKEN:-}" ]; then
+      echo "$GHCR_PULL_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+    fi
+    docker compose -f docker-compose.stack.yml pull
+    docker compose -f docker-compose.stack.yml --profile migrate pull migrate
+    docker compose -f docker-compose.stack.yml up -d postgres redis
+    docker compose -f docker-compose.stack.yml --profile migrate run --rm migrate
+    docker compose -f docker-compose.stack.yml up -d
+    if [ -n "${GHCR_PULL_TOKEN:-}" ]; then
+      docker logout ghcr.io 2>/dev/null || true
+    fi
+  args:
+    executable: /bin/bash
+  # First pull of api/worker/web (LibreOffice worker) can exceed default limits.
+  timeout: 3600
+  environment:
+    GHCR_PULL_TOKEN: "{{ ghcr_pull_token | default('') }}"
+    GHCR_USERNAME: "{{ ghcr_username | default('') }}"
+
+- name: Smoke check — API health endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ api_host_port }}/api/health"
+    status_code: 200
+  register: abdcshare_health
+  retries: 12
+  delay: 5
+  until: abdcshare_health.status == 200
+
+- name: Smoke check — web responds
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ web_host_port }}/"
+    status_code: [200, 302, 307]
+  register: abdcshare_web_health
+  retries: 12
+  delay: 5
+  until: abdcshare_web_health.status in [200, 302, 307]
+
+# Project-scoped image GC: keep the 5 newest tags per abdcshare image
+# (rollback window), never touch other projects' images on the shared VM.
+- name: Prune old abdcshare images (keep 5 newest per repo)
+  ansible.builtin.shell: |
+    set -e
+    for repo in abdcshare-api abdcshare-worker abdcshare-web; do
+      docker images "ghcr.io/{{ registry_owner }}/${repo}" \
+        --format '{{ "{{" }}.CreatedAt}}\t{{ "{{" }}.Repository}}:{{ "{{" }}.Tag}}' \
+        | sort -r | awk -F'\t' '{print $2}' | tail -n +6 \
+        | xargs -r docker rmi 2>/dev/null || true
+    done
+    docker image prune -f >/dev/null
+  args:
+    executable: /bin/bash
+  changed_when: false

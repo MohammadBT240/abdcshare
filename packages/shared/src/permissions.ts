@@ -72,7 +72,7 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'request:create', 'request:update', 'request:assign',
     'working-paper:upload', 'final-report:upload', 'document:delete', 'document:export',
     'submission:review', 'discussion:participate',
-    'review:decide', 'review:signoff', 'report-review:manage', 'audit:view',
+    'review:decide', 'review:signoff', 'report-review:manage',
   ],
   // Staff are the working practitioners. Engagements are created/managed by Super
   // Admin only; staff work inside the engagements they're attached to (raise
@@ -99,6 +99,7 @@ export const DESIGNATION_PERMISSIONS: Record<PartnerDesignation, Permission[]> =
   Partner: ['partner-report:submit', 'partner-report:view'],
   PrincipalPartner: [
     'partner-report:view', 'partner-report:review', 'partner-report:view-all', 'partner-report:invite',
+    'audit:view',
   ],
 };
 

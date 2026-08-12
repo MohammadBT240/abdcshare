@@ -1,0 +1,27 @@
+---
+deploy_dir: /var/www/abdcshare/deploy
+registry_owner: mohammadbt240
+compose_project_name: "abdcshare"
+image_tag_default: latest
+
+api_host_port: 4100
+web_host_port: 3100
+
+web_app_url: "https://abdcshare.com"
+storage_public_base_url: "https://api.abdcshare.com"
+
+jwt_access_ttl: 900
+jwt_refresh_ttl: 1209600
+password_reset_ttl: 3600
+
+# File storage (Cloudflare R2). Secrets live in vault.yml:
+#   vault_r2_account_id, vault_r2_access_key_id, vault_r2_secret_access_key
+storage_driver: "r2"
+storage_upload_ttl: 900
+r2_bucket: "abdcshare-uploads"
+# R2's S3-compatible endpoint — derived from the account id in vault.yml.
+# Must be a valid URL: the api/worker env schemas reject an empty string.
+r2_endpoint: "https://{{ vault_r2_account_id }}.r2.cloudflarestorage.com"
+r2_object_prefix: "abdcshare"
+
+email_from: "ABDC Share <no-reply@abdcshare.com>"

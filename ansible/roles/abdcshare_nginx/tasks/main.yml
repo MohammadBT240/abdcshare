@@ -1,0 +1,52 @@
+---
+# nginx_tls: when false, templates emit HTTP + ACME only (bootstrap). When true + no cert on disk, HTTP-only per site (no ssl_certificate lines).
+
+- name: Install and configure abdcshare nginx sites
+  when: nginx_configure | bool
+  block:
+    - name: Ensure nginx is installed (Debian/Ubuntu)
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: true
+      when: ansible_os_family == "Debian"
+
+    - name: Resolve nginx sites and Let's Encrypt state on disk
+      ansible.builtin.include_tasks: resolve_sites.yml
+
+    - name: Ensure Let's Encrypt nginx SSL snippet files exist
+      ansible.builtin.include_tasks: ensure_letsencrypt_ssl_snippets.yml
+      when:
+        - nginx_include_letsencrypt_ssl_snippets | default(true) | bool
+
+    - name: Bootstrap — optional HTTP phase, Certbot, then HTTPS
+      when:
+        - certbot_enabled | bool
+        - certbot_bootstrap | bool
+      block:
+        - name: Deploy nginx (HTTP only for ACME)
+          when: abdcshare_le_need_http_bootstrap | bool
+          ansible.builtin.include_tasks: nginx_deploy.yml
+          vars:
+            nginx_tls: false
+
+        - name: Apply nginx reload before Certbot
+          when: abdcshare_le_need_http_bootstrap | bool
+          ansible.builtin.meta: flush_handlers
+
+        - name: Obtain TLS certificates (Certbot webroot)
+          when: abdcshare_le_need_http_bootstrap | bool
+          ansible.builtin.include_tasks: certbot.yml
+
+        - name: Re-resolve sites after Certbot (certs may now exist)
+          ansible.builtin.include_tasks: resolve_sites.yml
+          when: abdcshare_le_need_http_bootstrap | bool
+
+        - name: Deploy nginx (HTTPS)
+          ansible.builtin.include_tasks: nginx_deploy.yml
+          vars:
+            nginx_tls: true
+
+    - name: Deploy nginx (HTTPS; uses nginx_tls from role defaults / group_vars)
+      when: not (certbot_enabled | bool and certbot_bootstrap | bool)
+      ansible.builtin.include_tasks: nginx_deploy.yml

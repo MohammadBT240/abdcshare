@@ -87,10 +87,13 @@ export async function upstream(
     accessToken: string;
     body?: string | ArrayBuffer | null;
     contentType?: string | null;
+    /** Client IP headers from the BFF (`X-Real-IP` / `X-Forwarded-For`). */
+    forwardHeaders?: Record<string, string>;
   },
 ): Promise<UpstreamResult> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${init.accessToken}`,
+    ...(init.forwardHeaders ?? {}),
   };
   if (init.body != null && init.method !== 'GET' && init.method !== 'HEAD') {
     if (init.contentType) headers['Content-Type'] = init.contentType;
@@ -146,6 +149,7 @@ export async function upstreamWithAuth(
     method: string;
     body?: string | ArrayBuffer | null;
     contentType?: string | null;
+    forwardHeaders?: Record<string, string>;
   },
 ): Promise<UpstreamResult | { status: 401; unauthorized: true }> {
   let access = await getAccessTokenWithRefresh();

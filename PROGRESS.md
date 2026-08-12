@@ -2,6 +2,47 @@
 
 Resumable status so any session (or dev) can continue exactly where we stopped.
 
+## Done — deployment pipeline (house standard, shared VM)
+- Full deploy layer built (see `docs/DEPLOYMENT.md` for the runbook):
+  - **Prod Dockerfiles** (`deploy/Dockerfile.{api,worker,web}`) — multi-stage, prod-only deps,
+    Next `output: 'standalone'`; root `.dockerignore` added (the old single-stage files copied
+    `.env` + `.pnpm-store` into images).
+  - **`deploy/docker-compose.stack.yml`** — GHCR pull-only stack (postgres 17, redis 7 AOF, api,
+    worker, web + `migrate`/`seed` one-shot profiles); ports bind 127.0.0.1 only; volumes prefixed
+    by `COMPOSE_PROJECT_NAME` (`abdcshare` / `abdcshare-staging`); `compose.env*.example` templates.
+  - **`ansible/`** — deploy playbook (rsync → render `.env` from Vault → pull → migrate → up →
+    health smoke checks → project-scoped image GC keeping 5 tags) + `abdcshare_nginx` role
+    (4 vhosts, Certbot webroot bootstrap, coexists with abdchub/QET site files on the shared host).
+  - **Workflows** — `deploy-staging.yml` (push to `staging`) and `deploy.yml` (push to `main`,
+    `environment: production` approval gate); CI-gated, Buildx + GHA cache, SHA-pinned deploys,
+    concurrency groups.
+- Domains: `abdcshare.com`/`www` + `api.` (prod), `staging.` + `staging-api.` (staging).
+  Host ports 3100/4100 (prod), 3101/4101 (staging) — verified free on the VM (abdchub: 3000/8080,
+  3002/8081; QET: 3001, 3003).
+- Migrate runs the api image's compiled `dist/database/setup.js` (`SKIP_SEED=1`); seed is a manual
+  one-shot profile (idempotent, creates Platform Admin from `SEED_ADMIN_*`).
+- Remaining manual steps before first deploy: DNS records, encrypted `vault.yml` per env, R2
+  buckets, GitHub secrets + `production` environment reviewer (DEPLOYMENT.md §7).
+
+## Done — CI gate repaired (was red repo-wide, blocked the deploy pipeline)
+- **Lint was broken everywhere**: ESLint 9 flat configs were never created per package, so every
+  `eslint src` died with "couldn't find eslint.config". Added `eslint.config.mjs` to api, worker,
+  web, shared, api-client (re-export `@abdcshare/config/eslint`); web's also loads
+  `@next/eslint-plugin-next` (recommended) + `react-hooks/rules-of-hooks`(error)/`exhaustive-deps`(warn)
+  — the classic pair `next lint` (removed in Next 16) used to enforce. The react-hooks plugin's full
+  recommended set (React Compiler-era rules) flags ~43 existing patterns — adopt separately.
+- Auto-fixed ~180 accumulated violations (mostly `import type`), removed dead imports, added
+  `argsIgnorePattern: '^_'` to the shared no-unused-vars rule.
+- **Two type errors** only surfaced by `next build`'s checker (would have broken the web image):
+  invalid Button variant `"secondary"` in `requests/[id]/page.tsx`, unchecked index in
+  `request-history-list.tsx`.
+- **web/worker `test` scripts** invoked jest that was never installed — now explicit no-op
+  placeholders until the planned Vitest/consumer tests exist (api keeps its real jest run).
+- Verified green with cold cache: typecheck 7/7, lint 5/5, build 5/5, test 5/5; all three Docker
+  images build (api 1.0GB, worker 1.7GB incl. LibreOffice, web 419MB); web container serves /login
+  (standalone), worker has `soffice` on PATH, api image resolves `@abdcshare/shared` and carries
+  `dist/database/{setup,seed}.js` + `dist/migrations` for the one-shot profiles.
+
 ## Done
 - **Planning docs** complete in `docs/` (domain, user stories, traceability, ERD, architecture,
   design system, execution plan, development guidelines).
@@ -465,9 +506,12 @@ Client-facing draft-review loop for **final reports**, on top of document versio
 
 **Bucket 3:**
 - **Audit / activity log** — `AuditService.record()` + a **global `AuditInterceptor`** (zero-touch: logs
-  every authenticated mutation with actor/route/entity/ip; skips `/auth/`; uuid ids only). `GET /api/audit`
-  (`audit:view`, paginated, filter entityType/entityId/actorId). **No migration** (`activity_log` already
-  in schema; entity got `OptionalProps`).
+  every authenticated mutation with actor/route/entity/ip; skips `/auth/`; uuid ids only). Successful
+  **LOGIN** recorded explicitly from `AuthService`. `GET /api/audit` + `GET /api/audit/export` (`audit:view`
+  for **Platform Admin** and **Principal Partner** only; filters entityType/entityId/actorId/dateFrom/dateTo;
+  actor name/email; CSV cap 10k). **Web:** `/admin/activity` viewer (user picker filter) + sidebar +
+  governance dashboard deep-link. **No migration** (`activity_log` already in schema; entity got
+  `OptionalProps`).
 - **Engagement sign-offs** — `engagement_sign_offs` (per request class or engagement-wide; revocable).
   `GET/POST /api/engagements/:id/sign-offs`, `.../:signOffId/revoke` (`review:signoff`). **Completion gate:**
   can't transition to `Completed` unless an engagement-wide sign-off exists OR every in-scope request class
@@ -643,7 +687,6 @@ Staff/client product surfaces on top of Phase 3–4 APIs (plus upgrades above).
 - **Known small fix in-tree:** RowActions icons must be JSX elements (not component refs) on list pages.
 
 **Still deferred from Slice 3+ (API often exists; web missing or stubbed):**
-- **Audit viewer UI** — `GET /api/audit` exists; no admin screen.
 - **Global search UI** — `GET /api/search` exists; no header search.
 - Bulk CSV user import; chart-library analytics (beyond Progress bars).
 
@@ -690,11 +733,10 @@ Staff/client product surfaces on top of Phase 3–4 APIs (plus upgrades above).
 ## Pending / next
 1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
    replace sidebar `#` stub.
-2. **Audit viewer** — filter/browse activity log (`audit:view`).
-3. **Global search UI** — header/command search over scoped `GET /api/search`.
-4. **Land `feature/engagement-UI`** — commit remaining Documents-tab + sidebar cleanup; smoke staff↔client
+2. **Global search UI** — header/command search over scoped `GET /api/search`.
+3. **Land `feature/engagement-UI`** — commit remaining Documents-tab + sidebar cleanup; smoke staff↔client
    loop; open PR when ready.
-5. **v1 hardening (Phase 5)** — authz matrix pass, empty/error/a11y polish, observability; API e2e
+4. **v1 hardening (Phase 5)** — authz matrix pass, empty/error/a11y polish, observability; API e2e
    (Supertest + live DB) — unit specs ~22 files.
 6. **Extract shared persistence** — worker still duplicates `outbox.entity.ts`; notifications
    `email_sent` update uses raw SQL to avoid duplicating the entity.
