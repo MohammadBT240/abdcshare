@@ -11,6 +11,7 @@ import {
   IconChartBar,
   IconChecklist,
   IconFolderOpen,
+  IconHistory,
   IconSettings,
   IconInbox,
   IconLayoutDashboard,
@@ -102,6 +103,12 @@ const SECTIONS: NavSection[] = [
         href: "/admin/company-profile",
         icon: IconBuilding,
         permission: "company-profile:view",
+      },
+      {
+        label: "Activity log",
+        href: "/admin/activity",
+        icon: IconHistory,
+        permission: "audit:view",
       },
       {
         label: "Final report reviews",

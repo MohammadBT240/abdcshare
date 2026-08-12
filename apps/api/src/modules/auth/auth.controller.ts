@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthService } from './auth.service';
@@ -20,8 +21,8 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   @ApiOkResponse({ type: AuthTokensDto })
-  login(@Body() dto: LoginDto): Promise<AuthTokensDto> {
-    return this.auth.login(dto);
+  login(@Body() dto: LoginDto, @Req() req: Request): Promise<AuthTokensDto> {
+    return this.auth.login(dto, req.ip ?? null);
   }
 
   @Public()

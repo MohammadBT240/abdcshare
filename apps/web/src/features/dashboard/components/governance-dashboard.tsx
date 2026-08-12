@@ -18,7 +18,7 @@ import { ChartLegend, DonutChart, TrendAreaChart, type DonutSlice } from './char
 import type { GovernanceDashboard as GovernanceData } from '../types';
 
 const CATALOGUE_ITEMS: Array<{ key: keyof GovernanceData['catalogue']; label: string; href: string }> = [
-  { key: 'requestTypes', label: 'Request types', href: '/admin/catalogues/request-types' },
+  { key: 'requestTypes', label: 'Request types', href: '/admin/catalogues/request-classes' },
   { key: 'requestStages', label: 'Request stages', href: '/admin/catalogues/request-stages' },
   { key: 'requestStatuses', label: 'Request statuses', href: '/admin/catalogues/request-statuses' },
   { key: 'engagementTypes', label: 'Engagement types', href: '/admin/catalogues/engagement-types' },
@@ -62,6 +62,7 @@ export function GovernanceDashboard({ data }: { data: GovernanceData }) {
           hint="Platform activity volume"
           icon={IconHistory}
           tone="violet"
+          href="/admin/activity"
         />
       </div>
 

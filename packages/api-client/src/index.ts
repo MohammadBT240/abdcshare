@@ -62,6 +62,8 @@ export type RoleItem = components['schemas']['RoleResponseDto'];
 export interface CreateApiClientOptions {
   baseUrl: string;
   accessToken?: string;
+  /** Extra headers (e.g. X-Real-IP / X-Forwarded-For from the BFF). */
+  forwardHeaders?: Record<string, string>;
 }
 
 /** Typed openapi-fetch client for the abdcshare API. */
@@ -70,6 +72,11 @@ export function createApiClient(options: CreateApiClientOptions) {
     onRequest({ request }) {
       if (options.accessToken) {
         request.headers.set('Authorization', `Bearer ${options.accessToken}`);
+      }
+      if (options.forwardHeaders) {
+        for (const [key, value] of Object.entries(options.forwardHeaders)) {
+          if (value) request.headers.set(key, value);
+        }
       }
       return request;
     },

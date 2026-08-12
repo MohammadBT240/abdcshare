@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { forwardedIpHeadersFromRequest } from '@/lib/bff/client-ip';
 import { upstreamWithAuth } from '@/lib/bff/upstream';
 import { mapApiError } from '@/lib/bff/errors';
 
@@ -6,6 +7,7 @@ export async function GET(req: Request): Promise<NextResponse> {
   const url = new URL(req.url);
   const result = await upstreamWithAuth(`/api/notifications${url.search}`, {
     method: 'GET',
+    forwardHeaders: forwardedIpHeadersFromRequest(req),
   });
 
   if ('unauthorized' in result) {

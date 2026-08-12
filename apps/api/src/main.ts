@@ -4,12 +4,18 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap(): Promise<void> {
   // Disable built-in parser so we can raise the limit for avatar base64 uploads (~2 MB → ~2.8 MB JSON).
-  const app = await NestFactory.create(AppModule, { bufferLogs: false, bodyParser: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: false,
+    bodyParser: false,
+  });
+  // nginx → web BFF → api (finite hops; never `true` — spoofable X-Forwarded-For).
+  app.set('trust proxy', 2);
   app.use(json({ limit: '4mb' }));
   app.use(urlencoded({ extended: true, limit: '4mb' }));
 

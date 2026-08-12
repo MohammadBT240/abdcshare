@@ -191,7 +191,7 @@ Recipient rules (who gets which event): see **[NOTIFICATIONS.md](./NOTIFICATIONS
 ## Epic R — Audit trail
 
 - **R-1 (M, PA/SA)** Immutable activity log of significant actions (logins, user/client/catalogue changes, engagement/request/document changes, status transitions, sign-offs, partner-report actions). `audit:view`. _(parity: activity_log)_ ✅ (via a global audit interceptor)
-- **R-2 (S, SA)** View/filter the log per engagement/user/date; export. `audit:view`.
+- **R-2 (S, PA/PP)** View/filter the log per engagement/user/date; export. `audit:view` (Platform Admin, or Super Admin with Principal Partner designation). ✅
 
 ---
 
