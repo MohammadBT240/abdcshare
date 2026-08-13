@@ -2,23 +2,56 @@
 
 import * as React from 'react';
 import { DayPicker } from 'react-day-picker';
-import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
-function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
+function defaultDropdownBounds() {
+  const year = new Date().getFullYear();
+  return {
+    startMonth: new Date(year - 100, 0),
+    endMonth: new Date(year + 30, 11),
+  };
+}
+
+function Calendar({
+  className,
+  classNames,
+  showOutsideDays = true,
+  captionLayout = 'dropdown',
+  startMonth,
+  endMonth,
+  ...props
+}: CalendarProps) {
+  const bounds = defaultDropdownBounds();
+  const usesDropdown =
+    captionLayout === 'dropdown' ||
+    captionLayout === 'dropdown-months' ||
+    captionLayout === 'dropdown-years';
+
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
+      captionLayout={captionLayout}
+      startMonth={startMonth ?? (usesDropdown ? bounds.startMonth : undefined)}
+      endMonth={endMonth ?? (usesDropdown ? bounds.endMonth : undefined)}
       navLayout="around"
       className={cn('p-3', className)}
       classNames={{
         months: 'relative flex flex-col gap-4 sm:flex-row',
         month: 'relative space-y-3',
         month_caption: 'flex justify-center pt-1 relative items-center h-8',
-        caption_label: 'text-sm font-medium text-foreground',
+        caption_label: 'flex items-center gap-1 text-sm font-medium text-foreground',
+        dropdowns: 'flex items-center justify-center gap-1.5',
+        dropdown_root: cn(
+          'relative inline-flex items-center rounded-md border border-input bg-background',
+          'px-2 py-1 text-sm font-medium shadow-sm',
+        ),
+        dropdown: 'absolute inset-0 z-10 cursor-pointer opacity-0',
+        months_dropdown: '',
+        years_dropdown: '',
         nav: 'absolute inset-x-0 top-0 flex items-center justify-between pointer-events-none',
         button_previous: cn(
           buttonVariants({ variant: 'ghost' }),
@@ -49,12 +82,11 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
         ...classNames,
       }}
       components={{
-        Chevron: ({ orientation }) =>
-          orientation === 'left' ? (
-            <IconChevronLeft className="h-4 w-4" />
-          ) : (
-            <IconChevronRight className="h-4 w-4" />
-          ),
+        Chevron: ({ orientation }) => {
+          if (orientation === 'left') return <IconChevronLeft className="h-4 w-4" />;
+          if (orientation === 'right') return <IconChevronRight className="h-4 w-4" />;
+          return <IconChevronDown className="h-3.5 w-3.5 opacity-70" />;
+        },
       }}
       {...props}
     />

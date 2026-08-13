@@ -70,23 +70,27 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private appUrl(): string {
+    return this.config.get<string>('WEB_APP_URL', 'http://localhost:3000').replace(/\/+$/, '');
+  }
+
   /** Turn a domain event into its email side effect(s). */
   private async dispatch(
     eventType: string,
     payload: Record<string, unknown>,
     em: EntityManager,
   ): Promise<void> {
+    const appUrl = this.appUrl();
     switch (eventType) {
       case EVENT.UserCreated: {
         const email = typeof payload.email === 'string' ? payload.email : null;
         const tempPassword = typeof payload.tempPassword === 'string' ? payload.tempPassword : '';
         if (email) {
-          const base = this.config.get<string>('WEB_APP_URL', 'http://localhost:3000').replace(/\/+$/, '');
-          const link = `${base}/login?email=${encodeURIComponent(email)}`;
+          const link = `${appUrl}/login?email=${encodeURIComponent(email)}`;
           await this.email.sendReact(
             email,
-            'Your ABDC Share account',
-            AccountCreatedEmail({ email, tempPassword, loginUrl: link }),
+            'Your ABDC Share account is ready',
+            AccountCreatedEmail({ email, tempPassword, loginUrl: link, appUrl }),
           );
         }
         break;
@@ -95,12 +99,11 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
         const email = typeof payload.email === 'string' ? payload.email : null;
         const token = typeof payload.token === 'string' ? payload.token : '';
         if (email) {
-          const base = this.config.get<string>('WEB_APP_URL', 'http://localhost:3000').replace(/\/+$/, '');
-          const link = `${base}/reset-password?token=${encodeURIComponent(token)}`;
+          const link = `${appUrl}/reset-password?token=${encodeURIComponent(token)}`;
           await this.email.sendReact(
             email,
             'Reset your ABDC Share password',
-            PasswordResetEmail({ resetUrl: link }),
+            PasswordResetEmail({ resetUrl: link, appUrl }),
           );
         }
         break;
@@ -111,7 +114,7 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
           await this.email.sendReact(
             email,
             'Your ABDC Share password was changed',
-            PasswordChangedEmail(),
+            PasswordChangedEmail({ appUrl }),
           );
         }
         break;
@@ -133,7 +136,7 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
           await this.email.sendReact(
             e.to,
             e.subject,
-            GenericNotificationEmail({ title: e.subject, body, link: e.link }),
+            GenericNotificationEmail({ title: e.subject, body, link: e.link, appUrl }),
           );
           if (e.notificationId) {
             await em
