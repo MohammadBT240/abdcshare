@@ -54,6 +54,7 @@ export const PERMISSIONS = [
   // cross-cutting
   'notification:receive',
   'audit:view',
+  'help:manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -64,7 +65,7 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'user:manage', 'user:view', 'client:manage', 'client:view',
     'catalogue:manage', 'catalogue:view', 'reference-data:manage', 'reference-data:view',
     'department:manage', 'company-profile:manage', 'company-profile:view',
-    'bulk-import:run', 'audit:view', 'notification:receive',
+    'bulk-import:run', 'audit:view', 'notification:receive', 'help:manage',
   ],
   'Super Admin': [
     ...ALL_VIEW, 'user:view', 'client:manage', 'client:view', 'catalogue:view', 'reference-data:view', 'company-profile:view',
@@ -72,7 +73,7 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'request:create', 'request:update', 'request:assign',
     'working-paper:upload', 'final-report:upload', 'document:delete', 'document:export',
     'submission:review', 'discussion:participate',
-    'review:decide', 'review:signoff', 'report-review:manage',
+    'review:decide', 'review:signoff', 'report-review:manage', 'help:manage',
   ],
   // Staff are the working practitioners. Engagements are created/managed by Super
   // Admin only; staff work inside the engagements they're attached to (raise
