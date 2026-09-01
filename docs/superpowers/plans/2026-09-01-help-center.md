@@ -21,6 +21,7 @@
 - Reading routes carry no `@RequirePermission` — every authenticated role can reach them; visibility is filtered by `visibleToRoles` (empty array = all roles) and `status === 'published'` (unless the caller has `help:manage`, who may preview drafts).
 - Follow existing module conventions exactly: entities under `infrastructure/persistence/`, DTOs under `presentation/dto/`, `class-validator` for validation, `EntityManager` injected directly into services (no repository classes), MikroORM migrations generated via `pnpm migration:create` (never hand-authored raw SQL) then reviewed and committed.
 - The web app has no component-testing infra (`apps/web/jest.config.js` only runs one hand-picked `.spec.ts`, `testEnvironment: 'node'`, no React Testing Library). Frontend tasks get real pure-function unit tests where logic is pure, and a manual browser verification step where it isn't — do not invent React component tests that cannot run.
+- `pnpm --filter @abdcshare/web test` does **not** run Jest — `apps/web/package.json`'s `test` script is a placeholder `echo` that always exits 0. To actually run the web unit tests, `cd apps/web` and run `../api/node_modules/.bin/jest --config jest.config.js` (web has no local Jest install; it borrows the one already installed under `apps/api/node_modules`, per the comment at the top of `apps/web/jest.config.js`). Every "Run:" step below that targets web tests uses this exact command — never the `pnpm --filter` form.
 
 ---
 
@@ -1357,8 +1358,8 @@ describe('extractPlainText', () => {
 
 - [ ] **Step 4: Run the test to verify it fails**
 
-Run: `pnpm --filter @abdcshare/web test -- plain-text.spec.ts`
-Expected: FAIL — the jest config's `testRegex` only matches `lib/bff/client-ip\.spec\.ts$`, so this new file isn't even picked up (and the module doesn't exist yet either).
+Run (from `apps/web/`): `../api/node_modules/.bin/jest --config jest.config.js`
+Expected: FAIL — the jest config's `testRegex` only matches `lib/bff/client-ip\.spec\.ts$`, so `plain-text.spec.ts` isn't even picked up yet (and the module it imports doesn't exist either). Confirm by eye that only `client-ip.spec.ts` ran; Step 5 fixes the pattern so the new file is picked up.
 
 - [ ] **Step 5: Widen the web jest `testRegex`**
 
@@ -1401,7 +1402,7 @@ function walk(node: DocNode | undefined, parts: string[]): void {
 
 - [ ] **Step 7: Run the tests to verify they pass**
 
-Run: `pnpm --filter @abdcshare/web test`
+Run (from `apps/web/`): `../api/node_modules/.bin/jest --config jest.config.js`
 Expected: PASS — both `client-ip.spec.ts` and `plain-text.spec.ts` run and pass.
 
 - [ ] **Step 8: Commit**
@@ -2532,7 +2533,7 @@ Expected: PASS, including all `help.service.spec.ts` cases.
 
 - [ ] **Step 2: Run the full web test suite**
 
-Run: `pnpm --filter @abdcshare/web test`
+Run (from `apps/web/`): `../api/node_modules/.bin/jest --config jest.config.js`
 Expected: PASS, including `plain-text.spec.ts`.
 
 - [ ] **Step 3: Typecheck and lint everything**
