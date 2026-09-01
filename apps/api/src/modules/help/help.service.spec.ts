@@ -1,6 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { HelpService } from './help.service';
-import { HelpCategoryEntity } from './infrastructure/persistence/help-category.entity';
 
 function buildEm(overrides: Partial<Record<string, unknown>> = {}) {
   const em = {
