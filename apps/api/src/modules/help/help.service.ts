@@ -1,11 +1,31 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/postgresql';
+import type { FilterQuery } from '@mikro-orm/postgresql';
+import { hasPermission, type Paginated, type PartnerDesignation, type RoleName } from '@abdcshare/shared';
+import { pageParams, paginated } from '../../common/pagination/paginate';
 import { HelpCategoryEntity } from './infrastructure/persistence/help-category.entity';
+import { HelpArticleEntity } from './infrastructure/persistence/help-article.entity';
 import type {
   CreateHelpCategoryDto,
   UpdateHelpCategoryDto,
 } from './presentation/dto/help-category.dto';
 import { HelpCategoryResponseDto } from './presentation/dto/help-category.dto';
+import type {
+  CreateHelpArticleDto,
+  HelpArticleListQueryDto,
+  UpdateHelpArticleDto,
+} from './presentation/dto/help-article.dto';
+import {
+  HelpArticleResponseDto,
+  HelpArticleSummaryDto,
+  HelpCategoryWithArticlesDto,
+} from './presentation/dto/help-article.dto';
+import { UserEntity } from '../users/infrastructure/persistence/user.entity';
+
+interface ViewerContext {
+  role: RoleName;
+  partnerDesignation?: PartnerDesignation | null;
+}
 
 @Injectable()
 export class HelpService {
@@ -52,5 +72,154 @@ export class HelpService {
   async deleteCategory(id: string): Promise<void> {
     const category = await this.em.findOneOrFail(HelpCategoryEntity, { id });
     await this.em.removeAndFlush(category);
+  }
+
+  private canManage(viewer: ViewerContext): boolean {
+    return hasPermission(viewer.role, 'help:manage', viewer.partnerDesignation);
+  }
+
+  private isVisibleTo(article: HelpArticleEntity, viewer: ViewerContext): boolean {
+    if (article.visibleToRoles.length === 0) return true;
+    return article.visibleToRoles.includes(viewer.role);
+  }
+
+  private toArticleDto(a: HelpArticleEntity): HelpArticleResponseDto {
+    return {
+      id: a.id,
+      categoryId: a.category.id,
+      title: a.title,
+      slug: a.slug,
+      bodyJson: a.bodyJson,
+      visibleToRoles: a.visibleToRoles,
+      status: a.status,
+      order: a.order,
+      updatedAt: a.updatedAt,
+      publishedAt: a.publishedAt ?? null,
+    };
+  }
+
+  private toSummaryDto(a: HelpArticleEntity): HelpArticleSummaryDto {
+    return {
+      id: a.id,
+      categoryId: a.category.id,
+      title: a.title,
+      slug: a.slug,
+      status: a.status,
+      order: a.order,
+    };
+  }
+
+  async createArticle(dto: CreateHelpArticleDto, actorId: string): Promise<HelpArticleResponseDto> {
+    if (await this.em.findOne(HelpArticleEntity, { slug: dto.slug })) {
+      throw new ConflictException('A help article with this slug already exists');
+    }
+    const category = await this.em.findOneOrFail(HelpCategoryEntity, { id: dto.categoryId });
+    const article = this.em.create(HelpArticleEntity, {
+      category,
+      title: dto.title,
+      slug: dto.slug,
+      bodyJson: dto.bodyJson,
+      bodyText: dto.bodyText,
+      visibleToRoles: dto.visibleToRoles ?? [],
+      order: dto.order ?? 0,
+      createdBy: this.em.getReference(UserEntity, actorId),
+    });
+    await this.em.persistAndFlush(article);
+    return this.toArticleDto(article);
+  }
+
+  async updateArticle(id: string, dto: UpdateHelpArticleDto): Promise<HelpArticleResponseDto> {
+    const article = await this.em.findOneOrFail(HelpArticleEntity, { id }, { populate: ['category'] });
+    if (dto.slug != null && dto.slug !== article.slug) {
+      if (await this.em.findOne(HelpArticleEntity, { slug: dto.slug, id: { $ne: id } })) {
+        throw new ConflictException('A help article with this slug already exists');
+      }
+      article.slug = dto.slug;
+    }
+    if (dto.categoryId != null) {
+      article.category = await this.em.findOneOrFail(HelpCategoryEntity, { id: dto.categoryId });
+    }
+    if (dto.title != null) article.title = dto.title;
+    if (dto.bodyJson != null) article.bodyJson = dto.bodyJson;
+    if (dto.bodyText != null) article.bodyText = dto.bodyText;
+    if (dto.visibleToRoles != null) article.visibleToRoles = dto.visibleToRoles;
+    if (dto.order != null) article.order = dto.order;
+    await this.em.flush();
+    return this.toArticleDto(article);
+  }
+
+  async publishArticle(id: string): Promise<HelpArticleResponseDto> {
+    const article = await this.em.findOneOrFail(HelpArticleEntity, { id }, { populate: ['category'] });
+    article.status = 'published';
+    article.publishedAt = new Date();
+    await this.em.flush();
+    return this.toArticleDto(article);
+  }
+
+  async unpublishArticle(id: string): Promise<HelpArticleResponseDto> {
+    const article = await this.em.findOneOrFail(HelpArticleEntity, { id }, { populate: ['category'] });
+    article.status = 'draft';
+    await this.em.flush();
+    return this.toArticleDto(article);
+  }
+
+  async deleteArticle(id: string): Promise<void> {
+    const article = await this.em.findOneOrFail(HelpArticleEntity, { id });
+    await this.em.removeAndFlush(article);
+  }
+
+  async listArticlesAdmin(query: HelpArticleListQueryDto): Promise<Paginated<HelpArticleSummaryDto>> {
+    const where: Record<string, unknown> = {};
+    if (query.categoryId) where.category = query.categoryId;
+    if (query.status) where.status = query.status;
+    if (query.q) where.title = { $ilike: `%${query.q}%` };
+
+    const { page, pageSize, limit, offset } = pageParams(query);
+    const [rows, total] = await this.em.findAndCount(
+      HelpArticleEntity,
+      where as FilterQuery<HelpArticleEntity>,
+      { populate: ['category'], orderBy: { order: 'asc', title: 'asc' }, limit, offset },
+    );
+    return paginated(rows.map((a) => this.toSummaryDto(a)), total, page, pageSize);
+  }
+
+  async getCategoriesForViewer(viewer: ViewerContext): Promise<HelpCategoryWithArticlesDto[]> {
+    const categories = await this.em.find(HelpCategoryEntity, {}, { orderBy: { order: 'asc', name: 'asc' } });
+    const articles = await this.em.find(
+      HelpArticleEntity,
+      { status: 'published' },
+      { populate: ['category'], orderBy: { order: 'asc', title: 'asc' } },
+    );
+    const visible = articles.filter((a) => this.isVisibleTo(a, viewer));
+    return categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      order: c.order,
+      icon: c.icon ?? null,
+      articles: visible.filter((a) => a.category.id === c.id).map((a) => this.toSummaryDto(a)),
+    }));
+  }
+
+  async getArticleBySlug(slug: string, viewer: ViewerContext): Promise<HelpArticleResponseDto> {
+    const article = await this.em.findOne(HelpArticleEntity, { slug }, { populate: ['category'] });
+    if (!article) throw new NotFoundException('Help article not found');
+    const manage = this.canManage(viewer);
+    if (!manage && article.status !== 'published') throw new NotFoundException('Help article not found');
+    if (!manage && !this.isVisibleTo(article, viewer)) throw new NotFoundException('Help article not found');
+    return this.toArticleDto(article);
+  }
+
+  async searchArticles(q: string, viewer: ViewerContext): Promise<HelpArticleSummaryDto[]> {
+    const term = `%${q.trim()}%`;
+    const rows = await this.em.find(
+      HelpArticleEntity,
+      {
+        status: 'published',
+        $or: [{ title: { $ilike: term } }, { bodyText: { $ilike: term } }],
+      } as FilterQuery<HelpArticleEntity>,
+      { populate: ['category'], orderBy: { title: 'asc' }, limit: 20 },
+    );
+    return rows.filter((a) => this.isVisibleTo(a, viewer)).map((a) => this.toSummaryDto(a));
   }
 }
