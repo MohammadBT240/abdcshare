@@ -566,7 +566,6 @@ Expected: FAIL — `getArticleBySlug`/`searchArticles` are not functions yet.
 Add to `apps/api/src/modules/help/help.service.ts` (alongside the existing imports and category methods):
 
 ```ts
-import { ForbiddenException } from '@nestjs/common';
 import type { FilterQuery } from '@mikro-orm/postgresql';
 import { hasPermission, type Paginated, type PartnerDesignation, type RoleName } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
