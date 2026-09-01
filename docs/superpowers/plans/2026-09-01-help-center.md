@@ -244,7 +244,6 @@ export class HelpCategoryResponseDto {
 // apps/api/src/modules/help/help.service.spec.ts
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { HelpService } from './help.service';
-import { HelpCategoryEntity } from './infrastructure/persistence/help-category.entity';
 
 function buildEm(overrides: Partial<Record<string, unknown>> = {}) {
   const em = {
