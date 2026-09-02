@@ -11,6 +11,7 @@ import {
   IconChartBar,
   IconChecklist,
   IconFolderOpen,
+  IconHelpCircle,
   IconHistory,
   IconSettings,
   IconInbox,
@@ -121,6 +122,11 @@ const SECTIONS: NavSection[] = [
   {
     heading: "Account",
     items: [
+      {
+        label: "Help",
+        href: "/help",
+        icon: IconHelpCircle,
+      },
       {
         label: "Settings",
         href: "/settings/account",
