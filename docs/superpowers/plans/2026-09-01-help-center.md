@@ -868,9 +868,8 @@ describe('HelpService images', () => {
 
     const result = await service.getArticleBySlug('s', { role: 'Client', partnerDesignation: null });
 
-    expect((result.bodyJson as any).content[0].attrs.src).toBe(
-      'https://r2.example/help-images/abc.png?sig=1',
-    );
+    const content = (result.bodyJson as { content: Array<{ attrs: { src: string } }> }).content;
+    expect(content[0]?.attrs.src).toBe('https://r2.example/help-images/abc.png?sig=1');
   });
 });
 ```
