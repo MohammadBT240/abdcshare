@@ -1853,10 +1853,11 @@ git commit -m "feat(web): add HelpTip contextual drawer and wire into the Engage
 - Create: `apps/web/src/features/help/hooks/use-help-admin.ts`
 - Create: `apps/web/src/features/help/components/help-admin-page.tsx`
 - Create: `apps/web/src/app/(app)/admin/help/page.tsx`
+- Create: `apps/web/src/app/(app)/admin/help/layout.tsx`
 - Modify: `apps/web/src/components/layout/app-sidebar.tsx`
 
 **Interfaces:**
-- Consumes: `bffApi` (`apps/web/src/lib/bff/client.ts`), `useAuthContext().can` (`apps/web/src/components/providers/auth-provider.tsx`), `Table`/`TableBody`/`TableCell`/`TableHead`/`TableHeader`/`TableRow` (existing `components/ui/table.tsx`), `Badge` (existing `components/ui/badge.tsx`), `EmptyState` (existing).
+- Consumes: `bffApi` (`apps/web/src/lib/bff/client.ts`), `useAuthContext().can` (`apps/web/src/components/providers/auth-provider.tsx`), `Table`/`TableBody`/`TableCell`/`TableHead`/`TableHeader`/`TableRow` (existing `components/ui/table.tsx`), `Badge` (existing `components/ui/badge.tsx`), `EmptyState`/`ErrorState` (existing), `RequirePermission` (`apps/web/src/components/auth/require-permission.tsx`), `ConfirmDialog` (`apps/web/src/components/forms/confirm-dialog.tsx`), `Skeleton` (existing).
 - Produces: `useHelpCategoriesAdmin()`, `useHelpArticlesAdmin(params)`, `useCreateHelpCategory()`, `useUpdateHelpCategory()`, `useDeleteHelpCategory()`, `useDeleteHelpArticle()`, `usePublishHelpArticle()`, `useUnpublishHelpArticle()` hooks.
 
 - [ ] **Step 1: Write the admin hooks**
@@ -2140,14 +2141,36 @@ In `apps/web/src/components/layout/app-sidebar.tsx`, add to the `"Admin"` sectio
 Run: `pnpm --filter @abdcshare/web typecheck`
 Expected: no errors.
 
-- [ ] **Step 6: Manual verification**
+- [ ] **Step 6: Add the route guard, loading/error states, and delete confirmation**
 
-Log in as a Platform Admin (or Super Admin) seed user, open `/admin/help`, create a category, confirm it appears in the badge list, confirm the empty-articles table renders correctly.
+Every sibling `/admin/*` section gates its page behind a `layout.tsx` wrapping `<RequirePermission permission="...">` (see `apps/web/src/app/(app)/admin/users/layout.tsx`) and handles query `isPending`/`isError` states rather than reading `.data` directly; destructive actions go through the existing `ConfirmDialog` (`apps/web/src/components/forms/confirm-dialog.tsx`). `HelpAdminPage` as drafted in Step 2 doesn't do any of this — add it now, following those exact existing patterns:
 
-- [ ] **Step 7: Commit**
+```tsx
+// apps/web/src/app/(app)/admin/help/layout.tsx
+'use client';
+
+import { RequirePermission } from '@/components/auth/require-permission';
+
+export default function HelpAdminLayout({ children }: { children: React.ReactNode }) {
+  return <RequirePermission permission="help:manage">{children}</RequirePermission>;
+}
+```
+
+In `help-admin-page.tsx`: branch on `categories.isPending`/`categories.isError` and `articles.isPending`/`articles.isError` (skeleton + `ErrorState` from `@/components/data/empty-state`, matching how sibling admin pages like `features/company-profile/components/*.tsx` handle their own queries), and wrap the per-row "Delete" action in a `ConfirmDialog` — track the target row in `useState<HelpArticleSummary | null>(null)`, open the dialog on click, and only call `deleteArticle.mutate(id)` from `onConfirm`, not directly from the button's `onClick`.
+
+- [ ] **Step 7: Typecheck**
+
+Run: `pnpm --filter @abdcshare/web typecheck`
+Expected: no errors.
+
+- [ ] **Step 8: Manual verification**
+
+Log in as a Platform Admin (or Super Admin) seed user, open `/admin/help`, create a category, confirm it appears in the badge list, confirm the empty-articles table renders correctly, confirm a non-`help:manage` user visiting `/admin/help` directly gets redirected to `/dashboard`, confirm clicking "Delete" on an article opens a confirmation dialog rather than deleting immediately.
+
+- [ ] **Step 9: Commit**
 
 ```bash
-git add apps/web/src/features/help/hooks/use-help-admin.ts apps/web/src/features/help/components/help-admin-page.tsx "apps/web/src/app/(app)/admin/help/page.tsx" apps/web/src/components/layout/app-sidebar.tsx
+git add apps/web/src/features/help/hooks/use-help-admin.ts apps/web/src/features/help/components/help-admin-page.tsx "apps/web/src/app/(app)/admin/help/page.tsx" "apps/web/src/app/(app)/admin/help/layout.tsx" apps/web/src/components/layout/app-sidebar.tsx
 git commit -m "feat(web): add help admin category/article list page"
 ```
 
