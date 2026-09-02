@@ -41,6 +41,7 @@ import {
   useEngagementsList,
   type EngagementListItem,
 } from '@/features/engagements/hooks/use-engagements';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 function parseDateParam(value?: string): Date | undefined {
   if (!value) return undefined;
@@ -188,11 +189,14 @@ function EngagementsListInner() {
           { label: 'Engagements' },
         ]}
         actions={
-          canCreate ? (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              Create engagement
-            </Button>
-          ) : null
+          <>
+            <HelpTip slug="engagements-overview" />
+            {canCreate ? (
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                Create engagement
+              </Button>
+            ) : null}
+          </>
         }
       />
 
