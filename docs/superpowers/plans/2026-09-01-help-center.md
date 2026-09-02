@@ -1571,7 +1571,7 @@ export function ArticleBody({ bodyJson }: { bodyJson: Record<string, unknown> })
   return (
     <div
       className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-a:text-primary"
-      // eslint-disable-next-line react/no-danger -- content is authored in-app by help:manage roles only, via the Tiptap editor.
+      // content is authored in-app by help:manage roles only, via the Tiptap editor.
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
