@@ -2,6 +2,10 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { HelpService } from './help.service';
 import { HelpArticleEntity } from './infrastructure/persistence/help-article.entity';
 
+function buildStorage() {
+  return { upload: jest.fn(), presignDownload: jest.fn(async () => 'https://example.com/x') };
+}
+
 function buildEm(overrides: Partial<Record<string, unknown>> = {}) {
   const em = {
     findOne: jest.fn(async () => null),
@@ -21,7 +25,7 @@ function buildEm(overrides: Partial<Record<string, unknown>> = {}) {
 describe('HelpService categories', () => {
   it('creates a category', async () => {
     const em = buildEm();
-    const service = new HelpService(em as never);
+    const service = new HelpService(em as never, buildStorage() as never);
 
     const result = await service.createCategory({ name: 'Engagements', slug: 'engagements', order: 1 });
 
@@ -31,7 +35,7 @@ describe('HelpService categories', () => {
 
   it('rejects a duplicate slug on create', async () => {
     const em = buildEm({ findOne: jest.fn(async () => ({ id: 'cat-1' })) });
-    const service = new HelpService(em as never);
+    const service = new HelpService(em as never, buildStorage() as never);
 
     await expect(
       service.createCategory({ name: 'Engagements', slug: 'engagements' }),
@@ -44,7 +48,7 @@ describe('HelpService categories', () => {
         throw new NotFoundException('Help category not found');
       }),
     });
-    const service = new HelpService(em as never);
+    const service = new HelpService(em as never, buildStorage() as never);
 
     await expect(service.updateCategory('missing', { name: 'X' })).rejects.toBeInstanceOf(
       NotFoundException,
@@ -75,7 +79,7 @@ describe('HelpService articles', () => {
 
   it('hides a draft article from a non-manager role by slug', async () => {
     const em = buildEm({ findOne: jest.fn(async () => article({ status: 'draft' })) });
-    const service = new HelpService(em as never);
+    const service = new HelpService(em as never, buildStorage() as never);
 
     await expect(service.getArticleBySlug('how-to-raise-a-request', clientUser)).rejects.toThrow(
       NotFoundException,
@@ -84,7 +88,7 @@ describe('HelpService articles', () => {
 
   it('shows a draft article to a help:manage role by slug', async () => {
     const em = buildEm({ findOne: jest.fn(async () => article({ status: 'draft' })) });
-    const service = new HelpService(em as never);
+    const service = new HelpService(em as never, buildStorage() as never);
 
     const result = await service.getArticleBySlug('how-to-raise-a-request', platformAdmin);
     expect(result.status).toBe('draft');
@@ -94,7 +98,7 @@ describe('HelpService articles', () => {
     const em = buildEm({
       findOne: jest.fn(async () => article({ visibleToRoles: ['Staff', 'Super Admin'] })),
     });
-    const service = new HelpService(em as never);
+    const service = new HelpService(em as never, buildStorage() as never);
 
     await expect(service.getArticleBySlug('how-to-raise-a-request', clientUser)).rejects.toThrow(
       NotFoundException,
@@ -105,7 +109,7 @@ describe('HelpService articles', () => {
     const em = buildEm({
       findOne: jest.fn(async () => article({ visibleToRoles: ['Client'] })),
     });
-    const service = new HelpService(em as never);
+    const service = new HelpService(em as never, buildStorage() as never);
 
     const result = await service.getArticleBySlug('how-to-raise-a-request', clientUser);
     expect(result.slug).toBe('how-to-raise-a-request');
@@ -113,7 +117,7 @@ describe('HelpService articles', () => {
 
   it('search excludes drafts and role-mismatched articles', async () => {
     const em = buildEm({ find: jest.fn(async () => [article()]) });
-    const service = new HelpService(em as never);
+    const service = new HelpService(em as never, buildStorage() as never);
 
     const results = await service.searchArticles('raise', clientUser);
     expect(em.find).toHaveBeenCalledWith(
@@ -125,5 +129,79 @@ describe('HelpService articles', () => {
       expect.anything(),
     );
     expect(results).toHaveLength(1);
+  });
+});
+
+describe('HelpService images', () => {
+  it('rejects a non-image content type', async () => {
+    const em = buildEm();
+    const storage = { upload: jest.fn(), presignDownload: jest.fn() };
+    const service = new HelpService(em as never, storage as never);
+
+    await expect(
+      service.uploadImage({ fileName: 'x.pdf', contentType: 'application/pdf', data: 'abc' }),
+    ).rejects.toThrow('Use a JPEG, PNG, or WebP image');
+  });
+
+  it('rejects an image over 5 MB', async () => {
+    const em = buildEm();
+    const storage = { upload: jest.fn(), presignDownload: jest.fn() };
+    const service = new HelpService(em as never, storage as never);
+    const big = Buffer.alloc(6 * 1024 * 1024).toString('base64');
+
+    await expect(
+      service.uploadImage({ fileName: 'x.png', contentType: 'image/png', data: big }),
+    ).rejects.toThrow('5 MB');
+  });
+
+  it('uploads a valid image and returns its storage key', async () => {
+    const em = buildEm();
+    const storage = {
+      upload: jest.fn(async () => ({ storageKey: 'help-images/abc.png' })),
+      presignDownload: jest.fn(),
+    };
+    const service = new HelpService(em as never, storage as never);
+
+    const result = await service.uploadImage({
+      fileName: 'diagram.png',
+      contentType: 'image/png',
+      data: Buffer.from('fake-bytes').toString('base64'),
+    });
+
+    expect(storage.upload).toHaveBeenCalledWith(
+      expect.objectContaining({ keyPrefix: 'help-images', fileName: 'diagram.png', contentType: 'image/png' }),
+    );
+    expect(result).toEqual({ storageKey: 'help-images/abc.png' });
+  });
+
+  it('rehydrates image src attributes on read', async () => {
+    const storage = {
+      upload: jest.fn(),
+      presignDownload: jest.fn(async (key: string) => `https://r2.example/${key}?sig=1`),
+    };
+    const bodyJson = {
+      type: 'doc',
+      content: [{ type: 'image', attrs: { src: '', alt: null, storageKey: 'help-images/abc.png' } }],
+    };
+    const em = buildEm({
+      findOne: jest.fn(async () => ({
+        id: 'art-1',
+        category: { id: 'cat-1' },
+        title: 'T',
+        slug: 's',
+        bodyJson,
+        visibleToRoles: [],
+        status: 'published',
+        order: 0,
+        updatedAt: new Date(),
+        publishedAt: new Date(),
+      })),
+    });
+    const service = new HelpService(em as never, storage as never);
+
+    const result = await service.getArticleBySlug('s', { role: 'Client', partnerDesignation: null });
+
+    const body = result.bodyJson as { content: Array<{ attrs: { src: string } }> };
+    expect(body.content[0]?.attrs.src).toBe('https://r2.example/help-images/abc.png?sig=1');
   });
 });

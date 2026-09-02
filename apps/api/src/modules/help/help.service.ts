@@ -1,8 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/postgresql';
 import type { FilterQuery } from '@mikro-orm/postgresql';
 import { hasPermission, type Paginated, type PartnerDesignation, type RoleName } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
+import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { HelpCategoryEntity } from './infrastructure/persistence/help-category.entity';
 import { HelpArticleEntity } from './infrastructure/persistence/help-article.entity';
 import type {
@@ -27,9 +28,15 @@ interface ViewerContext {
   partnerDesignation?: PartnerDesignation | null;
 }
 
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
 @Injectable()
 export class HelpService {
-  constructor(private readonly em: EntityManager) {}
+  constructor(
+    private readonly em: EntityManager,
+    @Inject(STORAGE) private readonly storage: StoragePort,
+  ) {}
 
   private toCategoryDto(c: HelpCategoryEntity): HelpCategoryResponseDto {
     return { id: c.id, name: c.name, slug: c.slug, order: c.order, icon: c.icon ?? null };
@@ -83,19 +90,56 @@ export class HelpService {
     return article.visibleToRoles.includes(viewer.role);
   }
 
-  private toArticleDto(a: HelpArticleEntity): HelpArticleResponseDto {
+  private async toArticleDto(a: HelpArticleEntity): Promise<HelpArticleResponseDto> {
     return {
       id: a.id,
       categoryId: a.category.id,
       title: a.title,
       slug: a.slug,
-      bodyJson: a.bodyJson,
+      bodyJson: (await this.resolveImageUrls(a.bodyJson)) as Record<string, unknown>,
       visibleToRoles: a.visibleToRoles,
       status: a.status,
       order: a.order,
       updatedAt: a.updatedAt,
       publishedAt: a.publishedAt ?? null,
     };
+  }
+
+  async uploadImage(dto: { fileName: string; contentType: string; data: string }): Promise<{ storageKey: string }> {
+    if (!IMAGE_TYPES.has(dto.contentType)) {
+      throw new BadRequestException('Use a JPEG, PNG, or WebP image');
+    }
+    const body = Buffer.from(dto.data.replace(/^data:[^;]+;base64,/, ''), 'base64');
+    if (!body.length) throw new BadRequestException('Image data is empty');
+    if (body.length > MAX_IMAGE_BYTES) throw new BadRequestException('Image must be 5 MB or smaller');
+
+    return this.storage.upload({
+      keyPrefix: 'help-images',
+      fileName: dto.fileName,
+      contentType: dto.contentType,
+      body,
+    });
+  }
+
+  /** Walk a Tiptap/ProseMirror JSON doc, replacing image `storageKey` attrs with fresh presigned URLs. */
+  private async resolveImageUrls(node: unknown): Promise<unknown> {
+    if (Array.isArray(node)) {
+      return Promise.all(node.map((n) => this.resolveImageUrls(n)));
+    }
+    if (node && typeof node === 'object') {
+      const obj = node as Record<string, unknown>;
+      if (obj.type === 'image' && obj.attrs && typeof obj.attrs === 'object') {
+        const attrs = obj.attrs as Record<string, unknown>;
+        const storageKey = attrs.storageKey;
+        if (typeof storageKey === 'string' && storageKey) {
+          return { ...obj, attrs: { ...attrs, src: await this.storage.presignDownload(storageKey) } };
+        }
+      }
+      if (obj.content) {
+        return { ...obj, content: await this.resolveImageUrls(obj.content) };
+      }
+    }
+    return node;
   }
 
   private toSummaryDto(a: HelpArticleEntity): HelpArticleSummaryDto {
