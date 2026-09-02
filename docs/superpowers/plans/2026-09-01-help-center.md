@@ -1210,8 +1210,10 @@ Run: `pnpm dev:api`
 
 In another terminal, once it's up on `:4000`, confirm the routes are registered:
 
-Run: `curl -s http://localhost:4000/api-json | python3 -c "import json,sys; d=json.load(sys.stdin); print('\n'.join(p for p in d['paths'] if p.startswith('/help')))"`
-Expected: prints the 13 `/help...` paths from Step 1.
+Run: `curl -s http://localhost:4000/api/docs-json | python3 -c "import json,sys; d=json.load(sys.stdin); print('\n'.join(p for p in d['paths'] if p.startswith('/help')))"`
+Expected: prints the 14 `/help...` paths from Step 1 (3 reader + 11 admin — the "13" in an earlier draft of this plan was a miscount).
+
+If the Swagger JSON endpoint isn't reachable for any reason, the Nest boot log's `RouterExplorer` lines (`Mapped {GET, /help/categories} route` etc.) are an equally authoritative source — use whichever is available.
 
 - [ ] **Step 6: Run the full API test suite**
 
