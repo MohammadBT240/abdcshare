@@ -112,6 +112,12 @@ const SECTIONS: NavSection[] = [
         permission: "audit:view",
       },
       {
+        label: "Help content",
+        href: "/admin/help",
+        icon: IconHelpCircle,
+        permission: "help:manage",
+      },
+      {
         label: "Final report reviews",
         href: "/admin/final-reports",
         icon: IconFolderOpen,
