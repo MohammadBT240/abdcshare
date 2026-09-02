@@ -91,3 +91,31 @@ export function useUnpublishHelpArticle() {
     onSuccess: () => invalidateArticles(qc),
   });
 }
+
+export interface HelpArticleWriteDto {
+  categoryId: string;
+  title: string;
+  slug: string;
+  bodyJson: Record<string, unknown>;
+  bodyText: string;
+  visibleToRoles?: string[];
+  order?: number;
+}
+
+export function useCreateHelpArticle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: HelpArticleWriteDto) =>
+      bffApi<{ id: string }>('/api/help/articles', { method: 'POST', body: JSON.stringify(dto) }),
+    onSuccess: () => invalidateArticles(qc),
+  });
+}
+
+export function useUpdateHelpArticle(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: Partial<HelpArticleWriteDto>) =>
+      bffApi<{ id: string }>(`/api/help/articles/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }),
+    onSuccess: () => invalidateArticles(qc),
+  });
+}

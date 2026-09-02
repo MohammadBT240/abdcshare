@@ -133,7 +133,9 @@ export function HelpAdminPage() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button type="button" size="sm" variant="outline" asChild>
-                            <Link href={`/admin/help/articles/${a.id}/edit`}>Edit</Link>
+                            <Link href={`/admin/help/articles/${a.id}/edit?slug=${encodeURIComponent(a.slug)}`}>
+                              Edit
+                            </Link>
                           </Button>
                           {a.status === 'published' ? (
                             <Button type="button" size="sm" variant="ghost" onClick={() => unpublish.mutate(a.id)}>
