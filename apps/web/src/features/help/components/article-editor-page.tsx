@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArticleEditor, type ArticleFormValues } from './article-editor';
 import { useHelpArticle } from '../hooks/use-help';
@@ -8,6 +9,7 @@ import {
   useHelpCategoriesAdmin,
   useUpdateHelpArticle,
 } from '../hooks/use-help-admin';
+import { ErrorState } from '@/components/data/empty-state';
 
 export function ArticleEditorPage({ articleId }: { articleId?: string }) {
   const router = useRouter();
@@ -17,16 +19,28 @@ export function ArticleEditorPage({ articleId }: { articleId?: string }) {
   const existing = useHelpArticle(slug);
   const create = useCreateHelpArticle();
   const update = useUpdateHelpArticle(articleId ?? '');
+  const [error, setError] = useState<string | null>(null);
 
-  if (articleId && (existing.isPending || categories.isPending)) {
+  if (categories.isPending || (articleId && existing.isPending)) {
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
 
+  if (articleId && existing.isError) {
+    return <ErrorState message="Failed to load article." />;
+  }
+
   const handleSubmit = (values: ArticleFormValues) => {
+    setError(null);
     if (articleId) {
-      update.mutate(values, { onSuccess: () => router.push('/admin/help') });
+      update.mutate(values, {
+        onSuccess: () => router.push('/admin/help'),
+        onError: (err) => setError(err instanceof Error ? err.message : 'Failed to save article.'),
+      });
     } else {
-      create.mutate(values, { onSuccess: () => router.push('/admin/help') });
+      create.mutate(values, {
+        onSuccess: () => router.push('/admin/help'),
+        onError: (err) => setError(err instanceof Error ? err.message : 'Failed to save article.'),
+      });
     }
   };
 
@@ -50,6 +64,7 @@ export function ArticleEditorPage({ articleId }: { articleId?: string }) {
         }
         onSubmit={handleSubmit}
         submitting={create.isPending || update.isPending}
+        error={error}
       />
     </div>
   );

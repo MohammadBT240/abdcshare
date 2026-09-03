@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { IconBold, IconItalic, IconList, IconPhoto } from '@tabler/icons-react';
 import { Button } from '@/components/ui/button';
@@ -26,16 +26,18 @@ export interface ArticleEditorProps {
   initial?: Partial<ArticleFormValues>;
   onSubmit: (values: ArticleFormValues) => void;
   submitting?: boolean;
+  error?: string | null;
 }
 
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] };
 
-export function ArticleEditor({ categories, initial, onSubmit, submitting }: ArticleEditorProps) {
+export function ArticleEditor({ categories, initial, onSubmit, submitting, error }: ArticleEditorProps) {
   const titleRef = useRef<HTMLInputElement>(null);
   const slugRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<string>(initial?.categoryId ?? categories[0]?.id ?? '');
   const rolesRef = useRef<string[]>(initial?.visibleToRoles ?? []);
   const uploadImage = useUploadHelpImage();
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const editor = useEditor({
     extensions: HELP_TIPTAP_EXTENSIONS,
@@ -76,10 +78,20 @@ export function ArticleEditor({ categories, initial, onSubmit, submitting }: Art
 
   const handleSubmit = () => {
     if (!editor) return;
+    const title = titleRef.current?.value.trim() ?? '';
+    const slug = slugRef.current?.value.trim() ?? '';
+    const categoryId = categoryRef.current;
+
+    if (!title || !slug || !categoryId) {
+      setValidationError('Title, slug, and category are required.');
+      return;
+    }
+    setValidationError(null);
+
     onSubmit({
-      title: titleRef.current?.value.trim() ?? '',
-      slug: slugRef.current?.value.trim() ?? '',
-      categoryId: categoryRef.current,
+      title,
+      slug,
+      categoryId,
       bodyJson: editor.getJSON(),
       bodyText: extractPlainText(editor.getJSON()),
       visibleToRoles: rolesRef.current,
@@ -144,6 +156,10 @@ export function ArticleEditor({ categories, initial, onSubmit, submitting }: Art
         </div>
         <EditorContent editor={editor} className="prose prose-sm max-w-none p-3" />
       </div>
+
+      {(validationError || error) && (
+        <p className="text-sm text-destructive">{validationError ?? error}</p>
+      )}
 
       <Button type="button" onClick={handleSubmit} disabled={submitting}>
         Save
