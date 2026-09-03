@@ -2524,6 +2524,18 @@ export default function Page() {
 Run: `pnpm --filter @abdcshare/web typecheck`
 Expected: no errors. If `Select`/`SelectItem`/`SelectTrigger`/`SelectValue` don't match `components/ui/select.tsx`'s actual export names, fix the import to match (check the file — it exists per the earlier `components/ui` listing).
 
+- [ ] **Step 6b: Error handling, validation, and the category-preselection race**
+
+The Step 3-5 code above has three gaps that surfaced in review — fix them now, before the end-to-end walkthrough:
+
+1. **Silent mutation failure.** `ArticleEditorPage`'s `create.mutate(values, { onSuccess: ... })` / `update.mutate(values, { onSuccess: ... })` have no `onError`. Add `const [error, setError] = useState<string | null>(null);`, pass `onError: (err) => setError(err instanceof Error ? err.message : 'Failed to save article.')` to both mutations, clear it (`setError(null)`) at the top of `handleSubmit` before calling either mutation, and pass `error={error}` down to `<ArticleEditor>` (add an `error?: string | null` prop that renders `<p className="text-sm text-destructive">{error}</p>` near the Save button).
+
+2. **No required-field validation.** `ArticleEditor`'s `handleSubmit` never checks `title`/`slug`/`categoryId` are non-empty before calling `onSubmit`. Add a local `const [validationError, setValidationError] = useState<string | null>(null);`; if any of the three are blank, `setValidationError('Title, slug, and category are required.')` and return without calling `onSubmit`; otherwise clear it and proceed. Render `validationError ?? error` in the message area (validation takes precedence over a stale mutation error).
+
+3. **Category-preselection race on the create route.** `categoryRef = useRef<string>(initial?.categoryId ?? categories[0]?.id ?? '')` only evaluates once, at mount. `ArticleEditorPage`'s loading guard (`if (articleId && (existing.isPending || categories.isPending))`) only blocks render when `articleId` is set — on `/admin/help/articles/new`, `articleId` is `undefined`, so the guard never triggers and `ArticleEditor` mounts before `categories.data` has loaded, permanently locking `categoryRef.current` to `''`. Fix by changing the guard to `if (categories.isPending || (articleId && existing.isPending))` — this blocks on `categories.isPending` unconditionally (`undefined && existing.isPending` is falsy, so on the create route the guard reduces to just `categories.isPending`), ensuring categories are loaded before `ArticleEditor` ever mounts.
+
+4. **Bonus, same pass:** if `articleId && existing.isError` (the edit-route article fetch failed), render `<ErrorState message="Failed to load article." />` (from `@/components/data/empty-state`) instead of the form — otherwise a failed fetch silently renders a blank form still wired to PATCH the real article.
+
 - [ ] **Step 7: Manual, end-to-end verification (do not skip)**
 
 With `pnpm dev` running and logged in as Platform Admin:
