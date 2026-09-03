@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
+import { BffClientError } from '@/lib/bff/client';
 import type { HelpArticleSummary } from '../types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,6 +41,9 @@ export function HelpAdminPage() {
 
   const categoryName = (id: string) => categories.data?.find((c) => c.id === id)?.name ?? '—';
 
+  const notifyFailure = (fallback: string) => (err: unknown) =>
+    toast.error(err instanceof BffClientError ? err.message : fallback);
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -64,7 +69,10 @@ export function HelpAdminPage() {
               const slug = newCategoryName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
               createCategory.mutate(
                 { name: newCategoryName.trim(), slug },
-                { onSuccess: () => setNewCategoryName('') },
+                {
+                  onSuccess: () => setNewCategoryName(''),
+                  onError: notifyFailure('Failed to create category'),
+                },
               );
             }}
           >
@@ -133,16 +141,34 @@ export function HelpAdminPage() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button type="button" size="sm" variant="outline" asChild>
-                            <Link href={`/admin/help/articles/${a.id}/edit?slug=${encodeURIComponent(a.slug)}`}>
-                              Edit
-                            </Link>
+                            <Link href={`/admin/help/articles/${a.id}/edit`}>Edit</Link>
                           </Button>
                           {a.status === 'published' ? (
-                            <Button type="button" size="sm" variant="ghost" onClick={() => unpublish.mutate(a.id)}>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                unpublish.mutate(a.id, {
+                                  onSuccess: () => toast.success('Article unpublished'),
+                                  onError: notifyFailure('Failed to unpublish article'),
+                                })
+                              }
+                            >
                               Unpublish
                             </Button>
                           ) : (
-                            <Button type="button" size="sm" variant="ghost" onClick={() => publish.mutate(a.id)}>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                publish.mutate(a.id, {
+                                  onSuccess: () => toast.success('Article published'),
+                                  onError: notifyFailure('Failed to publish article'),
+                                })
+                              }
+                            >
                               Publish
                             </Button>
                           )}
@@ -178,7 +204,11 @@ export function HelpAdminPage() {
         onConfirm={() => {
           if (!deleteTarget) return;
           deleteArticle.mutate(deleteTarget.id, {
-            onSuccess: () => setDeleteTarget(null),
+            onSuccess: () => {
+              setDeleteTarget(null);
+              toast.success('Article deleted');
+            },
+            onError: notifyFailure('Failed to delete article'),
           });
         }}
       />

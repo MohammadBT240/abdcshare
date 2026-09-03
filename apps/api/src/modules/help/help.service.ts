@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { EntityManager } from '@mikro-orm/postgresql';
+import { EntityManager, raw } from '@mikro-orm/postgresql';
 import type { FilterQuery } from '@mikro-orm/postgresql';
 import { hasPermission, type Paginated, type PartnerDesignation, type RoleName } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
@@ -78,6 +78,14 @@ export class HelpService {
 
   async deleteCategory(id: string): Promise<void> {
     const category = await this.em.findOneOrFail(HelpCategoryEntity, { id });
+    // The FK has no ON DELETE rule, so a category that still has articles would raise a
+    // raw constraint violation (a 500) instead of a meaningful client error.
+    const articleCount = await this.em.count(HelpArticleEntity, { category: id });
+    if (articleCount > 0) {
+      throw new ConflictException(
+        'Move or delete the articles in this category before deleting it',
+      );
+    }
     await this.em.removeAndFlush(category);
   }
 
@@ -88,6 +96,24 @@ export class HelpService {
   private isVisibleTo(article: HelpArticleEntity, viewer: ViewerContext): boolean {
     if (article.visibleToRoles.length === 0) return true;
     return article.visibleToRoles.includes(viewer.role);
+  }
+
+  /**
+   * SQL equivalent of {@link isVisibleTo}, so role filtering happens in the database
+   * (before any LIMIT) rather than in memory afterwards.
+   *
+   * `visible_to_roles` is a `jsonb` column, not a native Postgres array, so MikroORM's
+   * array operators (`$contains` and friends) don't apply — this needs a raw fragment
+   * using the jsonb containment operator plus an emptiness check ("empty = everyone").
+   */
+  private visibleToRolesWhere(viewer: ViewerContext): Record<string, unknown> {
+    return {
+      [raw(
+        (alias) =>
+          `(jsonb_array_length(${alias}.visible_to_roles) = 0 or ${alias}.visible_to_roles @> ?::jsonb)`,
+        [JSON.stringify([viewer.role])],
+      )]: true,
+    };
   }
 
   private async toArticleDto(a: HelpArticleEntity): Promise<HelpArticleResponseDto> {
@@ -227,6 +253,13 @@ export class HelpService {
     return paginated(rows.map((a) => this.toSummaryDto(a)), total, page, pageSize);
   }
 
+  /** Authoring-only fetch by id — no status/role filtering, the route is `help:manage` guarded. */
+  async getArticleByIdAdmin(id: string): Promise<HelpArticleResponseDto> {
+    const article = await this.em.findOne(HelpArticleEntity, { id }, { populate: ['category'] });
+    if (!article) throw new NotFoundException('Help article not found');
+    return this.toArticleDto(article);
+  }
+
   async getCategoriesForViewer(viewer: ViewerContext): Promise<HelpCategoryWithArticlesDto[]> {
     const categories = await this.em.find(HelpCategoryEntity, {}, { orderBy: { order: 'asc', name: 'asc' } });
     const articles = await this.em.find(
@@ -235,14 +268,18 @@ export class HelpService {
       { populate: ['category'], orderBy: { order: 'asc', title: 'asc' } },
     );
     const visible = articles.filter((a) => this.isVisibleTo(a, viewer));
-    return categories.map((c) => ({
-      id: c.id,
-      name: c.name,
-      slug: c.slug,
-      order: c.order,
-      icon: c.icon ?? null,
-      articles: visible.filter((a) => a.category.id === c.id).map((a) => this.toSummaryDto(a)),
-    }));
+    return categories
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        order: c.order,
+        icon: c.icon ?? null,
+        articles: visible.filter((a) => a.category.id === c.id).map((a) => this.toSummaryDto(a)),
+      }))
+      // A category with nothing the viewer may read is noise (and a small hint that
+      // role-scoped content exists) — drop it rather than render an empty accordion row.
+      .filter((c) => c.articles.length > 0);
   }
 
   async getArticleBySlug(slug: string, viewer: ViewerContext): Promise<HelpArticleResponseDto> {
@@ -255,15 +292,18 @@ export class HelpService {
   }
 
   async searchArticles(q: string, viewer: ViewerContext): Promise<HelpArticleSummaryDto[]> {
-    const term = `%${q.trim()}%`;
+    const trimmed = q.trim();
+    if (!trimmed) return [];
+    const term = `%${trimmed}%`;
     const rows = await this.em.find(
       HelpArticleEntity,
       {
         status: 'published',
         $or: [{ title: { $ilike: term } }, { bodyText: { $ilike: term } }],
+        ...this.visibleToRolesWhere(viewer),
       } as FilterQuery<HelpArticleEntity>,
       { populate: ['category'], orderBy: { title: 'asc' }, limit: 20 },
     );
-    return rows.filter((a) => this.isVisibleTo(a, viewer)).map((a) => this.toSummaryDto(a));
+    return rows.map((a) => this.toSummaryDto(a));
   }
 }

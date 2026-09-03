@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Input } from '@/components/ui/input';
-import { EmptyState } from '@/components/data/empty-state';
+import { EmptyState, ErrorState } from '@/components/data/empty-state';
 import { useHelpCategories, useHelpSearch } from '@/features/help/hooks/use-help';
 
 export default function HelpHomePage() {
@@ -47,9 +47,15 @@ export default function HelpHomePage() {
             <EmptyState message="No articles match your search" />
           )}
         </div>
+      ) : categories.isPending ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : categories.isError ? (
+        <ErrorState message="Failed to load help categories" />
+      ) : categories.data.length === 0 ? (
+        <EmptyState message="No help articles are available yet" />
       ) : (
         <Accordion type="multiple" className="w-full">
-          {(categories.data ?? []).map((category) => (
+          {categories.data.map((category) => (
             <AccordionItem key={category.id} value={category.id}>
               <AccordionTrigger>{category.name}</AccordionTrigger>
               <AccordionContent>

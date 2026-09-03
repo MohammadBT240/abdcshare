@@ -8,7 +8,7 @@
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "echo 'no web tests yet — Vitest/Playwright planned (ARCHITECTURE.md §13)'"
+    "test": "../api/node_modules/.bin/jest --config jest.config.js --passWithNoTests"
   },
   "dependencies": {
     "@abdcshare/api-client": "workspace:*",

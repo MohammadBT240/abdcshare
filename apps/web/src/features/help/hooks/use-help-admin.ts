@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { bffApi } from '@/lib/bff/client';
-import type { HelpArticleSummary, HelpCategory } from '../types';
+import type { HelpArticle, HelpArticleSummary, HelpCategory } from '../types';
 
 interface PageMeta {
   page: number;
@@ -35,6 +35,15 @@ export function useHelpArticlesAdmin(params: { categoryId?: string; status?: 'dr
     queryKey: ['help', 'admin', 'articles', qs.toString()],
     queryFn: () => bffApi<HelpArticleListResponse>(`/api/help/admin/articles?${qs.toString()}`),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Authoring fetch by id — the editor is keyed by the route's article id, not by slug. */
+export function useHelpArticleAdmin(id: string) {
+  return useQuery({
+    queryKey: ['help', 'admin', 'article', id],
+    queryFn: () => bffApi<HelpArticle>(`/api/help/admin/articles/${encodeURIComponent(id)}`),
+    enabled: Boolean(id),
   });
 }
 
@@ -116,6 +125,9 @@ export function useUpdateHelpArticle(id: string) {
   return useMutation({
     mutationFn: (dto: Partial<HelpArticleWriteDto>) =>
       bffApi<{ id: string }>(`/api/help/articles/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }),
-    onSuccess: () => invalidateArticles(qc),
+    onSuccess: async () => {
+      await invalidateArticles(qc);
+      await qc.invalidateQueries({ queryKey: ['help', 'admin', 'article', id] });
+    },
   });
 }

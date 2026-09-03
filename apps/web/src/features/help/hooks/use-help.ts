@@ -11,11 +11,11 @@ export function useHelpCategories() {
   });
 }
 
-export function useHelpArticle(slug: string) {
+export function useHelpArticle(slug: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['help', 'article', slug],
     queryFn: () => bffApi<HelpArticle>(`/api/help/articles/${encodeURIComponent(slug)}`),
-    enabled: Boolean(slug),
+    enabled: Boolean(slug) && (options?.enabled ?? true),
   });
 }
 

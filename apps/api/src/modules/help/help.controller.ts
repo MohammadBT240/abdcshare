@@ -86,6 +86,12 @@ export class HelpController {
     return this.help.listArticlesAdmin(query);
   }
 
+  @Get('admin/articles/:id')
+  @RequirePermission('help:manage')
+  getArticleAdmin(@Param('id') id: string): Promise<HelpArticleResponseDto> {
+    return this.help.getArticleByIdAdmin(id);
+  }
+
   @Post('articles')
   @RequirePermission('help:manage')
   createArticle(

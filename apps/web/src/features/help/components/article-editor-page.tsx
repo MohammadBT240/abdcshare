@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { ArticleEditor, type ArticleFormValues } from './article-editor';
-import { useHelpArticle } from '../hooks/use-help';
 import {
   useCreateHelpArticle,
+  useHelpArticleAdmin,
   useHelpCategoriesAdmin,
   useUpdateHelpArticle,
 } from '../hooks/use-help-admin';
@@ -13,10 +13,10 @@ import { ErrorState } from '@/components/data/empty-state';
 
 export function ArticleEditorPage({ articleId }: { articleId?: string }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const slug = searchParams.get('slug') ?? '';
   const categories = useHelpCategoriesAdmin();
-  const existing = useHelpArticle(slug);
+  // Read and write are keyed by the same id (the route param) — reading by a `?slug=`
+  // query param let the two drift apart and PATCH one article with another's body.
+  const existing = useHelpArticleAdmin(articleId ?? '');
   const create = useCreateHelpArticle();
   const update = useUpdateHelpArticle(articleId ?? '');
   const [error, setError] = useState<string | null>(null);

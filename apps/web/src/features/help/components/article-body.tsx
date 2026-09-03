@@ -1,10 +1,13 @@
 'use client';
 
+import { useMemo } from 'react';
 import { generateHTML } from '@tiptap/core';
 import { HELP_TIPTAP_EXTENSIONS } from '../lib/tiptap-extensions';
 
 export function ArticleBody({ bodyJson }: { bodyJson: Record<string, unknown> }) {
-  const html = generateHTML(bodyJson as never, HELP_TIPTAP_EXTENSIONS);
+  // generateHTML rebuilds the whole ProseMirror schema on each call — only redo it
+  // when the document actually changes.
+  const html = useMemo(() => generateHTML(bodyJson as never, HELP_TIPTAP_EXTENSIONS), [bodyJson]);
   return (
     <div
       className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-a:text-primary"

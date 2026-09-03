@@ -1,6 +1,8 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { RawQueryFragment } from '@mikro-orm/core';
 import { HelpService } from './help.service';
 import { HelpArticleEntity } from './infrastructure/persistence/help-article.entity';
+import { HelpCategoryEntity } from './infrastructure/persistence/help-category.entity';
 
 function buildStorage() {
   return { upload: jest.fn(), presignDownload: jest.fn(async () => 'https://example.com/x') };
@@ -12,6 +14,7 @@ function buildEm(overrides: Partial<Record<string, unknown>> = {}) {
     findOneOrFail: jest.fn(),
     find: jest.fn(async () => []),
     findAndCount: jest.fn(async () => [[], 0]),
+    count: jest.fn(async () => 0),
     create: jest.fn((_entity: unknown, data: unknown) => data),
     persistAndFlush: jest.fn(),
     flush: jest.fn(),
@@ -20,6 +23,25 @@ function buildEm(overrides: Partial<Record<string, unknown>> = {}) {
     ...overrides,
   };
   return em;
+}
+
+/**
+ * Stands in for Postgres: applies the raw `visible_to_roles` fragment the service pushes
+ * into its where clause, so fixtures are filtered the way the database filters them —
+ * i.e. *before* any LIMIT. If the service ever stops pushing the fragment down, no
+ * filtering happens here and the role-scoping assertions below fail.
+ */
+function applyVisibilityFragment<T extends { visibleToRoles: string[] }>(
+  where: Record<string, unknown>,
+  rows: T[],
+): T[] {
+  const rawKey = Object.keys(where).find((k) => k.startsWith('[raw]:'));
+  if (!rawKey) return rows;
+  const fragment = RawQueryFragment.getKnownFragment(rawKey);
+  const roles = JSON.parse(String(fragment?.params?.[0] ?? '[]')) as string[];
+  return rows.filter(
+    (r) => r.visibleToRoles.length === 0 || r.visibleToRoles.some((role) => roles.includes(role)),
+  );
 }
 
 describe('HelpService categories', () => {
@@ -54,6 +76,25 @@ describe('HelpService categories', () => {
       NotFoundException,
     );
   });
+
+  it('refuses to delete a category that still has articles', async () => {
+    const em = buildEm({
+      findOneOrFail: jest.fn(async () => ({ id: 'cat-1' })),
+      count: jest.fn(async () => 3),
+    });
+    const service = new HelpService(em as never, buildStorage() as never);
+
+    await expect(service.deleteCategory('cat-1')).rejects.toBeInstanceOf(ConflictException);
+    expect(em.removeAndFlush).not.toHaveBeenCalled();
+  });
+
+  it('deletes an empty category', async () => {
+    const em = buildEm({ findOneOrFail: jest.fn(async () => ({ id: 'cat-1' })) });
+    const service = new HelpService(em as never, buildStorage() as never);
+
+    await service.deleteCategory('cat-1');
+    expect(em.removeAndFlush).toHaveBeenCalled();
+  });
 });
 
 describe('HelpService articles', () => {
@@ -76,6 +117,7 @@ describe('HelpService articles', () => {
 
   const clientUser = { userId: 'u-1', role: 'Client' as const, partnerDesignation: null };
   const platformAdmin = { userId: 'u-2', role: 'Platform Admin' as const, partnerDesignation: null };
+  const staffUser = { userId: 'u-3', role: 'Staff' as const, partnerDesignation: null };
 
   it('hides a draft article from a non-manager role by slug', async () => {
     const em = buildEm({ findOne: jest.fn(async () => article({ status: 'draft' })) });
@@ -115,7 +157,21 @@ describe('HelpService articles', () => {
     expect(result.slug).toBe('how-to-raise-a-request');
   });
 
-  it('search excludes drafts and role-mismatched articles', async () => {
+  it('returns a draft article by id on the authoring route', async () => {
+    const em = buildEm({ findOne: jest.fn(async () => article({ status: 'draft' })) });
+    const service = new HelpService(em as never, buildStorage() as never);
+
+    const result = await service.getArticleByIdAdmin('art-1');
+    expect(result).toMatchObject({ id: 'art-1', slug: 'how-to-raise-a-request', status: 'draft' });
+  });
+
+  it('throws NotFoundException fetching an unknown article id on the authoring route', async () => {
+    const service = new HelpService(buildEm() as never, buildStorage() as never);
+
+    await expect(service.getArticleByIdAdmin('missing')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('search restricts the query to published articles matching the term', async () => {
     const em = buildEm({ find: jest.fn(async () => [article()]) });
     const service = new HelpService(em as never, buildStorage() as never);
 
@@ -129,6 +185,77 @@ describe('HelpService articles', () => {
       expect.anything(),
     );
     expect(results).toHaveLength(1);
+  });
+
+  it('returns no search results for an empty query instead of every published article', async () => {
+    const em = buildEm({ find: jest.fn(async () => [article()]) });
+    const service = new HelpService(em as never, buildStorage() as never);
+
+    expect(await service.searchArticles('', clientUser)).toEqual([]);
+    expect(await service.searchArticles('   ', clientUser)).toEqual([]);
+    expect(em.find).not.toHaveBeenCalled();
+  });
+
+  it('excludes role-mismatched articles from search inside the query, not after the limit', async () => {
+    const rows = [
+      article(),
+      article({
+        id: 'art-2',
+        slug: 'staff-runbook',
+        title: 'Staff runbook',
+        visibleToRoles: ['Staff'],
+      }),
+    ];
+    const em = buildEm({
+      find: jest.fn(async (_entity: unknown, where: Record<string, unknown>) =>
+        applyVisibilityFragment(where, rows as never),
+      ),
+    });
+    const service = new HelpService(em as never, buildStorage() as never);
+
+    const forClient = await service.searchArticles('a', clientUser);
+    expect(forClient.map((a) => a.slug)).toEqual(['how-to-raise-a-request']);
+
+    const forStaff = await service.searchArticles('a', staffUser);
+    expect(forStaff.map((a) => a.slug)).toEqual(['how-to-raise-a-request', 'staff-runbook']);
+  });
+});
+
+describe('HelpService category tree', () => {
+  const clientUser = { userId: 'u-1', role: 'Client' as const, partnerDesignation: null };
+  const staffUser = { userId: 'u-3', role: 'Staff' as const, partnerDesignation: null };
+
+  function buildTreeEm() {
+    const staffCategory = { id: 'cat-staff', name: 'Internal', slug: 'internal', order: 0, icon: null };
+    const staffArticle = {
+      id: 'art-staff',
+      category: staffCategory,
+      title: 'Staff runbook',
+      slug: 'staff-runbook',
+      status: 'published',
+      order: 0,
+      visibleToRoles: ['Staff'],
+    };
+    return buildEm({
+      find: jest.fn(async (entity: unknown) =>
+        entity === HelpCategoryEntity ? [staffCategory] : [staffArticle],
+      ),
+    });
+  }
+
+  it('hides a category whose only articles are scoped to other roles', async () => {
+    const service = new HelpService(buildTreeEm() as never, buildStorage() as never);
+
+    expect(await service.getCategoriesForViewer(clientUser)).toEqual([]);
+  });
+
+  it('shows the category and its article to a matching role', async () => {
+    const service = new HelpService(buildTreeEm() as never, buildStorage() as never);
+
+    const tree = await service.getCategoriesForViewer(staffUser);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]?.slug).toBe('internal');
+    expect(tree[0]?.articles.map((a) => a.slug)).toEqual(['staff-runbook']);
   });
 });
 
