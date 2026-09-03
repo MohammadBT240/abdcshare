@@ -730,6 +730,36 @@ Staff/client product surfaces on top of Phase 3–4 APIs (plus upgrades above).
   workspace Client contacts panel (SA/Lead manage).
 - Run: `pnpm --filter @abdcshare/api migration:up`.
 
+## Help Center (complete, branch `worktree-help-center`) ⚠️ **has a migration**
+In-app help articles authored by admins, read by all authenticated users, gated per-article by role.
+- **API** — `help_categories` / `help_articles` (Migration `Migration20260901190643`); `HelpService`
+  (category + article CRUD, publish/unpublish, slug lookup, search, `help:manage`-gated image upload
+  to `StoragePort` with resolved-URL rehydration on read) + `HelpController` (3 public reader routes
+  under global auth — `GET /help/categories|articles/:slug|search` — plus `help:manage`-gated
+  admin/mutation routes). Visibility is two-layered: `isVisibleTo` filters articles by
+  `visibleToRoles` (empty = all roles) for the reader routes; `help:manage` (Platform Admin /
+  Super Admin only — **not** granted to Client) gates the separate admin surface and mutations.
+  New permission `help:manage` added to `packages/shared` permission map.
+- **Web reader** — `/help` category/article accordion + search, `/help/[slug]` article page,
+  read-only Tiptap renderer (`ArticleBody` + `HELP_TIPTAP_EXTENSIONS`), `HelpTip` contextual Sheet
+  drawer wired into the Engagements page, sidebar "Help" entry (unguarded, all roles) under Account.
+- **Web admin** — `/admin/help` category/article list (permission-guarded via the same
+  `<RequirePermission>` pattern as other admin sections; loading/error states + delete confirm),
+  Tiptap editor create/edit pages with image upload, mutation error handling, and required-field
+  validation. Sidebar admin link gated by `help:manage`.
+- **Verify:** API 32 suites/184 tests, web 2 suites/9 tests (`plain-text.spec.ts` +
+  `client-ip.spec.ts`) — both via the real jest invocation (`apps/web`'s `pnpm test` script is a
+  no-op placeholder; run `../api/node_modules/.bin/jest --config jest.config.js` from `apps/web/`).
+  `pnpm typecheck && pnpm lint` clean (0 errors; pre-existing unrelated warnings only). Live E2E via
+  curl: BFF + direct-API login, `GET /help/categories` and `/help/articles/engagements-overview`
+  return seeded data incl. a working signed R2 image URL, 404 on unknown slug, 401 unauthenticated;
+  `/help`, `/help/engagements-overview`, `/admin/help` all serve 200 with no server error digest.
+  Client-role visibility was **code-verified, not live-verified** (no Client-role credentials
+  available in this pass): `isVisibleTo`/`help:manage` guard logic read and confirmed correct
+  (`Client` is absent from `ROLE_PERMISSIONS['help:manage']`-granting roles) — a real second-account
+  browser click-through is still owed as a follow-up.
+- Run: `pnpm --filter @abdcshare/api migration:up`.
+
 ## Pending / next
 1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
    replace sidebar `#` stub.
