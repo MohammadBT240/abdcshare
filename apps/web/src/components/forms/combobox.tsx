@@ -31,6 +31,8 @@ export interface ComboboxProps {
   creatable?: boolean;
   onCreate?: (name: string) => void | Promise<void>;
   creating?: boolean;
+  /** Always-visible action row (e.g. “Create client”) that opens a nested flow. */
+  footerAction?: { label: string; onSelect: () => void };
 }
 
 export function Combobox({
@@ -48,6 +50,7 @@ export function Combobox({
   creatable = false,
   onCreate,
   creating = false,
+  footerAction,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
@@ -157,6 +160,19 @@ export function Combobox({
                 >
                   <IconPlus className="mr-2 h-4 w-4" />
                   Create &quot;{trimmed}&quot;
+                </CommandItem>
+              ) : null}
+              {footerAction ? (
+                <CommandItem
+                  value={`__footer_action__${footerAction.label}`}
+                  onSelect={() => {
+                    setOpen(false);
+                    setSearch('');
+                    footerAction.onSelect();
+                  }}
+                >
+                  <IconPlus className="mr-2 h-4 w-4" />
+                  {footerAction.label}
                 </CommandItem>
               ) : null}
             </CommandGroup>

@@ -1,18 +1,22 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { FormDialog, FormField, LoadingButton, AppSelect } from '@/components/forms';
+import { FormDialog, FormField, LoadingButton, Combobox } from '@/components/forms';
 import { Button } from '@/components/ui/button';
 import { BffClientError } from '@/lib/bff/client';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import {
   useAddRequestClass,
   type EngagementWorkspace,
 } from '@/features/engagements/hooks/use-engagements';
-import { useCatalogueList } from '@/features/catalogues/hooks/use-catalogue';
+import {
+  useCatalogueList,
+  useCatalogueMutations,
+} from '@/features/catalogues/hooks/use-catalogue';
 
 const addClassSchema = z.object({
   requestClassId: z.string().min(1, 'Request class is required'),
@@ -31,9 +35,13 @@ export function AddRequestClassDialog({
   onOpenChange,
   workspace,
 }: AddRequestClassDialogProps) {
+  const { can } = useAuth();
+  const canManageCatalogue = can('catalogue:manage');
   const addClass = useAddRequestClass(workspace.id);
+  const classMutations = useCatalogueMutations('request-classes');
   const allClasses = useCatalogueList('request-classes', 'pageSize=100&isActive=true');
   const engagementTypes = useCatalogueList('engagement-types', 'pageSize=100&isActive=true');
+  const [creatingClass, setCreatingClass] = useState(false);
 
   const form = useForm<AddClassFormValues>({
     resolver: zodResolver(addClassSchema),
@@ -43,6 +51,7 @@ export function AddRequestClassDialog({
   useEffect(() => {
     if (!open) return;
     form.reset({ requestClassId: '' });
+    setCreatingClass(false);
   }, [open, form]);
 
   const suggestedIds = useMemo(() => {
@@ -66,6 +75,9 @@ export function AddRequestClassDialog({
     return [...suggested, ...other];
   }, [allClasses.data, scopedIds, suggestedIds]);
 
+  const selectedClassId = form.watch('requestClassId');
+  const busy = addClass.isPending || creatingClass;
+
   async function handleAddClass(values: AddClassFormValues) {
     try {
       await addClass.mutateAsync({ requestClassId: Number(values.requestClassId) });
@@ -76,6 +88,26 @@ export function AddRequestClassDialog({
       toast.error(err instanceof BffClientError ? err.message : 'Failed to add class');
     }
   }
+
+  async function handleCreateClass(name: string) {
+    if (!canManageCatalogue) return;
+    setCreatingClass(true);
+    try {
+      const created = await classMutations.create.mutateAsync({ name });
+      await addClass.mutateAsync({ requestClassId: created.id });
+      toast.success(`Created and added “${created.name}”`);
+      onOpenChange(false);
+      form.reset();
+    } catch (err) {
+      toast.error(err instanceof BffClientError ? err.message : 'Failed to create request class');
+      throw err;
+    } finally {
+      setCreatingClass(false);
+    }
+  }
+
+  const showEmpty =
+    selectOptions.length === 0 && !allClasses.isPending && !canManageCatalogue;
 
   return (
     <FormDialog
@@ -88,14 +120,14 @@ export function AddRequestClassDialog({
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={addClass.isPending}
+            disabled={busy}
           >
             Cancel
           </Button>
           <LoadingButton
             onClick={form.handleSubmit(handleAddClass)}
-            loading={addClass.isPending}
-            disabled={selectOptions.length === 0}
+            loading={busy}
+            disabled={!selectedClassId || busy}
           >
             Add class
           </LoadingButton>
@@ -103,7 +135,7 @@ export function AddRequestClassDialog({
       }
     >
       <div className="space-y-4">
-        {selectOptions.length === 0 && !allClasses.isPending ? (
+        {showEmpty ? (
           <p className="text-sm text-muted-foreground">
             Every active request class is already in scope for this engagement.
           </p>
@@ -112,17 +144,31 @@ export function AddRequestClassDialog({
             label="Request class"
             error={form.formState.errors.requestClassId?.message}
             required
-            description="Any active class can be added. Suggested classes for this engagement type appear first."
+            description={
+              canManageCatalogue
+                ? 'Search existing classes, or create a new one. New classes are added to this engagement immediately.'
+                : 'Any active class can be added. Suggested classes for this engagement type appear first.'
+            }
           >
-            <AppSelect
-              {...form.register('requestClassId')}
+            <Combobox
               options={selectOptions}
-              value={form.watch('requestClassId')}
+              value={selectedClassId}
               onValueChange={(value) =>
                 form.setValue('requestClassId', value, { shouldValidate: true })
               }
-              placeholder="Select class"
+              placeholder={
+                canManageCatalogue ? 'Search or create class' : 'Select class'
+              }
+              searchPlaceholder="Search classes…"
+              emptyMessage={
+                canManageCatalogue
+                  ? 'No matching classes — create a new one'
+                  : 'No classes available'
+              }
               isLoading={allClasses.isPending || engagementTypes.isPending}
+              creatable={canManageCatalogue}
+              creating={creatingClass}
+              onCreate={handleCreateClass}
             />
           </FormField>
         )}

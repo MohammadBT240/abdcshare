@@ -11,6 +11,7 @@ coverage/
 .turbo/
 .DS_Store
 *.tsbuildinfo
+.claude
 
 # Deployment — never commit rendered env files, vault passwords, or real inventory.
 # Encrypted group_vars/*/vault.yml ARE committed (ansible-vault, AES256).
