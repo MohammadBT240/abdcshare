@@ -109,7 +109,7 @@ export function RequestClassesPanel({
         {rollups.length === 0 ? (
           <p className="text-sm text-muted-foreground">No request classes yet</p>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="max-h-80 divide-y divide-border overflow-y-auto pr-1">
             {rollups.map((rc) => {
               const classSignOff = activeSignOffs.find(
                 (s) => s.requestClassId === rc.requestClassId,

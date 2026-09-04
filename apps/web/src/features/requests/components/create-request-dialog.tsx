@@ -11,6 +11,7 @@ import {
   FormField,
   LoadingButton,
   AppSelect,
+  Combobox,
   MultiCombobox,
   FileUpload,
   ATTACHMENT_ACCEPT,
@@ -26,7 +27,10 @@ import {
   uploadRequestBrief,
   useCreateRequest,
 } from '@/features/requests/hooks/use-requests';
-import { useCatalogueList } from '@/features/catalogues/hooks/use-catalogue';
+import {
+  useCatalogueList,
+  useCatalogueMutations,
+} from '@/features/catalogues/hooks/use-catalogue';
 import type { EngagementTeamMember } from '@/features/engagements/hooks/use-engagements';
 
 const createRequestSchema = z.object({
@@ -72,10 +76,13 @@ export function CreateRequestDialog({
   onCreated,
 }: CreateRequestDialogProps) {
   const create = useCreateRequest();
+  const typeMutations = useCatalogueMutations('request-types');
   const requestTypes = useCatalogueList('request-types', 'pageSize=100&isActive=true');
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [briefFiles, setBriefFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [creatingType, setCreatingType] = useState(false);
+  const [pendingTypeLabel, setPendingTypeLabel] = useState<string | null>(null);
 
   const classOptions = useMemo(
     () => inScopeClasses.map((c) => ({ value: String(c.id), label: c.name })),
@@ -115,10 +122,17 @@ export function CreateRequestDialog({
     return rows.filter((rt) => rt.requestClassId === classId);
   }, [requestTypes.data, selectedClassId]);
 
-  const typeOptions = useMemo(
-    () => typeRows.map((rt) => ({ value: String(rt.id), label: rt.name })),
-    [typeRows],
-  );
+  const typeOptions = useMemo(() => {
+    const base = typeRows.map((rt) => ({ value: String(rt.id), label: rt.name }));
+    if (
+      selectedTypeId &&
+      pendingTypeLabel &&
+      !base.some((o) => o.value === selectedTypeId)
+    ) {
+      return [...base, { value: selectedTypeId, label: pendingTypeLabel }];
+    }
+    return base;
+  }, [typeRows, selectedTypeId, pendingTypeLabel]);
 
   const selectedClassName = inScopeClasses.find((c) => String(c.id) === selectedClassId)?.name;
   const singleClass = inScopeClasses.length === 1;
@@ -135,7 +149,19 @@ export function CreateRequestDialog({
     });
     setAssigneeIds([]);
     setBriefFiles([]);
+    setCreatingType(false);
+    setPendingTypeLabel(null);
   }, [open, engagementId, defaultClassId, form]);
+
+  useEffect(() => {
+    if (
+      pendingTypeLabel &&
+      selectedTypeId &&
+      typeRows.some((rt) => String(rt.id) === selectedTypeId)
+    ) {
+      setPendingTypeLabel(null);
+    }
+  }, [typeRows, selectedTypeId, pendingTypeLabel]);
 
   useEffect(() => {
     if (!selectedTypeId) return;
@@ -145,6 +171,28 @@ export function CreateRequestDialog({
       form.setValue('expectedDocumentCount', expected, { shouldValidate: true });
     }
   }, [selectedTypeId, typeRows, form]);
+
+  async function handleCreateType(name: string) {
+    if (!selectedClassId) return;
+    setCreatingType(true);
+    try {
+      const created = await typeMutations.create.mutateAsync({
+        name,
+        requestClassId: Number(selectedClassId),
+        expectedDocuments: 1,
+      });
+      setPendingTypeLabel(created.name);
+      form.setValue('requestTypeId', String(created.id), { shouldValidate: true });
+      toast.success(`Created request type “${created.name}”`);
+    } catch (err) {
+      const message =
+        err instanceof BffClientError ? err.message : 'Failed to create request type';
+      toast.error(message);
+      throw err;
+    } finally {
+      setCreatingType(false);
+    }
+  }
 
   async function handleSubmit(values: CreateRequestFormValues) {
     setSubmitting(true);
@@ -247,20 +295,36 @@ export function CreateRequestDialog({
               onValueChange={(value) => {
                 form.setValue('requestClassId', value, { shouldValidate: true });
                 form.setValue('requestTypeId', '', { shouldValidate: true });
+                setPendingTypeLabel(null);
               }}
             />
           </FormField>
         )}
 
-        <FormField label="Request type" error={form.formState.errors.requestTypeId?.message} required>
-          <AppSelect
-            {...form.register('requestTypeId')}
+        <FormField
+          label="Request type"
+          error={form.formState.errors.requestTypeId?.message}
+          required
+          description={
+            selectedClassId
+              ? 'Search existing types for this class, or create a new one if it is not in the list.'
+              : undefined
+          }
+        >
+          <Combobox
             options={typeOptions}
-            placeholder={selectedClassId ? 'Select type' : 'Select a class first'}
+            value={form.watch('requestTypeId')}
+            onValueChange={(value) =>
+              form.setValue('requestTypeId', value, { shouldValidate: true })
+            }
+            placeholder={selectedClassId ? 'Search or create type' : 'Select a class first'}
+            searchPlaceholder="Search types…"
+            emptyMessage="No types found"
             isLoading={requestTypes.isPending}
             disabled={!selectedClassId}
-            onValueChange={(value) => form.setValue('requestTypeId', value, { shouldValidate: true })}
-            value={form.watch('requestTypeId')}
+            creatable={Boolean(selectedClassId)}
+            creating={creatingType}
+            onCreate={handleCreateType}
           />
         </FormField>
 

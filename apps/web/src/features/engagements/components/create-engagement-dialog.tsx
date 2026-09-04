@@ -21,11 +21,13 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BffClientError } from '@/lib/bff/client';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import { useCreateEngagement } from '@/features/engagements/hooks/use-engagements';
 import {
   useClientContacts,
   useClientsList,
 } from '@/features/clients/hooks/use-clients';
+import { AddClientDialog } from '@/features/clients/components/add-client-dialog';
 import {
   useCatalogueList,
   useCatalogueMutations,
@@ -60,6 +62,8 @@ interface CreateEngagementDialogProps {
 }
 
 export function CreateEngagementDialog({ open, onOpenChange, onCreated }: CreateEngagementDialogProps) {
+  const { can } = useAuth();
+  const canManageClients = can('client:manage');
   const create = useCreateEngagement();
   const typeMutations = useCatalogueMutations('engagement-types');
   const [selectedRequestClassIds, setSelectedRequestClassIds] = useState<number[]>([]);
@@ -68,6 +72,7 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
   const [contactUserIds, setContactUserIds] = useState<string[]>([]);
   const [mainContactUserId, setMainContactUserId] = useState('');
   const [emailContactUserIds, setEmailContactUserIds] = useState<string[]>([]);
+  const [addClientOpen, setAddClientOpen] = useState(false);
 
   const form = useForm<CreateEngagementFormValues>({
     resolver: zodResolver(createEngagementSchema),
@@ -145,6 +150,7 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
       setContactUserIds([]);
       setMainContactUserId('');
       setEmailContactUserIds([]);
+      setAddClientOpen(false);
     }
   }, [open, form]);
 
@@ -246,6 +252,15 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
     }
   }
 
+  const clientOptions = useMemo(() => {
+    const base =
+      clients.data?.data.map((c) => ({ value: c.id, label: c.name })) ?? [];
+    if (clientId && !base.some((o) => o.value === clientId)) {
+      return [...base, { value: clientId, label: 'New client' }];
+    }
+    return base;
+  }, [clients.data, clientId]);
+
   function toggleRequestClass(id: number) {
     setSelectedRequestClassIds((prev) =>
       prev.includes(id) ? prev.filter((rcId) => rcId !== id) : [...prev, id],
@@ -253,6 +268,7 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
   }
 
   return (
+    <>
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
@@ -281,15 +297,21 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-4">
           <FormField label="Client" error={form.formState.errors.clientId?.message} required>
-            <AppSelect
-              {...form.register('clientId')}
-              options={
-                clients.data?.data.map((c) => ({ value: c.id, label: c.name })) ?? []
-              }
-              placeholder="Select client"
+            <Combobox
+              options={clientOptions}
+              placeholder="Search or create client"
+              searchPlaceholder="Search clients…"
+              emptyMessage="No clients found"
               isLoading={clients.isPending}
-              onValueChange={(value) => form.setValue('clientId', value, { shouldValidate: true })}
+              onValueChange={(value) =>
+                form.setValue('clientId', value, { shouldValidate: true })
+              }
               value={form.watch('clientId')}
+              footerAction={
+                canManageClients
+                  ? { label: 'Create client', onSelect: () => setAddClientOpen(true) }
+                  : undefined
+              }
             />
           </FormField>
 
@@ -478,5 +500,14 @@ export function CreateEngagementDialog({ open, onOpenChange, onCreated }: Create
         </div>
       </div>
     </FormDialog>
+    <AddClientDialog
+      open={addClientOpen}
+      onOpenChange={setAddClientOpen}
+      onCreated={(id) => {
+        form.setValue('clientId', id, { shouldValidate: true });
+        setAddClientOpen(false);
+      }}
+    />
+    </>
   );
 }
