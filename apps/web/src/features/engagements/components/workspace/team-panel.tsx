@@ -111,7 +111,7 @@ export function TeamPanel({ workspace, canManageTeam }: TeamPanelProps) {
         {workspace.team.length === 0 ? (
           <p className="text-sm text-muted-foreground">No team members yet</p>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="max-h-80 divide-y divide-border overflow-y-auto pr-1">
             {workspace.team.map((member) => {
               const isSoleLead =
                 member.memberRole === 'Lead' && leadCount <= 1;

@@ -1,6 +1,9 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import {
+  RequireAnyPermission,
+  RequirePermission,
+} from '../../common/decorators/require-permission.decorator';
 import { RequestTypesService } from './request-types.service';
 import {
   CreateRequestTypeDto,
@@ -16,20 +19,24 @@ import {
 export class RequestTypesController {
   constructor(private readonly requestTypes: RequestTypesService) {}
 
+  /**
+   * Create a request type. Allowed for catalogue:manage (admin) or request:create
+   * (inline create from the create-request dialog).
+   */
   @Post()
-  @RequirePermission('catalogue:manage')
+  @RequireAnyPermission('catalogue:manage', 'request:create')
   create(@Body() dto: CreateRequestTypeDto): Promise<RequestTypeResponseDto> {
     return this.requestTypes.create(dto);
   }
 
   @Get()
-  @RequirePermission('catalogue:view')
+  @RequireAnyPermission('catalogue:view', 'request:create')
   list(@Query() query: RequestTypeListQueryDto): Promise<RequestTypeListResponseDto> {
     return this.requestTypes.list(query);
   }
 
   @Get(':id')
-  @RequirePermission('catalogue:view')
+  @RequireAnyPermission('catalogue:view', 'request:create')
   getOne(@Param('id', ParseIntPipe) id: number): Promise<RequestTypeResponseDto> {
     return this.requestTypes.getOne(id);
   }

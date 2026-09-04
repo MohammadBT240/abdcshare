@@ -5,7 +5,7 @@ const path = require('path');
 module.exports = {
   rootDir: 'src',
   testEnvironment: 'node',
-  testRegex: 'lib/bff/client-ip\\.spec\\.ts$',
+  testRegex: '\\.spec\\.ts$',
   moduleFileExtensions: ['ts', 'js', 'json'],
   transform: {
     '^.+\\.ts$': [

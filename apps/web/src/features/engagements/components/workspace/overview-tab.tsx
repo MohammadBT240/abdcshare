@@ -67,7 +67,7 @@ export function OverviewTab({
             No team yet — add under Settings.
           </p>
         ) : (
-          <ul className="flex flex-wrap gap-1.5">
+          <ul className="flex max-h-72 flex-wrap gap-1.5 overflow-y-auto">
             {workspace.team.map((m) => (
               <li
                 key={m.userId}
@@ -91,22 +91,24 @@ export function OverviewTab({
         {(workspace.classRollups?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">None in scope yet.</p>
         ) : (
-          <ul className="grid gap-1.5">
+          <ul className="grid max-h-72 gap-1.5 overflow-y-auto pr-1">
             {workspace.classRollups.map((rc) => (
               <li
                 key={rc.requestClassId}
                 className="rounded-md border border-border bg-background px-2.5 py-1.5"
               >
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium">{rc.name}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span title={rc.name} className="truncate text-sm font-medium">
+                    {rc.name}
+                  </span>
                   {rc.total === 0 ? (
-                    <span className="rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground bg-muted/60">
+                    <span className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground bg-muted/60">
                       No requests
                     </span>
                   ) : (
                     <span
                       className={cn(
-                        "rounded px-1.5 py-0.5 text-[11px] font-medium",
+                        "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium",
                         rc.signedOff
                           ? "bg-primary/10 text-primary dark:bg-emerald-950/40 dark:text-emerald-300"
                           : "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100",
@@ -118,17 +120,13 @@ export function OverviewTab({
                 </div>
                 {rc.total > 0 ? (
                   <>
-                    <Progress value={rc.progressPercent} className="h-1.5" />
+                    <Progress value={rc.progressPercent} className="mt-1 h-1.5" />
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {rc.progressPercent}% · {rc.done}/{rc.total} done
                       {rc.overdue > 0 ? ` · ${rc.overdue} overdue` : ""}
                     </p>
                   </>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    No requests in this class yet
-                  </p>
-                )}
+                ) : null}
               </li>
             ))}
           </ul>
@@ -428,7 +426,7 @@ function WorkloadPanel({
       {rows.length === 0 && unassignedOpen === 0 ? (
         <p className="text-sm text-muted-foreground">No team workload yet.</p>
       ) : (
-        <ul className="space-y-2.5">
+        <ul className="max-h-72 space-y-2.5 overflow-y-auto pr-1">
           {unassignedOpen > 0 ? (
             <li className="space-y-1">
               <div className="flex items-center justify-between text-xs">
