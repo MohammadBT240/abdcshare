@@ -43,7 +43,18 @@ export const COMPANY_PROFILE_TYPES = new Set([
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ]);
+
+/** Picker accept list for company profiles and planning documents. */
+export const COMPANY_PROFILE_ACCEPT =
+  '.pdf,.doc,.docx,.xls,.xlsx,' +
+  'application/pdf,' +
+  'application/msword,' +
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document,' +
+  'application/vnd.ms-excel,' +
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 export const ZIP_TYPES = new Set([
   'application/zip',
