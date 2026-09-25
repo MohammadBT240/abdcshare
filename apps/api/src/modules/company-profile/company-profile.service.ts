@@ -74,7 +74,7 @@ export class CompanyProfileService {
   private validateUploadMeta(fileName: string, mimeType: string | undefined, sizeBytes: number): void {
     const mime = mimeType || '';
     if (!COMPANY_PROFILE_MIME_TYPES.has(mime)) {
-      throw new BadRequestException('Use a PDF, DOC, or DOCX file');
+      throw new BadRequestException('Use a PDF, DOC, DOCX, XLS, or XLSX file');
     }
     if (sizeBytes > COMPANY_PROFILE_MAX_BYTES) {
       throw new BadRequestException('File must be 100 MB or smaller');
@@ -153,7 +153,7 @@ export class CompanyProfileService {
   async presignUpload(id: string, dto: CompanyProfilePresignDto): Promise<PresignedUploadResponseDto> {
     await this.findActive(id);
     if (!COMPANY_PROFILE_MIME_TYPES.has(dto.contentType)) {
-      throw new BadRequestException('Use a PDF, DOC, or DOCX file');
+      throw new BadRequestException('Use a PDF, DOC, DOCX, XLS, or XLSX file');
     }
     const presigned = await this.storage.presignUpload({
       keyPrefix: KEY_PREFIX,
@@ -166,7 +166,7 @@ export class CompanyProfileService {
   async createMultipart(id: string, dto: MultipartCreateDto) {
     await this.findActive(id);
     if (!COMPANY_PROFILE_MIME_TYPES.has(dto.contentType)) {
-      throw new BadRequestException('Use a PDF, DOC, or DOCX file');
+      throw new BadRequestException('Use a PDF, DOC, DOCX, XLS, or XLSX file');
     }
     if (dto.sizeBytes != null && dto.sizeBytes > COMPANY_PROFILE_MAX_BYTES) {
       throw new BadRequestException('File must be 100 MB or smaller');

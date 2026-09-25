@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { FormDialog, FormField, FileUpload, LoadingButton } from '@/components/forms';
 import {
+  COMPANY_PROFILE_ACCEPT,
   COMPANY_PROFILE_TYPES,
   DOCUMENT_MAX_BYTES,
 } from '@/components/forms/file-validation';
@@ -61,7 +62,7 @@ export function UploadCompanyProfileDialog({
         onOpenChange(next);
       }}
       title="Upload company profile"
-      description="Add a named document for staff reference. PDF, DOC, or DOCX up to 100 MB."
+      description="Add a named document for staff reference. PDF, Word, or Excel up to 100 MB."
       maxWidthClass="sm:max-w-lg"
       footer={
         <>
@@ -93,10 +94,10 @@ export function UploadCompanyProfileDialog({
           <FileUpload
             files={files}
             onChange={setFiles}
-            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept={COMPANY_PROFILE_ACCEPT}
             allowedTypes={COMPANY_PROFILE_TYPES}
             maxBytes={DOCUMENT_MAX_BYTES}
-            description="PDF, DOC, or DOCX — up to 100 MB."
+            description="PDF, DOC, DOCX, XLS, or XLSX — up to 100 MB."
           />
         </FormField>
         {create.isPending && percent != null ? (
