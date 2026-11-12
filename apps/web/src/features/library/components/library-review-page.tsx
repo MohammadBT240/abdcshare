@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { LibraryAttentionPanel, LibraryDuplicatesPanel } from '@/features/library/components/library-attention';
 import Link from 'next/link';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { toast } from 'sonner';
@@ -31,8 +33,14 @@ function ago(iso: string) {
 }
 
 /** Curator review queue (S2, D20): open reports grouped by item, newest first. */
+type Tab = LibraryReportStatus | 'attention' | 'duplicates';
+const TABS: Tab[] = ['Open', 'Actioned', 'Dismissed', 'attention', 'duplicates'];
+
 export function LibraryReviewPage() {
-  const [status, setStatus] = useState<LibraryReportStatus>('Open');
+  const params = useSearchParams();
+  const initial = params.get('tab') as Tab | null;
+  const [tab, setTab] = useState<Tab>(initial && TABS.includes(initial) ? initial : 'Open');
+  const status: LibraryReportStatus = tab === 'attention' || tab === 'duplicates' ? 'Open' : tab;
   const [page, setPage] = useState(1);
   const reports = useLibraryReports(status, page);
   const [resolving, setResolving] = useState<{ group: LibraryReportGroup; outcome: LibraryReportOutcome } | null>(null);
@@ -43,7 +51,7 @@ export function LibraryReviewPage() {
     <div>
       <PageToolbar
         title="Review queue"
-        description="Items staff have reported. A reported item stays visible until you act on it."
+        description="Reported items, and everything else in the library that needs a curator."
         breadcrumbs={[
           { label: 'Home', href: '/dashboard' },
           { label: 'Library', href: '/library' },
@@ -52,21 +60,27 @@ export function LibraryReviewPage() {
       />
 
       <Tabs
-        value={status}
+        value={tab}
         onValueChange={(v) => {
-          setStatus(v as LibraryReportStatus);
+          setTab(v as Tab);
           setPage(1);
         }}
         className="mb-4"
       >
-        <TabsList>
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="Open">Open</TabsTrigger>
           <TabsTrigger value="Actioned">Actioned</TabsTrigger>
           <TabsTrigger value="Dismissed">Dismissed</TabsTrigger>
+          <TabsTrigger value="attention">Needs attention</TabsTrigger>
+          <TabsTrigger value="duplicates">Duplicates</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {reports.isPending ? (
+      {tab === 'attention' ? (
+        <LibraryAttentionPanel onOpenReports={() => setTab('Open')} />
+      ) : tab === 'duplicates' ? (
+        <LibraryDuplicatesPanel />
+      ) : reports.isPending ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }, (_, i) => (
             <Skeleton key={i} className="h-40 w-full rounded-xl" />
@@ -97,7 +111,7 @@ export function LibraryReviewPage() {
         </div>
       )}
 
-      {meta && meta.totalPages > 1 ? (
+      {meta && meta.totalPages > 1 && tab !== 'attention' && tab !== 'duplicates' ? (
         <div className="mt-4 flex items-center justify-end gap-2 text-sm">
           <span className="text-muted-foreground">
             Page {meta.page} of {meta.totalPages}

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { apiAs, pageAs } from '../support/fixtures';
-import { FILES, bff, createItem, destroyItem, unique } from '../support/library';
+import { FILES, bff, createItem, destroyItem, unique, waitForScan } from '../support/library';
 
 test('a view-only, licensed item: no download for staff (403), uploader still can; ZIP skips it', async ({
   browser,
@@ -32,6 +32,10 @@ test('a view-only, licensed item: no download for staff (403), uploader still ca
   await audit.page.getByRole('button', { name: 'Open', exact: true }).click();
   await audit.page.waitForURL(/\/library\/[0-9a-f-]{36}$/);
   const id = audit.page.url().split('/').pop()!;
+  const auditApiEarly = await apiAs(playwright, 'audit', baseURL!);
+  await waitForScan(auditApiEarly, id);
+  await auditApiEarly.dispose();
+  await audit.page.reload();
   // The uploader can still download, and sees the banner.
   await expect(audit.page.getByRole('button', { name: 'Download' })).toBeVisible();
   await expect(audit.page.getByTestId('licence-banner')).toContainText('Licensed material — do not share outside the firm.');
@@ -65,7 +69,7 @@ test('a view-only, licensed item: no download for staff (403), uploader still ca
   await auditApi.post(bff(`library/collections/${col.id}/items`), { data: { itemIds: [normal.id, id] } });
   const zip = await taxApi.post(bff(`library/collections/${col.id}/export`));
   expect(zip.status()).toBe(202);
-  expect(await zip.json()).toEqual({ accepted: true, files: 1, viewOnlySkipped: 1 });
+  expect(await zip.json()).toEqual({ accepted: true, files: 1, viewOnlySkipped: 1, scanPendingSkipped: 0 });
   // The worker zips the normal file only and says so in the notification.
   let ready: { link: string; body: string } | undefined;
   await expect
@@ -80,7 +84,7 @@ test('a view-only, licensed item: no download for staff (403), uploader still ca
       { timeout: 60_000 },
     )
     .toBe(true);
-  expect(ready!.body).toContain('1 view-only item(s) listed in index.csv');
+  expect(ready!.body).toContain('1 view-only or unchecked item(s) listed in index.csv');
   const { url } = await (await taxApi.get(ready!.link)).json();
   const bytes = await (await taxApi.get(url)).body();
   // Entry names are stored uncompressed in the ZIP directory.

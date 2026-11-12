@@ -3,6 +3,7 @@
 import { IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconMenu2 } from '@tabler/icons-react';
 import { AppHeaderSkeleton } from '@/components/skeletons';
 import { useAuthContext } from '@/components/providers/auth-provider';
+import { GlobalSearch } from '@/components/layout/global-search';
 import { NotificationsBell } from '@/components/layout/notifications-bell';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { UserMenu } from '@/components/layout/user-menu';
@@ -53,6 +54,7 @@ export function AppHeader() {
       </div>
 
       <div className="flex items-center gap-0.5 sm:gap-1">
+        <GlobalSearch />
         <NotificationsBell />
         <ThemeToggle />
         <span className="mx-1 hidden h-6 w-px bg-border sm:block" aria-hidden />

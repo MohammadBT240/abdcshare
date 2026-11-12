@@ -154,12 +154,13 @@ describe('LibraryCollectionsService', () => {
     size_bytes,
     downloadable: true,
     uploaded_by_id: 'u-someone',
+    scan_status: 'Clean',
     ...extra,
   });
 
   it('queues a ZIP of only the visible items, within the caps, and logs it', async () => {
     const { service, outbox, events } = setup({ rows: [row('a', 10), row('b', 20)] });
-    await expect(service.requestExport('col-1', tax)).resolves.toEqual({ accepted: true, files: 2, viewOnlySkipped: 0 });
+    await expect(service.requestExport('col-1', tax)).resolves.toEqual({ accepted: true, files: 2, viewOnlySkipped: 0, scanPendingSkipped: 0 });
     expect(outbox.enqueue).toHaveBeenCalledWith(EVENT.LibraryCollectionExportRequested, {
       collectionId: 'col-1',
       actorUserId: 'u-tax',
@@ -183,6 +184,17 @@ describe('LibraryCollectionsService', () => {
     );
     const allViewOnly = setup({ rows: [row('vo', 20, { downloadable: false })] });
     await expect(allViewOnly.service.requestExport('col-1', tax)).rejects.toThrow('view-only');
+  });
+
+  it('leaves out files the virus scan has not passed yet (S3)', async () => {
+    const { service, outbox } = setup({ rows: [row('a', 10), row('p', 20, { scan_status: 'Pending' })] });
+    await expect(service.requestExport('col-1', tax)).resolves.toMatchObject({ files: 1, scanPendingSkipped: 1 });
+    expect(outbox.enqueue).toHaveBeenCalledWith(
+      EVENT.LibraryCollectionExportRequested,
+      expect.objectContaining({ itemIds: ['a'], viewOnlyItemIds: ['p'] }),
+    );
+    const none = setup({ rows: [row('p', 20, { scan_status: 'Pending' })] });
+    await expect(none.service.requestExport('col-1', tax)).rejects.toThrow('still being checked for viruses');
   });
 
   it('logs removal from a collection in the same transaction', async () => {

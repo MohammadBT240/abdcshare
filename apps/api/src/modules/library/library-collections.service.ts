@@ -430,13 +430,13 @@ export class LibraryCollectionsService {
   async requestExport(
     id: string,
     viewer: LibraryViewer,
-  ): Promise<{ accepted: true; files: number; viewOnlySkipped: number }> {
+  ): Promise<{ accepted: true; files: number; viewOnlySkipped: number; scanPendingSkipped: number }> {
     const c = await this.findVisible(id, viewer);
     const vis = visibleItemSql('i', viewer);
     const all = await this.em.execute<
-      { item_id: string; size_bytes: number | null; downloadable: boolean; uploaded_by_id: string }[]
+      { item_id: string; size_bytes: number | null; downloadable: boolean; uploaded_by_id: string; scan_status: string }[]
     >(
-      `select ci.item_id, i.size_bytes, i.downloadable, i.uploaded_by_id
+      `select ci.item_id, i.size_bytes, i.downloadable, i.uploaded_by_id, i.scan_status
          from library_collection_items ci join library_items i on i.id = ci.item_id
         where ci.collection_id = ? and i.storage_key is not null and ${vis.sql}
         order by ci.position asc`,
@@ -444,13 +444,18 @@ export class LibraryCollectionsService {
     );
     // View-only items (D22) are listed in index.csv but not zipped, unless the requester can edit them.
     const editor = (r: { uploaded_by_id: string }) => viewer.isCurator || r.uploaded_by_id === viewer.userId;
-    const rows = all.filter((r) => r.downloadable || editor(r));
-    const viewOnly = all.filter((r) => !rows.includes(r));
+    // Files not yet scanned Clean (S3, D25) are left out the same way.
+    const clean = all.filter((r) => r.scan_status === 'Clean');
+    const rows = clean.filter((r) => r.downloadable || editor(r));
+    const viewOnly = clean.filter((r) => !rows.includes(r));
+    const unscanned = all.filter((r) => r.scan_status !== 'Clean');
     if (rows.length === 0) {
       throw new BadRequestException(
         viewOnly.length
           ? 'Everything in this collection is view-only — open the items in the library instead'
-          : 'There are no files you can download in this collection',
+          : unscanned.length
+            ? 'The files in this collection are still being checked for viruses — try again in a moment'
+            : 'There are no files you can download in this collection',
       );
     }
     if (rows.length > COLLECTION_EXPORT_MAX_FILES) {
@@ -462,17 +467,17 @@ export class LibraryCollectionsService {
       collectionId: c.id,
       actorUserId: viewer.userId,
       itemIds: rows.map((r) => r.item_id),
-      viewOnlyItemIds: viewOnly.map((r) => r.item_id),
+      viewOnlyItemIds: [...viewOnly, ...unscanned].map((r) => r.item_id),
       editorItemIds: rows.filter((r) => !r.downloadable).map((r) => r.item_id),
     });
     this.events.stage({
       action: LibraryEventAction.ZipExported,
       viewer,
       collectionId: c.id,
-      metadata: { files: rows.length, viewOnlySkipped: viewOnly.length, collectionTitle: c.title },
+      metadata: { files: rows.length, viewOnlySkipped: viewOnly.length, scanPendingSkipped: unscanned.length, collectionTitle: c.title },
     });
     await this.em.flush();
-    return { accepted: true, files: rows.length, viewOnlySkipped: viewOnly.length };
+    return { accepted: true, files: rows.length, viewOnlySkipped: viewOnly.length, scanPendingSkipped: unscanned.length };
   }
 
   async exportDownloadUrl(id: string, key: string, name: string | undefined, viewer: LibraryViewer): Promise<{ url: string }> {

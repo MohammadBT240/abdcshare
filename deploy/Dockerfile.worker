@@ -34,7 +34,13 @@ RUN apt-get update \
     libreoffice-impress \
     libreoffice-calc \
     fonts-dejavu-core \
+    fonts-dejavu \
+    fonts-liberation2 \
+    fonts-crosextra-carlito \
+    fonts-crosextra-caladea \
   && rm -rf /var/lib/apt/lists/*
+# Carlito/Caladea are metric-compatible with Calibri/Cambria, Liberation with Arial/Times/Courier —
+# Office files keep their line breaks and page count when converted to PDF (S3, D28).
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY apps/api/package.json ./apps/api/

@@ -869,6 +869,34 @@ Plan: project doc `abdcshare/sprint-s2-plan.md`. Status: `abdcshare/sprint-s2-st
 - **Verify:** api jest 306/306; int 6/6; turbo typecheck+lint 14/14; e2e 23/23; `next build` ok;
   `migration:create` → no changes.
 
+## S3 — Library hardening, part 2 + launch prep (Nov 2026) ⚠️ **2 migrations** (`Migration20261112173707`, `Migration20261112190000`) + worker dev deps (jest) — run `pnpm install`
+Plan: project doc `abdcshare/sprint-s3-plan.md`. Status: `abdcshare/sprint-s3-status.md`.
+- **Virus scanning (ClamAV):** every confirmed upload/replacement queues `library.scan_requested`; the worker
+  streams the object to clamd (INSTREAM, never to disk) while hashing it. `scan_status` Pending → Clean |
+  Infected | Error (3 attempts, queue backoff). Infected → `Quarantined` (curators only, object under
+  `quarantine/`, preview deleted, event logged, uploader + curators notified in-app + email). Downloads and ZIPs
+  need Clean; viewing doesn't. Worker refuses to boot in production without `CLAMD_HOST`; in dev without it,
+  files are hashed and marked Clean with a "not scanned" note. Migration queues scans for existing files.
+- **Duplicates:** browser SHA-256 → `GET /library/items/duplicates?hash=` (visible items only) → warning in the
+  single and bulk dialogs; worker stores `content_hash`; curator Duplicates view.
+- **Conversion fidelity:** worker image adds Carlito/Caladea/Liberation 2/DejaVu; failures classified into
+  `preview_error_code` (password_protected / corrupt / timeout / unknown) with specific viewer messages;
+  encrypted .docx/.xlsx/.pptx detected before LibreOffice (no 2-minute hang).
+- **Ownership + orphans:** `POST /library/admin/items|collections/:id/transfer`, `/library/admin/transfer-all`;
+  "Needs attention" (quarantined, scan errors, leavers' content, items restricted to inactive departments,
+  failed previews, open reports) as a tab of `/library/review`; department deactivation shows the impact.
+- **Launch extras:** header search (⌘K) over `/api/search`, which now includes library items + collections and
+  returns `href`s; Help article "Using the Library" (migration) + HelpTips on `/library` and the upload dialog;
+  `PageToolbar` stacks actions under the title on phones; docs (USER_STORIES epic S, ERD §12a, TRACEABILITY,
+  design spec §12, DEPLOYMENT §8c incl. clamd service + rollout checklist).
+- **Tests:** worker jest (new): clamd framing against a test double + real clamd (EICAR), failure
+  classification with password-protected fixtures, scan state machine + quarantine. API: scan/quarantine/
+  duplicates/transfer specs; Postgres int: needs-attention, department impact, transfer-all. e2e: EICAR →
+  quarantine, duplicate warning + hidden-duplicate privacy, password-protected DOCX/PDF messages, department
+  deactivation → needs attention, transfer, header search.
+- **Not done here (needs the user's infrastructure):** staging deploy, VM memory measurement for clamd (D26),
+  production go-live.
+
 ## Pending / next
 1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
    replace sidebar `#` stub.

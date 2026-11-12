@@ -33,6 +33,7 @@ export const NOTIFICATION_TYPES = [
   'library.export_ready',
   'library.reported',
   'library.report_resolved',
+  'library.quarantined',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -242,6 +243,12 @@ export const NOTIFICATION_TYPE_CATALOG: NotificationTypeMeta[] = [
     type: 'library.report_resolved',
     label: 'Your library report was resolved',
     description: 'When a curator acts on an item you reported',
+    category: 'library',
+  },
+  {
+    type: 'library.quarantined',
+    label: 'Library file quarantined',
+    description: 'When the virus scan quarantines a file you uploaded (curators: any file)',
     category: 'library',
   },
 ];

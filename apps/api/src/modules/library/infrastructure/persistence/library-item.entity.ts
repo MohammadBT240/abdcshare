@@ -11,7 +11,14 @@ import {
   Property,
 } from '@mikro-orm/core';
 import { randomUUID } from 'node:crypto';
-import { FilePreviewStatus, LibraryItemStatus, LibraryLicence, LibraryVisibility } from '@abdcshare/shared';
+import {
+  FilePreviewStatus,
+  LibraryItemStatus,
+  LibraryLicence,
+  LibraryScanStatus,
+  LibraryVisibility,
+  PreviewErrorCode,
+} from '@abdcshare/shared';
 import { DepartmentEntity } from '../../../departments/infrastructure/persistence/department.entity';
 import { UserEntity } from '../../../users/infrastructure/persistence/user.entity';
 import { LibraryCategoryEntity } from './library-category.entity';
@@ -48,7 +55,9 @@ export class LibraryItemEntity {
     | 'downloadCount'
     | 'searchVector'
     | 'licence'
-    | 'downloadable';
+    | 'downloadable'
+    | 'scanStatus'
+    | 'scanAttempts';
 
   @PrimaryKey({ type: 'uuid' })
   id: string = randomUUID();
@@ -114,6 +123,28 @@ export class LibraryItemEntity {
 
   @Property({ type: 'text', nullable: true })
   previewError?: string | null;
+
+  /** Classified conversion failure (S3, D28) — drives a specific message in the viewer. */
+  @Enum({ items: () => PreviewErrorCode, nullable: true })
+  previewErrorCode?: PreviewErrorCode | null;
+
+  // ---- virus scan (S3, D24) — written by the worker ----
+  @Enum({ items: () => LibraryScanStatus, default: LibraryScanStatus.Pending })
+  scanStatus: LibraryScanStatus = LibraryScanStatus.Pending;
+
+  @Property({ type: 'timestamptz', nullable: true })
+  scannedAt?: Date | null;
+
+  @Property({ default: 0 })
+  scanAttempts: number = 0;
+
+  @Property({ type: 'text', nullable: true })
+  scanError?: string | null;
+
+  /** SHA-256 of the stored file, hex — computed by the worker while scanning (D27). */
+  @Property({ type: 'string', columnType: 'char(64)', nullable: true })
+  @Index({ name: 'library_items_content_hash_idx' })
+  contentHash?: string | null;
 
   // ---- ownership & lifecycle ----
   @ManyToOne(() => UserEntity)

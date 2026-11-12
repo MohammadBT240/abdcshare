@@ -55,6 +55,7 @@ function fakeItem(overrides: Record<string, unknown> = {}): FakeItem {
     publishedAt: new Date('2026-11-01'),
     archivedAt: null,
     archivedBy: null,
+    scanStatus: 'Clean',
     viewCount: 0,
     downloadCount: 0,
     createdAt: new Date('2026-11-01'),
@@ -257,7 +258,7 @@ describe('LibraryService.confirmUpload', () => {
       { storageKey: 'abdcshare/library/item-1/ccc-a.pdf', fileName: 'a.pdf', mimeType: PDF, declaration: true },
       staff,
     );
-    expect(outbox.enqueue).not.toHaveBeenCalled();
+    expect(outbox.enqueue).not.toHaveBeenCalledWith(EVENT.FilePreviewRequested, expect.anything());
     expect(result.previewStatus).toBe(FilePreviewStatus.Ready);
   });
 
@@ -573,5 +574,57 @@ describe('LibraryService S2 — declaration, view-only, activity log', () => {
     await expect(service.assertCanSeeActivity('item-1', other)).rejects.toBeInstanceOf(ForbiddenException);
     await expect(service.assertCanSeeActivity('item-1', staff)).resolves.toBeUndefined();
     await expect(service.assertCanSeeActivity('item-1', curator)).resolves.toBeUndefined();
+  });
+});
+
+describe('LibraryService S3 — virus scan, quarantine', () => {
+  const key = 'abdcshare/library/item-1/ddd-new.pdf';
+
+  it('every confirmed file resets the scan and queues library.scan_requested in the same flush', async () => {
+    const item = fakeItem({ contentHash: 'f'.repeat(64), scanStatus: 'Clean', scanAttempts: 2 });
+    const { service, outbox } = setup({ item });
+    const dto = await service.confirmUpload('item-1', { storageKey: key, fileName: 'new.pdf', mimeType: PDF, declaration: true }, staff);
+    expect(outbox.enqueue).toHaveBeenCalledWith(EVENT.LibraryScanRequested, { itemId: 'item-1', storageKey: key });
+    expect(item).toMatchObject({ scanStatus: 'Pending', scanAttempts: 0, contentHash: null });
+    expect(dto).toMatchObject({ scanStatus: 'Pending', canDownload: false });
+  });
+
+  it('blocks downloads until the scan is Clean, but still previews', async () => {
+    for (const scanStatus of ['Pending', 'Error'] as const) {
+      const { service, events } = setup({ item: fakeItem({ scanStatus }) });
+      await expect(service.download('item-1', staff)).rejects.toBeInstanceOf(ConflictException);
+      expect(events.insertNow).not.toHaveBeenCalled();
+      await expect(service.preview('item-1', staff)).resolves.toMatchObject({ mode: 'native' });
+    }
+    const clean = setup({ item: fakeItem({ scanStatus: 'Clean' }) });
+    await expect(clean.service.download('item-1', staff)).resolves.toHaveProperty('url');
+  });
+
+  it('hides a quarantined item from everyone but curators — the uploader included', async () => {
+    const quarantined = () => fakeItem({ status: 'Quarantined', scanStatus: 'Infected' });
+    await expect(setup({ item: quarantined() }).service.get('item-1', staff)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(setup({ item: quarantined() }).service.get('item-1', other)).rejects.toBeInstanceOf(NotFoundException);
+    const cur = await setup({ item: quarantined() }).service.get('item-1', curator);
+    expect(cur).toMatchObject({ status: 'Quarantined', canDownload: false, canDelete: true });
+  });
+
+  it('never hands out a URL to a quarantined file, not even to curators', async () => {
+    const { service, storage } = setup({ item: fakeItem({ status: 'Quarantined', scanStatus: 'Infected' }) });
+    await expect(service.preview('item-1', curator)).resolves.toMatchObject({ url: null, reason: 'quarantined' });
+    await expect(service.download('item-1', curator)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(storage.presignDownload).not.toHaveBeenCalled();
+  });
+
+  it('a curator can delete a quarantined item', async () => {
+    const { service, em } = setup({ item: fakeItem({ status: 'Quarantined' }) });
+    await service.remove('item-1', curator);
+    expect(em.nativeDelete).toHaveBeenCalled();
+  });
+
+  it('reports the classified preview error code', async () => {
+    const { service } = setup({
+      item: fakeItem({ mimeType: DOCX, fileName: 'x.docx', previewStatus: FilePreviewStatus.Failed, previewErrorCode: 'password_protected' }),
+    });
+    await expect(service.preview('item-1', staff)).resolves.toMatchObject({ reason: 'failed', errorCode: 'password_protected' });
   });
 });

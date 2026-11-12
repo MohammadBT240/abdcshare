@@ -183,6 +183,33 @@ migrations additive/backward-compatible so old code can run against new schema.
 - R2 CORS must expose range headers (§7 step 3) for the PDF viewer.
 - Curators (Super Admin / Platform Admin) get in-app + email notifications for reported items.
 
+## 8c. Library launch (S3, Nov 2026)
+
+- **ClamAV** — `clamav` service in `docker-compose.stack.yml` (`clamav/clamav:1.4`, config
+  `deploy/clamav/clamd.conf`, signatures in the `clamav_db` volume, internal only). The worker gets
+  `CLAMD_HOST=clamav` and **refuses to boot in production without it**.
+- **Memory gate (D26)** — clamd holds ~1–1.5 GB once signatures load (`mem_limit: 1800m`). Prod and
+  staging each run one on the shared VM. Before go-live run `free -m` and `docker stats` on the VM with
+  abdchub and QET up; if headroom is short, run only one clamd (point staging's `CLAMD_HOST` at prod's over
+  a shared network) or move the worker. Verify `ConcurrentDatabaseReload no` took effect
+  (`docker compose exec clamav grep Concurrent /etc/clamav/clamd.conf`).
+- **First start** — clamd's healthcheck allows 3 minutes for freshclam's first download; the worker waits
+  for it (`depends_on: service_healthy`).
+- **Migrations** — `Migration20261112173707` (scan columns, Quarantined status) queues a scan for every
+  existing library file; downloads of old items open as those scans finish. `Migration20261112190000` adds
+  the Help article "Using the Library" (skipped if the slug exists).
+- **Worker image** — adds Carlito, Caladea, Liberation 2 and DejaVu fonts for faithful Office → PDF previews.
+
+### Staging → production rollout checklist
+1. Staging bucket CORS exposes `ETag, Content-Length, Content-Range, Accept-Ranges` (§7 step 3).
+2. Push `staging`; watch the pipeline; confirm the clamav container is healthy and the worker started.
+3. `pnpm seed:e2e` refuses `NODE_ENV=production`, which staging runs, so the Playwright suite can't seed
+   personas there. Either create matching test accounts on staging by hand (emails/passwords in
+   `apps/api/src/database/e2e-personas.ts`) and run `E2E_BASE_URL=https://staging.abdcshare.com pnpm e2e`,
+   or do the click-through below by hand.
+4. Click through: upload (PDF, Word, a phone), report → review, view-only, the EICAR test file → quarantine.
+5. Measure memory (above). Then merge to `main` and approve the production gate.
+
 ## 9. Known gaps / follow-ups
 
 - **DB backups**: no project on this VM has automated Postgres backups yet — add a

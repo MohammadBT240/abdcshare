@@ -1,6 +1,6 @@
 # Staff Knowledge Library — design
 
-_Status: approved 12 Nov 2026 · L1 (API + worker) built on `feature/staff-library` · L2 (web) and L3 (polish) pending_
+_Status: approved 12 Nov 2026 · L1/L2 built; extended by sprints S1–S3 (Nov 2026) — see §12 for what changed since this design_
 
 ## 1. Goal
 A firm-wide knowledge base where any internal user can upload reports, research papers, training material, templates and similar files. Other staff find them by browsing or searching metadata and read them **in the browser without downloading**.
@@ -45,7 +45,7 @@ Staff curators wait for the configurable-roles work.
 2. Uppy upload: `…/files/presign` (<50 MB) or `…/files/multipart*` (>50 MB). Keys live under `library/<itemId>/`; any other key is rejected.
 3. `POST /library/items/:id/files` confirms: HEAD-measured size ≤100 MB, MIME **and** extension allow-listed (PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, PNG/JPG, TXT, CSV), Draft → Published. Office files get a `file.preview_requested` outbox row (`entityType: 'library_item'`) **in the same flush**. On replace, the old object and old preview are deleted after commit (new `StoragePort.delete`).
 4. Worker `FilePreviewService` maps `library_item → library_items`. For library rows it only writes the preview if `storage_key` still matches the job's file, so a stale job can't overwrite a newer file's preview.
-5. `GET /library/items/:id/preview` → `{ mode: 'native' | 'converted' | 'unavailable', url, previewStatus, reason? }` (same shape as engagement documents, so the web viewer is reusable). `reason` is `pending | failed | unsupported`. `?retry=true` re-queues a Failed conversion for editors.
+5. `GET /library/items/:id/preview` → `{ mode: 'native' | 'converted' | 'unavailable', url, previewStatus, reason? }` (same shape as engagement documents, so the web viewer is reusable). `reason` is `pending | failed | unsupported | quarantined` (S3 adds `errorCode` for failed conversions). `?retry=true` re-queues a Failed conversion for editors.
 6. Views and downloads are counted with atomic `+ 1` updates (pending previews don't count).
 7. Hourly sweep deletes Drafts older than 24 h.
 
@@ -80,3 +80,29 @@ Search: `search_vector @@ websearch_to_tsquery('english', q) OR title ILIKE %q%`
 
 ## 9. L3
 Global search integration, "most viewed", empty/error/a11y states, Help article + `HelpTip`, docs (USER_STORIES epic, ERD, TRACEABILITY), Company Profiles off the Microsoft viewer.
+
+
+## 12. As built — changes since this design (S1–S3, Nov 2026)
+
+The sprint plans (`abdcshare/sprint-s1-plan.md` … `sprint-s3-plan.md` in the project) hold the decisions;
+this is the summary.
+
+- **Collections (S1)** — `library_collections` + ordered membership with sections; ZIP export by the worker.
+- **Viewer (S2)** — PDF.js (self-hosted worker) replaces the browser's PDF viewer everywhere, so view-only
+  is real and phones show every page. D4's "download stays available" now depends on the item's
+  `downloadable` flag and a clean virus scan.
+- **Confidentiality (S2)** — the upload declaration is required by the API on create and on every file
+  replacement; staff can report items; curators work a review queue (Dismiss / Restrict / Archive / Delete).
+- **Licence + view-only (S2)** — `licence`, `licence_note`, `downloadable`.
+- **Activity log (S2)** — `library_events`, append-only, every view and download counted; Activity tab for
+  the uploader and curators.
+- **Virus scanning (S3)** — every new file goes through ClamAV (`clamd` INSTREAM) in the worker. Viewing works
+  at once; downloads and ZIPs wait for `scan_status = Clean`. Infected files → status `Quarantined`, object
+  moved under `quarantine/`, curators + uploader notified. Production refuses to boot without `CLAMD_HOST`.
+- **Duplicates (S3)** — the browser hashes the file (SHA-256) and warns about visible matches; the worker
+  stores the true `content_hash`; curators have a Duplicates view.
+- **Conversion fidelity (S3)** — Carlito/Caladea/Liberation/DejaVu fonts in the worker image; failures are
+  classified (`password_protected`, `corrupt`, `timeout`, `unknown`) and the viewer explains each.
+- **Ownership and orphans (S3)** — curators transfer items, collections or everything a leaver owns; a
+  "Needs attention" view; deactivating a department warns about items only it could see.
+- **Search (S3)** — the header search (⌘K) includes library items and collections.

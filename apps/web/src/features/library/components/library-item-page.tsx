@@ -13,6 +13,9 @@ import {
   IconEye,
   IconEyeOff,
   IconFlag,
+  IconLoader2,
+  IconShieldX,
+  IconUserShare,
   IconLock,
   IconFolders,
   IconPencil,
@@ -50,6 +53,7 @@ import { ReplaceLibraryFileDialog } from '@/features/library/components/replace-
 import { AddToCollectionDialog } from '@/features/library/components/add-to-collection-dialog';
 import { ReportLibraryItemDialog } from '@/features/library/components/report-library-item-dialog';
 import { LibraryActivity } from '@/features/library/components/library-activity';
+import { TransferOwnerDialog } from '@/features/library/components/transfer-owner-dialog';
 import { VIEW_ONLY_LIMIT, licenceLabel } from '@/features/library/lib/licence';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { fileTypeLabel, formatBytes, formatDate } from '@/features/library/lib/library-files';
@@ -79,6 +83,7 @@ export function LibraryItemPage({ id }: { id: string }) {
   const [downloading, setDownloading] = useState(false);
   const [collectOpen, setCollectOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [tab, setTab] = useState<'preview' | 'activity'>('preview');
   const { can } = useAuthContext();
   const canCollect = can('library:contribute');
@@ -140,6 +145,18 @@ export function LibraryItemPage({ id }: { id: string }) {
               <LoadingButton type="button" loading={downloading} onClick={() => void handleDownload()}>
                 <IconDownload className="mr-1.5 h-4 w-4" aria-hidden /> Download
               </LoadingButton>
+            ) : data.status === 'Quarantined' ? (
+              <Badge variant="destructive" className="h-8 gap-1 px-2.5">
+                <IconShieldX className="h-3.5 w-3.5" aria-hidden /> Quarantined
+              </Badge>
+            ) : data.scanStatus === 'Pending' && (data.downloadable || data.canEdit) ? (
+              <Button type="button" disabled title="Downloads open once the virus check has passed — usually seconds.">
+                <IconLoader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden /> Checking for viruses…
+              </Button>
+            ) : data.scanStatus === 'Error' && (data.downloadable || data.canEdit) ? (
+              <Badge variant="warning" className="h-8 px-2.5" title="A curator has been alerted.">
+                Virus check failed
+              </Badge>
             ) : (
               <Badge variant="secondary" className="h-8 gap-1 px-2.5" title={VIEW_ONLY_LIMIT}>
                 <IconEyeOff className="h-3.5 w-3.5" aria-hidden /> View-only
@@ -153,7 +170,7 @@ export function LibraryItemPage({ id }: { id: string }) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  {canCollect && !archived ? (
+                  {canCollect && !archived && data.status !== 'Quarantined' ? (
                     <DropdownMenuItem onSelect={() => setCollectOpen(true)}>
                       <IconPlaylistAdd className="mr-2 h-4 w-4" aria-hidden /> Add to collection
                     </DropdownMenuItem>
@@ -163,7 +180,7 @@ export function LibraryItemPage({ id }: { id: string }) {
                       <DropdownMenuItem onSelect={() => setEditOpen(true)}>
                         <IconPencil className="mr-2 h-4 w-4" aria-hidden /> Edit details
                       </DropdownMenuItem>
-                      {!archived ? (
+                      {!archived && data.status !== 'Quarantined' ? (
                         <DropdownMenuItem onSelect={() => setReplaceOpen(true)}>
                           <IconReplace className="mr-2 h-4 w-4" aria-hidden /> Replace file
                         </DropdownMenuItem>
@@ -181,14 +198,19 @@ export function LibraryItemPage({ id }: { id: string }) {
                         >
                           <IconRestore className="mr-2 h-4 w-4" aria-hidden /> Restore
                         </DropdownMenuItem>
-                      ) : (
+                      ) : data.status === 'Quarantined' ? null : (
                         <DropdownMenuItem onSelect={() => setArchiveOpen(true)}>
                           <IconArchive className="mr-2 h-4 w-4" aria-hidden /> Archive
                         </DropdownMenuItem>
                       )}
                     </>
                   ) : null}
-                  {!archived ? (
+                  {can('library:curate') ? (
+                    <DropdownMenuItem onSelect={() => setTransferOpen(true)}>
+                      <IconUserShare className="mr-2 h-4 w-4" aria-hidden /> Transfer ownership
+                    </DropdownMenuItem>
+                  ) : null}
+                  {!archived && data.status !== 'Quarantined' ? (
                     <>
                       {canCollect || data.canEdit ? <DropdownMenuSeparator /> : null}
                       <DropdownMenuItem onSelect={() => setReportOpen(true)}>
@@ -220,6 +242,15 @@ export function LibraryItemPage({ id }: { id: string }) {
           <span className="text-muted-foreground">
             Archived {formatDate(data.archivedAt)} — hidden from the library. Only the uploader and library curators can
             see it.
+          </span>
+        </div>
+      ) : null}
+
+      {data.status === 'Quarantined' ? (
+        <div className="mb-4 flex flex-wrap items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+          <IconShieldX className="mt-0.5 h-4 w-4 text-destructive" aria-hidden />
+          <span className="flex-1 text-foreground">
+            Quarantined: the virus scan found a threat in this file. It is hidden from everyone but curators. Delete it once you&apos;ve told the uploader.
           </span>
         </div>
       ) : null}
@@ -411,6 +442,11 @@ export function LibraryItemPage({ id }: { id: string }) {
       <ReplaceLibraryFileDialog item={data} open={replaceOpen} onOpenChange={setReplaceOpen} />
       <AddToCollectionDialog item={data} open={collectOpen} onOpenChange={setCollectOpen} />
       <ReportLibraryItemDialog item={data} open={reportOpen} onOpenChange={setReportOpen} />
+      <TransferOwnerDialog
+        target={{ kind: 'item', id: data.id, title: data.title, ownerId: data.uploadedBy.id, ownerName: data.uploadedBy.name }}
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+      />
       <ConfirmDialog
         open={archiveOpen}
         onOpenChange={setArchiveOpen}

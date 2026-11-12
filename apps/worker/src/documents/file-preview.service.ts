@@ -8,6 +8,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { ClassifiedPreviewError, classifyPreviewFailure, isEncryptedOoxml } from '../library/preview-errors';
+import { PreviewErrorCode } from '@abdcshare/shared';
 
 const execFileAsync = promisify(execFile);
 
@@ -74,12 +76,16 @@ export class FilePreviewService {
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Preview failed for ${table}/${fileId}: ${message}`);
+      const code = classifyPreviewFailure(err);
+      this.logger.error(`Preview failed for ${table}/${fileId} (${code}): ${message}`);
+      // Library items record why (S3, D28) so the viewer can say something specific.
+      const codeSql = table === 'library_items' ? ', preview_error_code = ?' : '';
+      const codeParams = table === 'library_items' ? [code] : [];
       await em.getConnection().execute(
         `update "${table}"
-         set preview_status = 'Failed', preview_error = ?
+         set preview_status = 'Failed', preview_error = ?${codeSql}
          where id = ?${sameFile}`,
-        [message.slice(0, 2000), fileId, ...sameFileParams],
+        [message.slice(0, 2000), ...codeParams, fileId, ...sameFileParams],
       );
     }
   }
@@ -132,6 +138,11 @@ export class FilePreviewService {
       const inputName = path.basename(fileName) || 'input.bin';
       const inputPath = path.join(workDir, inputName);
       const bytes = await this.download(storageKey);
+      // A password-protected .docx/.xlsx/.pptx makes headless LibreOffice wait for a password
+      // until the timeout — detect it up front (S3, D28).
+      if (isEncryptedOoxml(bytes.subarray(0, 8), inputName)) {
+        throw new ClassifiedPreviewError(PreviewErrorCode.PasswordProtected, 'The document is password-protected');
+      }
       await writeFile(inputPath, bytes);
 
       const soffice = this.config.get<string>('LIBREOFFICE_BIN', 'soffice');
@@ -143,7 +154,10 @@ export class FilePreviewService {
 
       const pdfName = inputName.replace(/\.[^.]+$/, '') + '.pdf';
       const pdfPath = path.join(workDir, pdfName);
-      const pdfBytes = await readFile(pdfPath);
+      // LibreOffice exits 0 without writing a PDF when it can't read the input.
+      const pdfBytes = await readFile(pdfPath).catch(() => {
+        throw new ClassifiedPreviewError(PreviewErrorCode.Corrupt, 'LibreOffice could not read the file');
+      });
       return await this.uploadPreview(pdfBytes, pdfName);
     } finally {
       await rm(workDir, { recursive: true, force: true });

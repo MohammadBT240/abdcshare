@@ -9,6 +9,8 @@ import { useEditableCollections } from '@/features/library/hooks/use-library-col
 import { Button } from '@/components/ui/button';
 import { BffClientError } from '@/lib/bff/client';
 import { DeclarationCheckbox } from '@/features/library/components/declaration-checkbox';
+import { DuplicateWarning, useDuplicateCheck } from '@/features/library/components/duplicate-warning';
+import { HelpTip } from '@/features/help/components/help-tip';
 import { useUploadLibraryItem } from '@/features/library/hooks/use-library';
 import {
   EMPTY_LIBRARY_FORM,
@@ -50,6 +52,7 @@ export function UploadLibraryItemDialog({
   const [section, setSection] = useState('');
   const [declared, setDeclared] = useState(false);
   const editable = useEditableCollections(open);
+  const duplicates = useDuplicateCheck(files[0]);
 
   function rememberDraft(id: string) {
     draftRef.current = id;
@@ -147,6 +150,9 @@ export function UploadLibraryItemDialog({
       maxWidthClass="sm:max-w-2xl"
       footer={
         <>
+          <span className="mr-auto">
+            <HelpTip slug="using-the-library" label="How uploading works" />
+          </span>
           <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={busy}>
             Cancel
           </Button>
@@ -168,6 +174,7 @@ export function UploadLibraryItemDialog({
             description={LIBRARY_FILE_HINT}
           />
         </FormField>
+        <DuplicateWarning checking={duplicates.checking} matches={duplicates.matches} />
 
         <LibraryItemFieldsForm value={form} onChange={setForm} disabled={busy} />
 

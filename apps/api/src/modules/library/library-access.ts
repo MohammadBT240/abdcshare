@@ -27,6 +27,8 @@ export interface LibraryAccessItem {
  */
 export function canSeeItem(item: LibraryAccessItem, viewer: LibraryViewer): boolean {
   if (viewer.isCurator) return true;
+  // Quarantined (virus found, S3 D24): curators only — not even the uploader.
+  if (item.status === LibraryItemStatus.Quarantined) return false;
   if (item.uploadedById === viewer.userId) return true;
   if (item.status !== LibraryItemStatus.Published) return false;
   if (item.visibility === LibraryVisibility.Firm) return true;
@@ -34,7 +36,11 @@ export function canSeeItem(item: LibraryAccessItem, viewer: LibraryViewer): bool
 }
 
 /** Metadata / file / archive rights. Delete is curator-only and checked separately. */
-export function canEditItem(item: Pick<LibraryAccessItem, 'uploadedById'>, viewer: LibraryViewer): boolean {
+export function canEditItem(
+  item: Pick<LibraryAccessItem, 'uploadedById'> & Partial<Pick<LibraryAccessItem, 'status'>>,
+  viewer: LibraryViewer,
+): boolean {
+  if (item.status === LibraryItemStatus.Quarantined) return viewer.isCurator;
   return viewer.isCurator || item.uploadedById === viewer.userId;
 }
 

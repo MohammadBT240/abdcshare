@@ -11,6 +11,9 @@ import { bffApi } from '@/lib/bff/client';
 import { uploadFilesWithUppy } from '@/lib/uploads/uppy-client';
 import { withLibraryMime } from '@/features/library/lib/library-files';
 import type {
+  LibraryAttention,
+  LibraryDuplicate,
+  LibraryDuplicateGroup,
   LibraryCategory,
   LibraryEventPage,
   LibraryItem,
@@ -42,6 +45,8 @@ export function useLibraryItem(id: string | undefined) {
     queryKey: [...KEY, 'item', id],
     queryFn: () => bffApi<LibraryItem>(`/api/library/items/${id}`),
     enabled: Boolean(id),
+    // Poll while the virus check runs so Download appears on its own (usually seconds).
+    refetchInterval: (q) => ((q.state.data as LibraryItem | undefined)?.scanStatus === 'Pending' ? 3000 : false),
     retry: (count, err) => !(err && 'statusCode' in err && (err as { statusCode: number }).statusCode === 404) && count < 2,
   });
 }
@@ -152,6 +157,57 @@ export function useResolveLibraryReport() {
         method: 'POST',
         body: JSON.stringify({ outcome, departmentIds, note: note || null }),
       }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...KEY] }),
+  });
+}
+
+/** SHA-256 of a file in the browser (D27). Large files take a moment; callers show progress. */
+export async function sha256Hex(file: Blob): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function fetchLibraryDuplicates(hash: string) {
+  return bffApi<LibraryDuplicate[]>(`/api/library/items/duplicates?hash=${hash}`);
+}
+
+export function useLibraryAttention(enabled = true) {
+  return useQuery({
+    queryKey: [...KEY, 'admin', 'attention'],
+    queryFn: () => bffApi<LibraryAttention>('/api/library/admin/attention'),
+    enabled,
+  });
+}
+
+export function useLibraryDuplicateGroups(enabled = true) {
+  return useQuery({
+    queryKey: [...KEY, 'admin', 'duplicates'],
+    queryFn: () => bffApi<LibraryDuplicateGroup[]>('/api/library/admin/duplicates'),
+    enabled,
+  });
+}
+
+export function fetchDepartmentLibraryImpact(departmentId: number) {
+  return bffApi<{ items: number; collections: number }>(`/api/library/admin/departments/${departmentId}/impact`);
+}
+
+export function useTransferLibrary() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      args:
+        | { kind: 'item' | 'collection'; id: string; userId: string }
+        | { kind: 'all'; fromUserId: string; toUserId: string },
+    ) =>
+      args.kind === 'all'
+        ? bffApi<{ items: number; collections: number }>('/api/library/admin/transfer-all', {
+            method: 'POST',
+            body: JSON.stringify({ fromUserId: args.fromUserId, toUserId: args.toUserId }),
+          })
+        : bffApi<{ items: number; collections: number }>(
+            `/api/library/admin/${args.kind === 'item' ? 'items' : 'collections'}/${args.id}/transfer`,
+            { method: 'POST', body: JSON.stringify({ userId: args.userId }) },
+          ),
     onSuccess: () => qc.invalidateQueries({ queryKey: [...KEY] }),
   });
 }

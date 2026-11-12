@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { apiAs, pageAs } from '../support/fixtures';
-import { FILES, bff, createItem, departmentId, destroyItem, unique } from '../support/library';
+import { FILES, bff, createItem, departmentId, destroyItem, unique, waitForScan } from '../support/library';
 
 async function destroyCollection(api: import('@playwright/test').APIRequestContext, id: string) {
   await api.post(bff(`library/collections/${id}/archive`));
@@ -80,6 +80,7 @@ test.describe('Library collections (S1)', () => {
     await expect(page.getByRole('link', { name: new RegExp(title) })).toBeVisible();
     for (const id of (await taxApi.get(bff(`library/collections/${collectionId}/items`)).then((r) => r.json())).data.map((m: { item: { id: string } }) => m.item.id)) {
       if (!cleanupItems.includes(id)) cleanupItems.push(id);
+      await waitForScan(taxApi, id); // ZIPs only include files the virus scan has passed
     }
 
     // Download all → worker builds the ZIP → notification link resolves to a presigned URL.

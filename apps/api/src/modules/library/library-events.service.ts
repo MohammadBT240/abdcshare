@@ -55,8 +55,9 @@ export class LibraryEventsService {
     });
   }
 
-  stage(input: LibraryEventInput): void {
-    this.em.persist(this.build(input));
+  /** `em`: pass the transaction's EntityManager when staging inside `em.transactional`. */
+  stage(input: LibraryEventInput, em: EntityManager = this.em): void {
+    em.persist(this.build(input));
   }
 
   async insertNow(input: LibraryEventInput): Promise<void> {

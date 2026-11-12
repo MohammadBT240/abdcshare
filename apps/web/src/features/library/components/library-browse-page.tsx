@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   IconBooks,
   IconChevronDown,
+  IconFlag,
   IconFolderPlus,
   IconLayoutGrid,
   IconList,
@@ -32,7 +34,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { BffClientError } from '@/lib/bff/client';
 import { useDepartments } from '@/features/users/hooks/use-users';
-import { useLibraryCategories, useLibraryItems, useLibraryTags } from '@/features/library/hooks/use-library';
+import {
+  useLibraryCategories,
+  useLibraryItems,
+  useLibraryReportCount,
+  useLibraryTags,
+} from '@/features/library/hooks/use-library';
+import { HelpTip } from '@/features/help/components/help-tip';
 import { LibraryCategoryRail, type LibraryScope } from '@/features/library/components/library-category-rail';
 import { LibraryItemCard } from '@/features/library/components/library-item-card';
 import { LibraryItemsTable } from '@/features/library/components/library-items-table';
@@ -58,6 +66,8 @@ export function LibraryBrowsePage() {
   const router = useRouter();
   const { can } = useAuthContext();
   const canContribute = can('library:contribute');
+  const canCurate = can('library:curate');
+  const reportCount = useLibraryReportCount(canCurate);
   const isCurator = can('library:curate');
   const { params, setParams, setSearchQueryDebounced } = useListParams({ pageSize: PAGE_SIZE });
   const [searchInput, setSearchInput] = useState(params.q);
@@ -122,12 +132,28 @@ export function LibraryBrowsePage() {
         description="Reports, research papers and materials shared across the firm."
         breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Library' }]}
         actions={
-          canContribute ? (
-            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <HelpTip slug="using-the-library" />
+            {canCurate ? (
+              <Button asChild type="button" variant="outline">
+                <Link href="/library/review">
+                  <IconFlag className="mr-1.5 h-4 w-4" aria-hidden />
+                  Review queue
+                  {reportCount.data?.open ? (
+                    <span className="ml-1.5 rounded-full bg-amber-300/90 px-1.5 text-[10px] font-semibold text-amber-950">
+                      {reportCount.data.open}
+                    </span>
+                  ) : null}
+                </Link>
+              </Button>
+            ) : null}
+            {canContribute ? (
               <Button type="button" variant="outline" onClick={() => setCollectionOpen(true)}>
                 <IconFolderPlus className="mr-1.5 h-4 w-4" aria-hidden />
                 New collection
               </Button>
+            ) : null}
+            {canContribute ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button type="button">
@@ -141,8 +167,8 @@ export function LibraryBrowsePage() {
                   <DropdownMenuItem onSelect={() => setBulkOpen(true)}>Several files</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
-          ) : null
+            ) : null}
+          </div>
         }
       />
 

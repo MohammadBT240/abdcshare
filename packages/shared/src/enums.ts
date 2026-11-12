@@ -195,6 +195,24 @@ export enum LibraryItemStatus {
   Draft = 'Draft',
   Published = 'Published',
   Archived = 'Archived',
+  /** Virus scan found malware (S3, D24): hidden from everyone but curators; object under quarantine/. */
+  Quarantined = 'Quarantined',
+}
+
+/** ClamAV scan state of a library item's file (S3, D24/D25). Downloads need Clean. */
+export enum LibraryScanStatus {
+  Pending = 'Pending',
+  Clean = 'Clean',
+  Infected = 'Infected',
+  Error = 'Error',
+}
+
+/** Why an Office → PDF preview failed (S3, D28). */
+export enum PreviewErrorCode {
+  PasswordProtected = 'password_protected',
+  Corrupt = 'corrupt',
+  Timeout = 'timeout',
+  Unknown = 'unknown',
 }
 
 /** Who can see a library item (internal users only, always). */
@@ -237,6 +255,7 @@ export enum LibraryEventAction {
   AddedToCollection = 'AddedToCollection',
   RemovedFromCollection = 'RemovedFromCollection',
   ZipExported = 'ZipExported',
+  Quarantined = 'Quarantined',
 }
 
 /** How a library item may be shared (S2, D21). */

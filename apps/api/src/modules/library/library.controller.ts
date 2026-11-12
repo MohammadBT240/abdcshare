@@ -24,6 +24,8 @@ import {
 import { LibraryService } from './library.service';
 import { LibraryEventsService } from './library-events.service';
 import { LibraryReportsService } from './library-reports.service';
+import { LibraryAdminService } from './library-admin.service';
+import { LibraryDuplicateDto, LibraryDuplicateQueryDto } from './presentation/dto/library-admin.dto';
 import { LibraryEventListDto, LibraryEventQueryDto, LibraryEventSummaryDto } from './presentation/dto/library-event.dto';
 import { CreateLibraryReportDto, LibraryReportEntryDto } from './presentation/dto/library-report.dto';
 import {
@@ -54,6 +56,7 @@ export class LibraryController {
     private readonly library: LibraryService,
     private readonly events: LibraryEventsService,
     private readonly reports: LibraryReportsService,
+    private readonly admin: LibraryAdminService,
   ) {}
 
   @Get('items')
@@ -84,6 +87,17 @@ export class LibraryController {
     @ReqMeta() meta: RequestMeta,
   ): Promise<LibraryItemResponseDto> {
     return this.library.create(dto, await this.library.viewer(user, meta));
+  }
+
+  /** Before uploading: visible items with the same file (S3, D27). Declared before `items/:id`. */
+  @Get('items/duplicates')
+  @RequirePermission('library:view')
+  async duplicates(
+    @Query() query: LibraryDuplicateQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @ReqMeta() meta: RequestMeta,
+  ): Promise<LibraryDuplicateDto[]> {
+    return this.admin.duplicatesOf(query.hash, await this.library.viewer(user, meta));
   }
 
   @Get('items/:id')

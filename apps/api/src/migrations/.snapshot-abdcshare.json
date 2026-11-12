@@ -5798,7 +5798,8 @@
             "OwnershipTransferred",
             "AddedToCollection",
             "RemovedFromCollection",
-            "ZipExported"
+            "ZipExported",
+            "Quarantined"
           ],
           "mappedType": "enum"
         },
@@ -6216,7 +6217,8 @@
           "enumItems": [
             "Draft",
             "Published",
-            "Archived"
+            "Archived",
+            "Quarantined"
           ],
           "mappedType": "enum"
         },
@@ -6564,6 +6566,112 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "uuid"
+        },
+        "preview_error_code": {
+          "name": "preview_error_code",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [
+            "password_protected",
+            "corrupt",
+            "timeout",
+            "unknown"
+          ],
+          "mappedType": "enum"
+        },
+        "scan_status": {
+          "name": "scan_status",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'Pending'",
+          "comment": null,
+          "enumItems": [
+            "Pending",
+            "Clean",
+            "Infected",
+            "Error"
+          ],
+          "mappedType": "enum"
+        },
+        "scanned_at": {
+          "name": "scanned_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
+        "scan_attempts": {
+          "name": "scan_attempts",
+          "type": "int4",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": 32,
+          "scale": 0,
+          "default": "0",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "scan_error": {
+          "name": "scan_error",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "char(64)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 64,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "character"
         }
       },
       "name": "library_items",
@@ -6579,6 +6687,16 @@
           "composite": true,
           "constraint": false,
           "keyName": "library_items_browse_idx",
+          "unique": false,
+          "primary": false
+        },
+        {
+          "columnNames": [
+            "content_hash"
+          ],
+          "composite": false,
+          "constraint": false,
+          "keyName": "library_items_content_hash_idx",
           "unique": false,
           "primary": false
         },

@@ -14,6 +14,7 @@ import {
   LibraryEventAction,
   LibraryItemStatus,
   LibraryLicence,
+  LibraryScanStatus,
   LibraryVisibility,
   hasPermission,
   type Paginated,
@@ -121,6 +122,15 @@ export class LibraryService {
 
   // ------------------------------------------------------------------ mapping
 
+  /** Downloads (and ZIP inclusion) wait for a Clean scan (S3, D25); viewing doesn't. */
+  private assertScannedClean(item: LibraryItemEntity): void {
+    if (item.scanStatus === LibraryScanStatus.Clean) return;
+    if (item.scanStatus === LibraryScanStatus.Error) {
+      throw new ConflictException("This file couldn't be checked for viruses yet. A curator has been alerted.");
+    }
+    throw new ConflictException('This file is still being checked for viruses — try again in a moment. You can read it now.');
+  }
+
   private access(item: LibraryItemEntity): LibraryAccessItem {
     return {
       status: item.status,
@@ -136,14 +146,17 @@ export class LibraryService {
     collections: LibraryItemResponseDto['collections'] = [],
     openReports = 0,
   ): LibraryItemResponseDto {
-    const canEdit = canEditItem({ uploadedById: item.uploadedBy.id }, viewer);
+    const canEdit = canEditItem({ uploadedById: item.uploadedBy.id, status: item.status }, viewer);
     const departments = item.departments.isInitialized()
       ? item.departments
           .getItems()
           .map((d) => ({ id: d.id, name: d.name }))
           .sort((a, b) => a.name.localeCompare(b.name))
       : [];
-    const deletable = item.status === LibraryItemStatus.Archived || item.status === LibraryItemStatus.Draft;
+    const deletable =
+      item.status === LibraryItemStatus.Archived ||
+      item.status === LibraryItemStatus.Draft ||
+      item.status === LibraryItemStatus.Quarantined;
     return {
       id: item.id,
       title: item.title,
@@ -170,7 +183,14 @@ export class LibraryService {
       licenceNote: item.licenceNote ?? null,
       downloadable: item.downloadable,
       declaredAt: item.declaredAt ?? null,
-      canDownload: Boolean(item.storageKey) && (item.downloadable || canEdit),
+      canDownload:
+        Boolean(item.storageKey) &&
+        item.status !== LibraryItemStatus.Quarantined &&
+        item.scanStatus === LibraryScanStatus.Clean &&
+        (item.downloadable || canEdit),
+      scanStatus: item.scanStatus,
+      previewErrorCode: item.previewErrorCode ?? null,
+      contentHash: item.contentHash ?? null,
       openReports: viewer.isCurator ? openReports : 0,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
@@ -757,6 +777,14 @@ export class LibraryService {
       item.status = LibraryItemStatus.Published;
       item.publishedAt = new Date();
     }
+    // Every new file is scanned (S3, D24); downloads wait for Clean, viewing doesn't.
+    item.scanStatus = LibraryScanStatus.Pending;
+    item.scanAttempts = 0;
+    item.scanError = null;
+    item.scannedAt = null;
+    item.contentHash = null;
+    item.previewErrorCode = null;
+    this.outbox.enqueue(EVENT.LibraryScanRequested, { itemId: item.id, storageKey: dto.storageKey });
     if (dto.declaration === true) {
       item.declaredAt = new Date();
       item.declaredBy = this.em.getReference(UserEntity, viewer.userId);
@@ -841,6 +869,10 @@ export class LibraryService {
     if (!item.storageKey || !item.fileName) {
       return { url: null, mode: 'unavailable', previewStatus: FilePreviewStatus.None, reason: 'unsupported' };
     }
+    if (item.status === LibraryItemStatus.Quarantined) {
+      // Never hand out a URL to an infected file, not even to curators.
+      return { url: null, mode: 'unavailable', previewStatus: item.previewStatus, reason: 'quarantined' };
+    }
 
     if (item.previewStatus === FilePreviewStatus.Ready && item.previewStorageKey) {
       const url = await this.storage.presignDownload(item.previewStorageKey, `${item.fileName}.pdf`, {
@@ -860,6 +892,7 @@ export class LibraryService {
       if (item.previewStatus === FilePreviewStatus.Failed && opts?.retry && canEditItem(this.access(item), viewer)) {
         item.previewStatus = FilePreviewStatus.Pending;
         item.previewError = null;
+        item.previewErrorCode = null;
         this.outbox.enqueue(EVENT.FilePreviewRequested, {
           entityType: 'library_item',
           fileId: item.id,
@@ -873,7 +906,7 @@ export class LibraryService {
         return { url: null, mode: 'unavailable', previewStatus: item.previewStatus, reason: 'pending' };
       }
       if (item.previewStatus === FilePreviewStatus.Failed) {
-        return { url: null, mode: 'unavailable', previewStatus: item.previewStatus, reason: 'failed' };
+        return { url: null, mode: 'unavailable', previewStatus: item.previewStatus, reason: 'failed', errorCode: item.previewErrorCode ?? null };
       }
     }
 
@@ -886,6 +919,10 @@ export class LibraryService {
     if (!item.downloadable && !canEditItem(this.access(item), viewer)) {
       throw new ForbiddenException('This item is view-only. Open it in the library instead of downloading it.');
     }
+    if (item.status === LibraryItemStatus.Quarantined) {
+      throw new ForbiddenException('This file is quarantined: the virus scan found a threat.');
+    }
+    this.assertScannedClean(item);
     const url = await this.storage.presignDownload(item.storageKey, item.fileName);
     await this.recordRead(item, viewer, 'download', { fileName: item.fileName });
     return { url };

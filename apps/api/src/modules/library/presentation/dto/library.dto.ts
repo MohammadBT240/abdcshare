@@ -16,7 +16,14 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { FilePreviewStatus, LibraryItemStatus, LibraryLicence, LibraryVisibility } from '@abdcshare/shared';
+import {
+  FilePreviewStatus,
+  LibraryItemStatus,
+  LibraryLicence,
+  LibraryScanStatus,
+  LibraryVisibility,
+  PreviewErrorCode,
+} from '@abdcshare/shared';
 import { MultipartCompleteDto } from '../../../../common/storage/multipart.dto';
 import { PaginationQueryDto } from '../../../../common/dto/pagination-query.dto';
 import {
@@ -205,6 +212,11 @@ export class LibraryItemResponseDto {
   canDownload!: boolean;
   @ApiProperty({ description: 'Open reports on this item (curators only; 0 for everyone else).' })
   openReports!: number;
+  @ApiProperty({ enum: LibraryScanStatus, description: 'Downloads wait for Clean (S3).' })
+  scanStatus!: LibraryScanStatus;
+  @ApiPropertyOptional({ enum: PreviewErrorCode, nullable: true }) previewErrorCode!: PreviewErrorCode | null;
+  @ApiPropertyOptional({ nullable: true, description: 'SHA-256 of the file (after the scan).' })
+  contentHash!: string | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
   @ApiProperty({ description: 'Collections (visible to the viewer) this item belongs to.' })
@@ -229,8 +241,10 @@ export class LibraryPreviewDto {
   @ApiProperty({ enum: ['native', 'converted', 'unavailable'] })
   mode!: 'native' | 'converted' | 'unavailable';
   @ApiProperty({ enum: FilePreviewStatus }) previewStatus!: FilePreviewStatus;
-  @ApiPropertyOptional({ enum: ['pending', 'failed', 'unsupported'] })
-  reason?: 'pending' | 'failed' | 'unsupported';
+  @ApiPropertyOptional({ enum: ['pending', 'failed', 'unsupported', 'quarantined'] })
+  reason?: 'pending' | 'failed' | 'unsupported' | 'quarantined';
+  @ApiPropertyOptional({ enum: PreviewErrorCode, nullable: true, description: 'Why a conversion failed.' })
+  errorCode?: PreviewErrorCode | null;
 }
 
 export class LibraryTagQueryDto extends PaginationQueryDto {}

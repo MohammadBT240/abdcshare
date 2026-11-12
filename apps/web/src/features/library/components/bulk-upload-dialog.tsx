@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { IconCheck, IconLoader2, IconRefresh, IconX } from '@tabler/icons-react';
@@ -8,7 +9,13 @@ import { FileTypeIcon } from '@/components/data/file-type-icon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { BffClientError } from '@/lib/bff/client';
-import { uploadLibraryFile, useInvalidateLibrary, useLibraryCategories } from '@/features/library/hooks/use-library';
+import {
+  fetchLibraryDuplicates,
+  sha256Hex,
+  uploadLibraryFile,
+  useInvalidateLibrary,
+  useLibraryCategories,
+} from '@/features/library/hooks/use-library';
 import { useEditableCollections } from '@/features/library/hooks/use-library-collections';
 import { TagInput } from '@/features/library/components/tag-input';
 import { SharingFields, VisibilityPicker } from '@/features/library/components/library-item-fields';
@@ -22,7 +29,7 @@ import {
   titleFromFileName,
   withLibraryMime,
 } from '@/features/library/lib/library-files';
-import type { LibraryCollection, LibraryLicence, LibraryVisibility } from '@/features/library/types';
+import type { LibraryCollection, LibraryDuplicate, LibraryLicence, LibraryVisibility } from '@/features/library/types';
 
 type RowStatus = 'queued' | 'uploading' | 'done' | 'failed';
 
@@ -34,6 +41,8 @@ interface Row {
   percent: number;
   error?: string;
   draftId?: string | null;
+  /** Same file already in the library (D27) — a warning only. */
+  duplicates?: LibraryDuplicate[];
 }
 
 const CONCURRENCY = 2;
@@ -103,12 +112,23 @@ export function BulkUploadDialog({
     if (bad.length) setError(`Skipped ${bad.map((f) => f.name).join(', ')} — ${LIBRARY_FILE_HINT}`);
     else setError(null);
     const ok = normalized.filter((f) => !bad.includes(f));
-    setRows((rs) => [
-      ...rs,
-      ...ok
-        .filter((f) => !rs.some((r) => r.file.name === f.name && r.file.size === f.size))
-        .map((f) => ({ key: `${f.name}-${f.size}-${Math.random().toString(36).slice(2)}`, file: f, title: titleFromFileName(f.name), status: 'queued' as const, percent: 0 })),
-    ]);
+    const fresh = ok
+      .filter((f) => !rowsRef.current.some((r) => r.file.name === f.name && r.file.size === f.size))
+      .map((f) => ({
+        key: `${f.name}-${f.size}-${Math.random().toString(36).slice(2)}`,
+        file: f,
+        title: titleFromFileName(f.name),
+        status: 'queued' as const,
+        percent: 0,
+      }));
+    setRows((rs) => [...rs, ...fresh]);
+    // Duplicate check per file, in the background; failures never block the upload.
+    for (const row of fresh) {
+      void sha256Hex(row.file)
+        .then(fetchLibraryDuplicates)
+        .then((duplicates) => duplicates.length && patch(row.key, { duplicates }))
+        .catch(() => undefined);
+    }
   }
 
   async function uploadRow(row: Row) {
@@ -227,6 +247,14 @@ export function BulkUploadDialog({
                     {r.file.name} · {formatBytes(r.file.size)}
                     {r.status === 'failed' && r.error ? <span className="text-destructive"> · {r.error}</span> : null}
                   </p>
+                  {r.duplicates?.length ? (
+                    <p className="mt-0.5 truncate text-[11px] text-amber-700 dark:text-amber-300" data-testid="duplicate-warning">
+                      Already in the library:{' '}
+                      <Link href={`/library/${r.duplicates[0]!.id}`} target="_blank" className="underline">
+                        {r.duplicates[0]!.title}
+                      </Link>
+                    </p>
+                  ) : null}
                   {r.status === 'uploading' ? (
                     <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
                       <div className="h-full bg-primary transition-[width]" style={{ width: `${r.percent}%` }} />

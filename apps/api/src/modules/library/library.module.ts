@@ -9,6 +9,8 @@ import { LibraryReportEntity } from './infrastructure/persistence/library-report
 import { LibraryEventsService } from './library-events.service';
 import { LibraryReportsService } from './library-reports.service';
 import { LibraryReportsController } from './library-reports.controller';
+import { LibraryAdminService } from './library-admin.service';
+import { LibraryAdminController } from './library-admin.controller';
 import { LibraryCollectionsService } from './library-collections.service';
 import { LibraryCollectionsController } from './library-collections.controller';
 import { LibraryService } from './library.service';
@@ -28,11 +30,12 @@ import { LibraryCategoriesController } from './library-categories.controller';
       LibraryReportEntity,
     ])],
   // Categories controller first so `library/categories` is registered before `library/*` routes.
-  controllers: [LibraryCategoriesController, LibraryCollectionsController, LibraryReportsController, LibraryController],
+  controllers: [LibraryCategoriesController, LibraryCollectionsController, LibraryReportsController, LibraryAdminController, LibraryController],
   providers: [
     LibraryService,
     LibraryEventsService,
     LibraryReportsService,
+    LibraryAdminService,
     LibraryCategoriesService,
     LibraryCollectionsService,
     LibraryDraftSweepService,

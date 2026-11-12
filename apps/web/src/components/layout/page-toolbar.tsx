@@ -54,7 +54,7 @@ export function PageToolbar({
       ) : null}
 
       {showTitle || actions ? (
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           {showTitle ? (
             <div className="min-w-0 flex-1 space-y-1">
               <h1 className="text-xl font-bold leading-tight text-foreground sm:text-2xl">
@@ -68,7 +68,7 @@ export function PageToolbar({
             <div className="min-w-0 flex-1" />
           )}
           {actions ? (
-            <div className="flex shrink-0 items-center gap-2">{actions}</div>
+            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>
           ) : null}
         </div>
       ) : null}

@@ -21,6 +21,7 @@ interface Row {
   section: string | null;
   position: number;
   downloadable: boolean;
+  scan_status: string;
 }
 
 /**
@@ -86,7 +87,7 @@ export class LibraryCollectionExportService {
     if (!collection) throw new Error('Collection not found');
     const rows = await conn.execute<Row[]>(
       `select i.id as item_id, i.title, i.file_name, i.storage_key, i.authors, i.published_year, ci.section, ci.position,
-              i.downloadable
+              i.downloadable, i.scan_status
          from library_collection_items ci join library_items i on i.id = ci.item_id
         where ci.collection_id = ? and i.id in (${[...itemIds, ...viewOnlyIds].map(() => '?').join(', ')})
           and i.storage_key is not null
@@ -94,7 +95,10 @@ export class LibraryCollectionExportService {
       [collectionId, ...itemIds, ...viewOnlyIds],
     );
     // Re-check at build time: an item made view-only after the request is skipped too.
-    const zipped = rows.filter((r) => itemIds.includes(r.item_id) && (r.downloadable || editorIds.has(r.item_id)));
+    // …and only files the virus scan has passed (S3, D25).
+    const zipped = rows.filter(
+      (r) => itemIds.includes(r.item_id) && r.scan_status === 'Clean' && (r.downloadable || editorIds.has(r.item_id)),
+    );
     const skipped = rows.filter((r) => !zipped.includes(r));
     if (zipped.length === 0) throw new Error('No files to export');
 
@@ -119,7 +123,8 @@ export class LibraryCollectionExportService {
         await entryDone;
       }
       for (const r of skipped) {
-        index.push(['', r.section, r.title, r.authors, r.published_year, 'View-only: open it in the library']);
+        const why = r.scan_status !== 'Clean' ? 'Not included yet (virus check pending)' : 'View-only';
+        index.push(['', r.section, r.title, r.authors, r.published_year, `${why}: open it in the library`]);
       }
       archive.append(LibraryCollectionExportService.csv(index), { name: 'index.csv' });
       await archive.finalize();
@@ -161,7 +166,7 @@ export class LibraryCollectionExportService {
           'library.export_ready',
           'Collection download ready',
           `${zipped.length} file(s) from “${collection.title}” are ready to download` +
-            (skipped.length ? ` (${skipped.length} view-only item(s) listed in index.csv)` : ''),
+            (skipped.length ? ` (${skipped.length} view-only or unchecked item(s) listed in index.csv)` : ''),
           'library_collection',
           collectionId,
           link,

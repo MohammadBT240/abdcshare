@@ -1,6 +1,8 @@
 import type { PageMeta } from '@abdcshare/api-client';
 
-export type LibraryItemStatus = 'Draft' | 'Published' | 'Archived';
+export type LibraryItemStatus = 'Draft' | 'Published' | 'Archived' | 'Quarantined';
+export type LibraryScanStatus = 'Pending' | 'Clean' | 'Infected' | 'Error';
+export type PreviewErrorCode = 'password_protected' | 'corrupt' | 'timeout' | 'unknown';
 export type LibraryVisibility = 'Firm' | 'Departments';
 export type LibraryFileType = 'pdf' | 'word' | 'excel' | 'powerpoint' | 'image' | 'text';
 export type LibrarySort = 'relevance' | 'newest' | 'title' | 'views' | 'downloads';
@@ -67,6 +69,10 @@ export interface LibraryItem {
   canDownload: boolean;
   /** Curators only: open reports on this item. */
   openReports: number;
+  /** Virus scan (S3): downloads wait for Clean; viewing doesn't. */
+  scanStatus: LibraryScanStatus;
+  previewErrorCode: PreviewErrorCode | null;
+  contentHash: string | null;
   createdAt: string;
   updatedAt: string;
   collections: LibraryCollectionRef[];
@@ -209,5 +215,38 @@ export interface LibraryPreview {
   url: string | null;
   mode: 'native' | 'converted' | 'unavailable';
   previewStatus: LibraryPreviewStatus;
-  reason?: 'pending' | 'failed' | 'unsupported';
+  reason?: 'pending' | 'failed' | 'unsupported' | 'quarantined';
+  errorCode?: PreviewErrorCode | null;
+}
+
+export interface LibraryDuplicate {
+  id: string;
+  title: string;
+  category: string;
+  uploadedBy: string;
+  publishedAt: string | null;
+}
+
+export interface LibraryDuplicateGroup {
+  hash: string;
+  items: { id: string; title: string; status: LibraryItemStatus; uploadedBy: string; createdAt: string }[];
+}
+
+export interface LibraryAttentionItem {
+  id: string;
+  title: string;
+  status: LibraryItemStatus;
+  uploadedBy: { id: string; name: string };
+  detail: string | null;
+  departments: string[];
+  updatedAt: string;
+}
+
+export interface LibraryAttention {
+  ownerDeactivated: { id: string; name: string; items: number; collections: number }[];
+  orphanedRestricted: LibraryAttentionItem[];
+  quarantined: LibraryAttentionItem[];
+  scanErrors: LibraryAttentionItem[];
+  failedPreviews: LibraryAttentionItem[];
+  openReports: number;
 }

@@ -19,6 +19,7 @@ export const EVENT = {
   FilePreviewRequested: 'file.preview_requested',
   /** Zip the visible items of a library collection (S1). */
   LibraryCollectionExportRequested: 'library.collection_export_requested',
+  LibraryScanRequested: 'library.scan_requested',
   ReportSentForReview: 'report.sent_for_review',
   ReportReviewDecided: 'report.review_decided',
   DocumentSubmitted: 'submission.created',

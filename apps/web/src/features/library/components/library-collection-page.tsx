@@ -19,6 +19,7 @@ import {
   IconPlaylistAdd,
   IconRestore,
   IconTrash,
+  IconUserShare,
   IconUpload,
   IconUser,
   IconWorld,
@@ -28,6 +29,7 @@ import { PageToolbar } from '@/components/layout/page-toolbar';
 import { FileTypeIcon } from '@/components/data/file-type-icon';
 import { ConfirmDialog, LoadingButton } from '@/components/forms';
 import { useAuthContext } from '@/components/providers/auth-provider';
+import { TransferOwnerDialog } from '@/features/library/components/transfer-owner-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -77,6 +79,7 @@ export function LibraryCollectionPage({ id }: { id: string }) {
   const [addOpen, setAddOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const list = useMemo(() => members.data?.data ?? [], [members.data]);
   const memberIds = useMemo(() => new Set(list.map((x) => x.item.id)), [list]);
 
@@ -175,6 +178,11 @@ export function LibraryCollectionPage({ id }: { id: string }) {
                       <DropdownMenuItem onSelect={() => setEditOpen(true)}>
                         <IconPencil className="mr-2 h-4 w-4" aria-hidden /> Edit details
                       </DropdownMenuItem>
+                      {can('library:curate') ? (
+                        <DropdownMenuItem onSelect={() => setTransferOpen(true)}>
+                          <IconUserShare className="mr-2 h-4 w-4" aria-hidden /> Transfer ownership
+                        </DropdownMenuItem>
+                      ) : null}
                       <DropdownMenuItem onSelect={() => setArchiveOpen(true)}>
                         <IconArchive className="mr-2 h-4 w-4" aria-hidden /> Archive
                       </DropdownMenuItem>
@@ -383,6 +391,11 @@ export function LibraryCollectionPage({ id }: { id: string }) {
             toast.error(errorMessage(err, 'Delete failed'));
           }
         }}
+      />
+      <TransferOwnerDialog
+        target={{ kind: 'collection', id: c.id, title: c.title, ownerId: c.owner.id, ownerName: c.owner.name }}
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
       />
     </div>
   );

@@ -392,6 +392,9 @@ importers:
       '@types/archiver':
         specifier: ^6.0.3
         version: 6.0.3
+      '@types/jest':
+        specifier: ^30.0.0
+        version: 30.0.0
       '@types/node':
         specifier: ^22.10.6
         version: 22.20.1
@@ -404,6 +407,12 @@ importers:
       eslint:
         specifier: ^9.18.0
         version: 9.39.5(jiti@1.21.7)(supports-color@10.2.2)
+      jest:
+        specifier: ^30.4.2
+        version: 30.4.2(@types/node@22.20.1)(supports-color@10.2.2)(ts-node@10.9.2(@types/node@22.20.1)(typescript@5.9.3))
+      ts-jest:
+        specifier: ^29.4.11
+        version: 29.4.11(@babel/core@7.29.7(supports-color@10.2.2))(@jest/transform@30.4.1(supports-color@10.2.2))(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(esbuild@0.28.1)(jest-util@30.4.1)(jest@30.4.2(@types/node@22.20.1)(supports-color@10.2.2)(ts-node@10.9.2(@types/node@22.20.1)(typescript@5.9.3)))(typescript@5.9.3)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

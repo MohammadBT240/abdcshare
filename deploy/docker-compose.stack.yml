@@ -107,11 +107,35 @@ services:
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
       R2_BUCKET: ${R2_BUCKET:-}
       R2_OBJECT_PREFIX: ${R2_OBJECT_PREFIX:-abdcshare}
+      # Library virus scanning (S3, D24). The worker refuses to boot in production without it.
+      CLAMD_HOST: clamav
+      CLAMD_PORT: "3310"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
+    networks: [abdcshare]
+    restart: unless-stopped
+
+  # ClamAV for library uploads (S3, D24/D26). Needs ~1–1.5 GB RAM once signatures load —
+  # measure the shared VM's headroom before go-live. freshclam updates signatures in-container.
+  # Internal only (no host port). Our clamd.conf sets ConcurrentDatabaseReload no (halves peak
+  # memory during signature reloads) — verify on staging that the image picks it up.
+  clamav:
+    image: clamav/clamav:1.4
+    volumes:
+      - clamav_db:/var/lib/clamav
+      - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    mem_limit: 1800m
     networks: [abdcshare]
     restart: unless-stopped
 
@@ -163,6 +187,7 @@ services:
 volumes:
   # Compose prefixes these with COMPOSE_PROJECT_NAME, so prod (abdcshare) and
   # staging (abdcshare-staging) volumes never collide on the shared VM.
+  clamav_db:
   postgres_data:
   redis_data:
 

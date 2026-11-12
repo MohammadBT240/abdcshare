@@ -2,13 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { IconAlertTriangle, IconDownload, IconLoader2, IconRefresh } from '@tabler/icons-react';
+import { IconAlertTriangle, IconDownload, IconLoader2, IconRefresh, IconShieldX } from '@tabler/icons-react';
 import { LoadingButton } from '@/components/forms';
 import { Button } from '@/components/ui/button';
 import { fetchLibraryPreview } from '@/features/library/hooks/use-library';
 import type { LibraryItem, LibraryPreview } from '@/features/library/types';
 import { LibraryPdfViewer } from '@/features/library/components/library-pdf-viewer';
 import { VIEW_ONLY_LIMIT } from '@/features/library/lib/licence';
+
+/** Specific messages for classified conversion failures (S3, D28). */
+const FAILURE_TEXT: Record<string, { title: string; hint: string }> = {
+  password_protected: {
+    title: 'This file is password-protected',
+    hint: "It can't be shown in the browser. Ask the uploader for a copy without a password.",
+  },
+  corrupt: { title: "This file couldn't be read", hint: 'It may be damaged or saved in an unusual format.' },
+  timeout: { title: 'This file took too long to convert', hint: 'Very large or complex files sometimes do.' },
+  unknown: { title: "This file couldn't be converted for preview", hint: '' },
+};
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
@@ -117,12 +128,29 @@ export function LibraryViewer({
     );
   }
 
+  if (data.reason === 'quarantined') {
+    return (
+      <Centered>
+        <IconShieldX className="h-8 w-8 text-destructive" aria-hidden />
+        <p className="text-sm font-medium text-foreground">Quarantined — the virus scan found a threat</p>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          The file has been moved out of the library and can&apos;t be opened. Delete the item, or ask the uploader for a
+          clean copy.
+        </p>
+      </Centered>
+    );
+  }
+
   if (data.reason === 'failed') {
+    const why = FAILURE_TEXT[data.errorCode ?? 'unknown'] ?? FAILURE_TEXT.unknown!;
     return (
       <Centered>
         <IconAlertTriangle className="h-8 w-8 text-amber-600" aria-hidden />
-        <p className="text-sm font-medium text-foreground">This file couldn't be converted for preview</p>
+        <p className="text-sm font-medium text-foreground" data-testid="preview-failure">
+          {why.title}
+        </p>
         <p className="max-w-sm text-sm text-muted-foreground">
+          {why.hint}{' '}
           {item.canDownload ? 'Download it to open it in its own application.' : 'Ask the uploader for a PDF version.'}
         </p>
         <div className="flex gap-2">
