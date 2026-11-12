@@ -1,4 +1,4 @@
-import { Entity, ManyToOne, OptionalProps, PrimaryKey, Property } from '@mikro-orm/core';
+import { Entity, Index, ManyToOne, OptionalProps, PrimaryKey, Property } from '@mikro-orm/core';
 import { randomUUID } from 'node:crypto';
 import { PartnerReportEntity } from './partner-report.entity';
 
@@ -11,6 +11,7 @@ export class PartnerReportBillingItemEntity {
   id: string = randomUUID();
 
   @ManyToOne(() => PartnerReportEntity, { deleteRule: 'cascade' })
+  @Index({ name: 'partner_report_billing_items_report_id_index' })
   report!: PartnerReportEntity;
 
   @Property()
@@ -21,7 +22,7 @@ export class PartnerReportBillingItemEntity {
   amount!: string;
 
   /** Portion of the bill amount already collected. */
-  @Property({ columnType: 'numeric(18,2)', default: '0' })
+  @Property({ columnType: 'numeric(18,2)', defaultRaw: '0' })
   amountReceived: string = '0';
 
   @Property({ default: 0 })

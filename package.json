@@ -24,7 +24,9 @@
     "db:seed": "pnpm --filter @abdcshare/api seed:dev",
     "seed:dev": "pnpm --filter @abdcshare/api seed:dev",
     "generate:api-client": "pnpm --filter @abdcshare/api-client generate",
-    "generate:api-client:live": "pnpm --filter @abdcshare/api-client generate:live"
+    "generate:api-client:live": "pnpm --filter @abdcshare/api-client generate:live",
+    "seed:e2e": "pnpm --filter @abdcshare/api seed:e2e",
+    "e2e": "pnpm --filter @abdcshare/e2e test"
   },
   "devDependencies": {
     "turbo": "^2.10.5",

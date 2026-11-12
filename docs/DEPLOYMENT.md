@@ -160,6 +160,17 @@ ansible-playbook --ask-vault-pass --ask-become-pass -i inventory/production.ini 
 (or re-run the deploy workflow from the old commit). Schema is forward-only — keep
 migrations additive/backward-compatible so old code can run against new schema.
 
+## 8a. Security-relevant settings (S0, Nov 2026)
+
+- `NODE_ENV=production` refuses to boot with default or short (<32 chars) `JWT_ACCESS_SECRET` /
+  `JWT_REFRESH_SECRET`.
+- Swagger (`/api/docs`) is off in production unless `SWAGGER_ENABLED=true`, which then requires
+  `SWAGGER_USER` / `SWAGGER_PASSWORD` (HTTP basic auth). Staging may enable it.
+- The demo outbox endpoint is gone.
+- Local storage (dev only) URLs are HMAC-signed and expire; keys can't escape `LOCAL_STORAGE_DIR`.
+- Company Profiles Office previews are converted in-house by the worker (LibreOffice); no URLs are
+  sent to Office Online.
+
 ## 9. Known gaps / follow-ups
 
 - **DB backups**: no project on this VM has automated Postgres backups yet — add a

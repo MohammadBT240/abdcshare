@@ -42,7 +42,9 @@ export class FilePreviewService {
           ? 'document_files'
           : entityType === 'library_item'
             ? 'library_items'
-            : null;
+            : entityType === 'company_profile'
+              ? 'company_profiles'
+              : null;
     if (!table) throw new Error(`Unsupported entityType ${entityType}`);
     // Library items can have their file replaced in place: only write the preview if the row
     // still points at the file this job converted (a stale job must not overwrite a newer preview).

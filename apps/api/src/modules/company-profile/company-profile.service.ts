@@ -6,10 +6,11 @@ import {
 } from '@nestjs/common';
 import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
 import type { Paginated } from '@abdcshare/shared';
-import { FilePreviewStatus } from '@abdcshare/shared';
+import { EVENT, FilePreviewStatus } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
 import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
-import { isNativePreviewable, isOfficeMime } from '../../common/storage/preview.util';
+import { initialPreviewStatus, isNativePreviewable, isOfficeMime } from '../../common/storage/preview.util';
+import { OutboxService } from '../outbox/outbox.service';
 import type {
   MultipartAbortDto,
   MultipartCompleteDto,
@@ -41,7 +42,18 @@ export class CompanyProfileService {
   constructor(
     private readonly em: EntityManager,
     @Inject(STORAGE) private readonly storage: StoragePort,
+    private readonly outbox: OutboxService,
   ) {}
+
+  private enqueuePreview(row: CompanyProfileEntity): void {
+    this.outbox.enqueue(EVENT.FilePreviewRequested, {
+      entityType: 'company_profile',
+      fileId: row.id,
+      storageKey: row.storageKey,
+      fileName: row.fileName,
+      mimeType: row.mimeType ?? null,
+    });
+  }
 
   private toDto(p: CompanyProfileEntity): CompanyProfileResponseDto {
     return {
@@ -241,6 +253,12 @@ export class CompanyProfileService {
     row.fileName = dto.fileName;
     row.mimeType = mimeType;
     row.sizeBytes = sizeBytes;
+    // Office files are converted to PDF in-house by the worker (LibreOffice). We never hand
+    // presigned URLs to third-party viewers (previously Office Online).
+    row.previewStorageKey = null;
+    row.previewError = null;
+    row.previewStatus = initialPreviewStatus(mimeType, dto.fileName);
+    if (row.previewStatus === FilePreviewStatus.Pending) this.enqueuePreview(row);
     await this.em.flush();
     return this.toDto(row);
   }
@@ -251,10 +269,17 @@ export class CompanyProfileService {
     return { url };
   }
 
-  async preview(id: string): Promise<CompanyProfilePreviewDto> {
+  async preview(id: string, opts?: { retryFailed?: boolean }): Promise<CompanyProfilePreviewDto> {
     const row = await this.findComplete(id);
-
     const fileName = row.fileName ?? undefined;
+
+    if (row.previewStatus === FilePreviewStatus.Ready && row.previewStorageKey) {
+      const url = await this.storage.presignDownload(row.previewStorageKey, `${row.fileName}.pdf`, {
+        disposition: 'inline',
+      });
+      return { url, mode: 'converted', previewStatus: row.previewStatus };
+    }
+
     if (isNativePreviewable(row.mimeType, fileName)) {
       const url = await this.storage.presignDownload(row.storageKey!, row.fileName!, {
         disposition: 'inline',
@@ -263,16 +288,20 @@ export class CompanyProfileService {
     }
 
     if (isOfficeMime(row.mimeType, fileName)) {
-      const sourceUrl = await this.storage.presignDownload(row.storageKey!, row.fileName!, {
-        disposition: 'inline',
-      });
-      if (/^https:\/\//i.test(sourceUrl) && !/localhost|127\.0\.0\.1/i.test(sourceUrl)) {
-        return {
-          url: `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(sourceUrl)}`,
-          mode: 'converted',
-          previewStatus: FilePreviewStatus.Ready,
-        };
+      // Rows uploaded before in-house conversion (None) or a failed conversion the viewer asked to retry.
+      if (
+        row.previewStatus === FilePreviewStatus.None ||
+        (row.previewStatus === FilePreviewStatus.Failed && opts?.retryFailed)
+      ) {
+        row.previewStatus = FilePreviewStatus.Pending;
+        row.previewError = null;
+        this.enqueuePreview(row);
+        await this.em.flush();
       }
+      if (row.previewStatus === FilePreviewStatus.Pending) {
+        return { url: null, mode: 'unavailable', previewStatus: row.previewStatus, reason: 'pending' };
+      }
+      return { url: null, mode: 'unavailable', previewStatus: row.previewStatus, reason: 'failed' };
     }
 
     return {

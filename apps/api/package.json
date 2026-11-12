@@ -16,7 +16,8 @@
     "seed": "node dist/database/seed.js",
     "seed:dev": "ts-node -r tsconfig-paths/register src/database/seed.ts",
     "db:setup": "ts-node -r tsconfig-paths/register src/database/setup.ts",
-    "db:migrate": "SKIP_SEED=1 ts-node -r tsconfig-paths/register src/database/setup.ts"
+    "db:migrate": "SKIP_SEED=1 ts-node -r tsconfig-paths/register src/database/setup.ts",
+    "seed:e2e": "ts-node -r tsconfig-paths/register src/database/seed-e2e.ts"
   },
   "dependencies": {
     "@abdcshare/shared": "workspace:*",

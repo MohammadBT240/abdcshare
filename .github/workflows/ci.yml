@@ -1,6 +1,7 @@
 name: ci
 on:
-  push: { branches: [main] }
+  # staging pushes deploy (deploy-staging.yml), so they must pass CI too.
+  push: { branches: [main, staging] }
   pull_request: {}
 jobs:
   build:

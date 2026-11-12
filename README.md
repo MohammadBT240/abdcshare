@@ -67,3 +67,18 @@ docker compose -f deploy/docker-compose.yml --profile full up -d
 ```
 
 See **docs/** (start at [docs/README.md](docs/README.md)) and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## End-to-end tests (Playwright)
+
+The `e2e/` package drives the real web app in Chromium against a running stack.
+
+```bash
+pnpm dev                 # api + worker + web
+pnpm seed:e2e            # test personas (@e2e.test, fixture password) — refuses NODE_ENV=production
+pnpm e2e                 # all specs; E2E_BASE_URL defaults to http://localhost:3000
+pnpm e2e -- specs/library-visibility.spec.ts
+```
+
+Personas live in `apps/api/src/database/e2e-personas.ts` (Platform Admin, Super Admin, Tax staff,
+Assurance staff, staff with no department, client, guest). The Office → PDF specs need LibreOffice
+(`soffice`) where the worker runs.

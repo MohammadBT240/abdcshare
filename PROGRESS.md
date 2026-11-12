@@ -92,7 +92,7 @@ pnpm --filter @abdcshare/api seed:dev                    # roles/departments/cat
 # prove the async pipeline (or start everything with `pnpm dev`):
 pnpm dev          # turbo: shared watch + api :4000 + worker + web :3000
 # (or only api+worker: pnpm dev:api & pnpm dev:worker)
-curl -X POST localhost:4000/api/demo/outbox -H 'content-type: application/json' -d '{"message":"hello"}'
+# (the demo outbox endpoint was removed in S0 — exercise the pipeline through any real flow, e.g. creating a user)
 # -> worker logs "Processing user.created"; the outbox row flips Pending -> Queued -> Sent
 ```
 If the first real TS compile (`shared build` / `migration:create`) flags a type or MikroORM nit, paste it.
@@ -809,6 +809,21 @@ Spec: `docs/superpowers/specs/2026-11-12-staff-library-design.md`.
   `packages/api-client` when convenient.
 - **Verify:** web `tsc --noEmit` clean; eslint clean on all touched files (one pre-existing warning in
   catalogue-admin-page).
+
+## S0 — Close-out and guardrails (Nov 2026) ⚠️ **has a migration** (`Migration20261112162200`)
+Plan: project doc `abdcshare/sprint-s0-plan.md`. Status: `abdcshare/sprint-s0-status.md`.
+- **Security:** demo outbox endpoint removed; Swagger off in production unless `SWAGGER_ENABLED` + basic
+  auth; production refuses default/short JWT secrets; local storage URLs HMAC-signed + expiring with
+  traversal-safe paths (`local-url-signer.ts`) and CORS for the web origin (local driver only, so browser
+  uploads work in dev); Company Profiles Office previews converted in-house (LibreOffice) — no more
+  Office Online URLs; migration backfills conversion jobs for existing Office profiles.
+- **Schema drift:** entity metadata aligned with the database (reporter/contact timestamp defaults,
+  help `visible_to_roles` default, three hand-written indexes incl. `engagement_client_contacts_one_main`).
+  `migration:create` → "No changes required".
+- **CI:** runs on push to `staging` too.
+- **E2E harness:** `e2e/` (Playwright 1.63) + `pnpm seed:e2e` personas; specs for the library visibility
+  matrix, UI upload (PDF/DOCX conversion/PNG/CSV), lifecycle (archive/restore/curator delete, edit rights),
+  admin categories, and a phone-width layout check (fixed horizontal overflow on `/library` and the viewer).
 
 ## Pending / next
 1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;

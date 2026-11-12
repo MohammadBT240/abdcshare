@@ -30,7 +30,7 @@ export class HelpArticleEntity {
   bodyText!: string;
 
   /** Empty array = visible to every role. */
-  @Property({ type: 'json' })
+  @Property({ type: 'json', defaultRaw: `'[]'` })
   visibleToRoles: string[] = [];
 
   /** Plain text column, not @Enum — a two-value status flag doesn't warrant a shared cross-package enum. */

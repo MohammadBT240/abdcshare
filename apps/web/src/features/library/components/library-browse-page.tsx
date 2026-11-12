@@ -115,8 +115,8 @@ export function LibraryBrowsePage() {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[13.5rem_minmax(0,1fr)]">
-        <aside>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[13.5rem_minmax(0,1fr)]">
+        <aside className="min-w-0">
           <LibraryCategoryRail
             categories={categories.data ?? []}
             categoryId={categoryId}
@@ -144,7 +144,7 @@ export function LibraryBrowsePage() {
               </ToggleGroup>
             }
           >
-            <div className="relative min-w-[12rem] flex-1 basis-56 sm:max-w-md">
+            <div className="relative min-w-[10rem] flex-1 basis-56 sm:max-w-sm">
               <IconSearch
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
                 aria-hidden
@@ -172,7 +172,7 @@ export function LibraryBrowsePage() {
                 onValueChange={(v) => setFilter('scope', v === 'all' ? undefined : v)}
               />
             </div>
-            <div className="w-40">
+            <div className="w-44">
               <AppSelect
                 size="sm"
                 options={[
@@ -192,7 +192,7 @@ export function LibraryBrowsePage() {
                 onValueChange={(v) => setFilter('type', v)}
               />
             </div>
-            <div className="w-28">
+            <div className="w-32">
               <AppSelect
                 size="sm"
                 options={YEAR_OPTIONS}

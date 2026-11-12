@@ -30,3 +30,10 @@ apps/web/public/misc/
 apps/web/public/svg/
 apps/web/public/users/
 .pnpm-store/
+
+# Claude test-sync scratch (never commit)
+.sync/
+
+# Local storage driver data (dev)
+apps/api/storage/
+apps/worker/storage/

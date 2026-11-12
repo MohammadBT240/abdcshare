@@ -1,5 +1,6 @@
 import {
   Controller,
+  ForbiddenException,
   Get,
   Inject,
   NotFoundException,
@@ -14,39 +15,52 @@ import type { Request, Response } from 'express';
 import { createReadStream } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { ConfigService } from '@nestjs/config';
 import { Public } from '../decorators/public.decorator';
 import { STORAGE, type StoragePort } from './storage.port';
 import { LocalStorageAdapter } from './local-storage.adapter';
+import { localScope, verifyLocal } from './local-url-signer';
 
 /**
  * Dev-only local object storage HTTP surface (PUT upload + GET download/preview).
  * Keys are URI-encoded (slashes → %2F) so a single path segment is enough.
+ * Every request must carry a valid, unexpired HMAC signature minted by the adapter
+ * (`exp` + `sig`), and keys are confined to LOCAL_STORAGE_DIR.
  */
 @ApiExcludeController()
 @Controller('storage/local')
 export class LocalStorageController {
-  constructor(
-    @Inject(STORAGE) private readonly storage: StoragePort,
-    private readonly config: ConfigService,
-  ) {}
+  constructor(@Inject(STORAGE) private readonly storage: StoragePort) {}
 
-  private rootDir(): string {
-    return this.config.get<string>('LOCAL_STORAGE_DIR', './storage');
+  private local(): LocalStorageAdapter {
+    if (!(this.storage instanceof LocalStorageAdapter)) {
+      throw new NotFoundException();
+    }
+    return this.storage;
   }
 
-  private assertLocal(): void {
-    if (!(this.storage instanceof LocalStorageAdapter)) {
+  /** Verify the signature and return the contained absolute path. */
+  private authorize(scope: string, key: string, exp?: string, sig?: string): string {
+    const local = this.local();
+    if (!verifyLocal(local.signingSecret(), scope, exp, sig)) {
+      throw new ForbiddenException('Invalid or expired storage URL');
+    }
+    try {
+      return local.pathFor(key);
+    } catch {
       throw new NotFoundException();
     }
   }
 
   @Public()
   @Put(':key')
-  async put(@Param('key') key: string, @Req() req: Request): Promise<{ ok: true }> {
-    this.assertLocal();
+  async put(
+    @Param('key') key: string,
+    @Query('exp') exp: string | undefined,
+    @Query('sig') sig: string | undefined,
+    @Req() req: Request,
+  ): Promise<{ ok: true }> {
     const decoded = decodeURIComponent(key);
-    const filePath = path.join(this.rootDir(), decoded);
+    const filePath = this.authorize(localScope.put(decoded), decoded, exp, sig);
     await mkdir(path.dirname(filePath), { recursive: true });
     const chunks: Buffer[] = [];
     for await (const chunk of req) {
@@ -62,11 +76,12 @@ export class LocalStorageController {
     @Param('key') key: string,
     @Query('download') download: string | undefined,
     @Query('inline') inline: string | undefined,
+    @Query('exp') exp: string | undefined,
+    @Query('sig') sig: string | undefined,
     @Res() res: Response,
   ): void {
-    this.assertLocal();
     const decoded = decodeURIComponent(key);
-    const filePath = path.join(this.rootDir(), decoded);
+    const filePath = this.authorize(localScope.get(decoded), decoded, exp, sig);
     const fileName = inline || download;
     if (fileName) {
       const disposition = inline ? 'inline' : 'attachment';

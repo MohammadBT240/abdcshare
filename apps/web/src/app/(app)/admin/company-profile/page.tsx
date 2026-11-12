@@ -140,7 +140,7 @@ function CompanyProfilesPageInner() {
           fileName={viewerTarget.fileName ?? 'document'}
           mimeType={viewerTarget.mimeType}
           sizeBytes={viewerTarget.sizeBytes}
-          getPreview={() => fetchCompanyProfilePreview(viewerTarget.id)}
+          getPreview={(opts) => fetchCompanyProfilePreview(viewerTarget.id, opts)}
           onDownload={() => downloadCompanyProfile(viewerTarget.id)}
         />
       ) : null}

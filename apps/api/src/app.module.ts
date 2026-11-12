@@ -39,7 +39,6 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
 import { CompanyProfileModule } from './modules/company-profile/company-profile.module';
 import { HelpModule } from './modules/help/help.module';
 import { LibraryModule } from './modules/library/library.module';
-import { DemoModule } from './modules/demo/demo.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
@@ -79,7 +78,6 @@ import { HealthModule } from './health/health.module';
     CompanyProfileModule,
     HelpModule,
     LibraryModule,
-    DemoModule,
     HealthModule,
   ],
   providers: [

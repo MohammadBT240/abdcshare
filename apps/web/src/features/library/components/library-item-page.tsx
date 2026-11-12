@@ -189,12 +189,12 @@ export function LibraryItemPage({ id }: { id: string }) {
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card className="overflow-hidden border-border shadow-aca">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Card className="min-w-0 overflow-hidden border-border shadow-aca">
           <LibraryViewer item={data} onDownload={() => void handleDownload()} downloading={downloading} />
         </Card>
 
-        <aside className="space-y-4">
+        <aside className="min-w-0 space-y-4">
           <Card className="border-border p-5 shadow-aca">
             <div className="flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted/50 ring-1 ring-inset ring-black/5 dark:ring-white/10">

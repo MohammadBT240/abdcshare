@@ -120,11 +120,11 @@ export async function downloadCompanyProfile(id: string): Promise<void> {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-export async function fetchCompanyProfilePreview(id: string) {
+export async function fetchCompanyProfilePreview(id: string, opts?: { retryFailed?: boolean }) {
   return bffApi<{
     url: string | null;
     mode: 'native' | 'converted' | 'unavailable';
     previewStatus: string;
     reason?: 'pending' | 'failed' | 'unsupported';
-  }>(`/api/company-profiles/${id}/preview`);
+  }>(`/api/company-profiles/${id}/preview${opts?.retryFailed ? '?retry=true' : ''}`);
 }
