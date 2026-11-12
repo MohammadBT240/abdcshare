@@ -760,6 +760,56 @@ In-app help articles authored by admins, read by all authenticated users, gated 
   browser click-through is still owed as a follow-up.
 - Run: `pnpm --filter @abdcshare/api migration:up`.
 
+## Staff Knowledge Library — L1 API + worker (branch `feature/staff-library`) ⚠️ **has a migration**
+Firm-wide library where staff upload reports, papers and materials and read them in the browser.
+Spec: `docs/superpowers/specs/2026-11-12-staff-library-design.md`.
+- **Shared** — permissions `library:view` / `library:contribute` (PA, SA, Staff) and `library:curate` (PA, SA);
+  enums `LibraryItemStatus`, `LibraryVisibility`.
+- **Migration `Migration20261112120000`** — `library_categories` (6 seeded), `library_items` (tags `text[]`,
+  generated weighted `tsvector` over metadata + GIN; `library_tags_text()` immutable helper),
+  `library_item_departments`. Entity DDL from MikroORM `getCreateSchemaSQL()` matches the migration.
+- **API `/api/library`** — categories CRUD (`catalogue:manage`), items CRUD, Uppy presign/multipart/confirm,
+  archive/restore, curator delete, preview (`native|converted|unavailable`, same shape as documents) and download
+  with view/download counters, tag autocomplete, hourly Draft sweep. Visibility rule lives in `library-access.ts`
+  (`canSeeItem` + `libraryScopeSql`); hidden items 404.
+- **Storage** — `StoragePort.delete` (R2 `DeleteObject`, local `rm`); used for replace + delete.
+- **Worker** — `FilePreviewService` handles `library_item`; library previews are written only if `storage_key`
+  still matches the job (stale-job guard for replaced files).
+- **Web** — `library` added to the BFF proxy allow-list (UI is L2).
+- **Verify:** api 35 suites / 246 tests (3 new library specs, 54 tests); api + worker + web typecheck; api/worker
+  lint clean. Migration up → down → up, scope/search/tag SQL and the SQL MikroORM generates for `list()` were run
+  against Postgres 16 with fixtures (caught and fixed an unparenthesised `= any(tags)` predicate).
+- **Follow-up `Migration20261112130000`** — re-creates `search_vector` with the expression written in the form
+  Postgres normalises it to (`::text` casts, `'A'::"char"`), so MikroORM's schema diff stops proposing to drop and
+  re-add it on every `migration:create` (verified by replaying the comparator's normalisation against PG 16).
+- Run: `pnpm --filter @abdcshare/shared build && pnpm --filter @abdcshare/api migration:up`.
+- ⚠️ `migration:create` on this DB also surfaces **pre-existing, non-library drift** (partner_report_reporters /
+  engagement_client_contacts timestamp defaults, help_articles default, dropped hand-written indexes incl. the
+  `engagement_client_contacts_one_main` partial unique index). Never apply such a generated file as-is.
+- **Next (L2):** regenerate `packages/api-client` from the running API; `/library` browse, upload/edit dialogs,
+  `/library/[id]` viewer, admin categories, sidebar entry.
+
+## Staff Knowledge Library — L2 web (branch `feature/staff-library`)
+- **Nav / routing** — sidebar "Library" under Work (`library:view`); `/library` + `/library/:path*` added to
+  middleware; route layout gated with `RequirePermission`.
+- **`/library`** (`features/library/components/library-browse-page.tsx`) — search (debounced, URL state),
+  scope rail (Browse / My uploads / Archived) + category rail (chips on mobile), filters (department, file type,
+  year, sort), popular-tag chips + active tag filter, card grid or table view (`?view=table`), pagination,
+  empty/filtered/error states.
+- **Upload dialog** — dropzone (MIME inferred from extension when the browser reports none), title prefilled
+  from the file name, category/description/authors/year/source, tag input with suggestions, visibility
+  (firm-wide or departments). Draft → Uppy upload → confirm; a failed upload keeps the draft and the button
+  becomes "Retry upload" (no duplicate items).
+- **`/library/[id]`** — inline viewer (PDF/converted Office in an iframe, images, text/CSV; polls while an Office
+  conversion is pending; retry conversion for editors; spreadsheet note), details panel, Download, and
+  Edit / Replace file / Archive / Restore / Delete (curators, archived only) per `canEdit` / `canDelete`.
+- **Admin › Catalogues › Library categories** — list (incl. inactive), add/edit, deactivate/reactivate.
+- `lib/uploads/uppy-client.ts` — new `library-item` upload kind.
+- Types are hand-written in `features/library/types.ts` (same approach as company profiles); regenerate
+  `packages/api-client` when convenient.
+- **Verify:** web `tsc --noEmit` clean; eslint clean on all touched files (one pre-existing warning in
+  catalogue-admin-page).
+
 ## Pending / next
 1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
    replace sidebar `#` stub.

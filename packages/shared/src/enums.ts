@@ -189,3 +189,18 @@ export enum FilePreviewStatus {
   Ready = 'Ready',
   Failed = 'Failed',
 }
+
+/** Staff knowledge library item lifecycle. Draft = file not yet confirmed. */
+export enum LibraryItemStatus {
+  Draft = 'Draft',
+  Published = 'Published',
+  Archived = 'Archived',
+}
+
+/** Who can see a library item (internal users only, always). */
+export enum LibraryVisibility {
+  /** Every internal user. */
+  Firm = 'Firm',
+  /** Only users in the item's departments (+ uploader + curators). */
+  Departments = 'Departments',
+}

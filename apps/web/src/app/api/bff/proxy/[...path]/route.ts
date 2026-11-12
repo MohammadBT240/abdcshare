@@ -28,6 +28,7 @@ const ALLOWED_PREFIXES = [
   'notifications',
   'audit',
   'help',
+  'library',
 ] as const;
 
 function isAllowed(segments: string[]): boolean {

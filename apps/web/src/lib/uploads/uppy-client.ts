@@ -24,7 +24,12 @@ interface MultipartSignPartsResult {
   parts: Array<{ partNumber: number; url: string }>;
 }
 
-export type UploadEndpointKind = 'submission' | 'document' | 'message' | 'company-profile';
+export type UploadEndpointKind =
+  | 'submission'
+  | 'document'
+  | 'message'
+  | 'company-profile'
+  | 'library-item';
 
 export type FileUploadStatus = 'queued' | 'uploading' | 'failed' | 'done';
 
@@ -46,6 +51,8 @@ export function uploadBasePath(kind: UploadEndpointKind, parentId: string): stri
       return `/api/messages/${parentId}/attachments`;
     case 'company-profile':
       return `/api/company-profiles/${parentId}/files`;
+    case 'library-item':
+      return `/api/library/items/${parentId}/files`;
   }
 }
 

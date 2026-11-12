@@ -13,6 +13,7 @@ function isProtectedAppRoute(pathname: string): boolean {
     "/partner-reports",
     "/settings",
     "/help",
+    "/library",
   ];
   return protectedRoots.some(
     (root) => pathname === root || pathname.startsWith(`${root}/`),
@@ -71,6 +72,8 @@ export const config = {
     "/settings/:path*",
     "/help",
     "/help/:path*",
+    "/library",
+    "/library/:path*",
     "/login",
     "/change-password",
     "/forgot-password",
