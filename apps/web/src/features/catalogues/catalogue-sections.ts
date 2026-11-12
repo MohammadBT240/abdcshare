@@ -28,6 +28,11 @@ export const CATALOGUE_SECTIONS: CatalogueSection[] = [
     title: 'Departments',
     description: 'Firm departments',
   },
+  {
+    href: '/admin/catalogues/library-categories',
+    title: 'Library categories',
+    description: 'How items in the staff library are grouped',
+  },
 ];
 
 export function isCatalogueSectionActive(pathname: string, href: string): boolean {

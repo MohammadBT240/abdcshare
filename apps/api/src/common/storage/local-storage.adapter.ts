@@ -141,6 +141,10 @@ export class LocalStorageAdapter implements StoragePort {
     await rm(this.multipartDir(uploadId), { recursive: true, force: true });
   }
 
+  async delete(storageKey: string): Promise<void> {
+    await rm(path.join(this.rootDir(), storageKey), { force: true });
+  }
+
   async head(storageKey: string): Promise<{ sizeBytes: number } | null> {
     try {
       const s = await stat(path.join(this.rootDir(), storageKey));

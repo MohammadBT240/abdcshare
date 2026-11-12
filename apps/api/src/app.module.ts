@@ -38,6 +38,7 @@ import { DiscussionsModule } from './modules/discussions/discussions.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { CompanyProfileModule } from './modules/company-profile/company-profile.module';
 import { HelpModule } from './modules/help/help.module';
+import { LibraryModule } from './modules/library/library.module';
 import { DemoModule } from './modules/demo/demo.module';
 import { HealthModule } from './health/health.module';
 
@@ -77,6 +78,7 @@ import { HealthModule } from './health/health.module';
     ReviewsModule,
     CompanyProfileModule,
     HelpModule,
+    LibraryModule,
     DemoModule,
     HealthModule,
   ],

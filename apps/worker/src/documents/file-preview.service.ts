@@ -40,8 +40,14 @@ export class FilePreviewService {
         ? 'submission_files'
         : entityType === 'document_file'
           ? 'document_files'
-          : null;
+          : entityType === 'library_item'
+            ? 'library_items'
+            : null;
     if (!table) throw new Error(`Unsupported entityType ${entityType}`);
+    // Library items can have their file replaced in place: only write the preview if the row
+    // still points at the file this job converted (a stale job must not overwrite a newer preview).
+    const sameFile = table === 'library_items' ? ' and storage_key = ?' : '';
+    const sameFileParams = table === 'library_items' ? [storageKey] : [];
 
     const existing = await em.getConnection().execute<{ preview_status: string; preview_storage_key: string | null }[]>(
       `select preview_status as preview_status, preview_storage_key as preview_storage_key from "${table}" where id = ?`,
@@ -61,8 +67,8 @@ export class FilePreviewService {
       await em.getConnection().execute(
         `update "${table}"
          set preview_storage_key = ?, preview_status = 'Ready', preview_error = null
-         where id = ?`,
-        [previewKey, fileId],
+         where id = ?${sameFile}`,
+        [previewKey, fileId, ...sameFileParams],
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -70,8 +76,8 @@ export class FilePreviewService {
       await em.getConnection().execute(
         `update "${table}"
          set preview_status = 'Failed', preview_error = ?
-         where id = ?`,
-        [message.slice(0, 2000), fileId],
+         where id = ?${sameFile}`,
+        [message.slice(0, 2000), fileId, ...sameFileParams],
       );
     }
   }
