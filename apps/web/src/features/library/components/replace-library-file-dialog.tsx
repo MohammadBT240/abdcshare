@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { FileUpload, FormDialog, LoadingButton } from '@/components/forms';
 import { Button } from '@/components/ui/button';
 import { BffClientError } from '@/lib/bff/client';
+import { DeclarationCheckbox } from '@/features/library/components/declaration-checkbox';
 import { useReplaceLibraryFile } from '@/features/library/hooks/use-library';
 import {
   LIBRARY_ACCEPT,
@@ -27,12 +28,14 @@ export function ReplaceLibraryFileDialog({
   const replace = useReplaceLibraryFile();
   const [files, setFiles] = useState<File[]>([]);
   const [percent, setPercent] = useState<number | null>(null);
+  const [declared, setDeclared] = useState(false);
 
   function close(next: boolean) {
     if (replace.isPending) return;
     if (!next) {
       setFiles([]);
       setPercent(null);
+      setDeclared(false);
     }
     onOpenChange(next);
   }
@@ -40,12 +43,17 @@ export function ReplaceLibraryFileDialog({
   async function submit() {
     const file = files[0];
     if (!item || !file) return;
+    if (!declared) {
+      toast.error('Please confirm the file contains no client-identifiable information');
+      return;
+    }
     try {
       setPercent(0);
-      await replace.mutateAsync({ id: item.id, file, onProgress: setPercent });
+      await replace.mutateAsync({ id: item.id, file, onProgress: setPercent, declared: true });
       toast.success('File replaced');
       setFiles([]);
       setPercent(null);
+      setDeclared(false);
       onOpenChange(false);
     } catch (err) {
       setPercent(null);
@@ -69,7 +77,7 @@ export function ReplaceLibraryFileDialog({
           <Button type="button" variant="outline" onClick={() => close(false)} disabled={replace.isPending}>
             Cancel
           </Button>
-          <LoadingButton type="button" loading={replace.isPending} disabled={!files.length} onClick={() => void submit()}>
+          <LoadingButton type="button" loading={replace.isPending} disabled={!files.length || !declared} onClick={() => void submit()}>
             {replace.isPending && percent != null ? `Uploading ${percent}%` : 'Replace'}
           </LoadingButton>
         </>
@@ -91,6 +99,9 @@ export function ReplaceLibraryFileDialog({
         label="Drop the new file here"
         description={LIBRARY_FILE_HINT}
       />
+      <div className="mt-4">
+        <DeclarationCheckbox checked={declared} onChange={setDeclared} disabled={replace.isPending} />
+      </div>
     </FormDialog>
   );
 }

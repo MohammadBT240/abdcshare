@@ -4,6 +4,11 @@ import { LibraryCategoryEntity } from './infrastructure/persistence/library-cate
 import { LibraryItemEntity } from './infrastructure/persistence/library-item.entity';
 import { LibraryCollectionEntity } from './infrastructure/persistence/library-collection.entity';
 import { LibraryCollectionItemEntity } from './infrastructure/persistence/library-collection-item.entity';
+import { LibraryEventEntity } from './infrastructure/persistence/library-event.entity';
+import { LibraryReportEntity } from './infrastructure/persistence/library-report.entity';
+import { LibraryEventsService } from './library-events.service';
+import { LibraryReportsService } from './library-reports.service';
+import { LibraryReportsController } from './library-reports.controller';
 import { LibraryCollectionsService } from './library-collections.service';
 import { LibraryCollectionsController } from './library-collections.controller';
 import { LibraryService } from './library.service';
@@ -19,10 +24,19 @@ import { LibraryCategoriesController } from './library-categories.controller';
       LibraryItemEntity,
       LibraryCollectionEntity,
       LibraryCollectionItemEntity,
+      LibraryEventEntity,
+      LibraryReportEntity,
     ])],
   // Categories controller first so `library/categories` is registered before `library/*` routes.
-  controllers: [LibraryCategoriesController, LibraryCollectionsController, LibraryController],
-  providers: [LibraryService, LibraryCategoriesService, LibraryCollectionsService, LibraryDraftSweepService],
+  controllers: [LibraryCategoriesController, LibraryCollectionsController, LibraryReportsController, LibraryController],
+  providers: [
+    LibraryService,
+    LibraryEventsService,
+    LibraryReportsService,
+    LibraryCategoriesService,
+    LibraryCollectionsService,
+    LibraryDraftSweepService,
+  ],
   exports: [LibraryService],
 })
 export class LibraryModule {}

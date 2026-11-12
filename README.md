@@ -82,3 +82,12 @@ pnpm e2e -- specs/library-visibility.spec.ts
 Personas live in `apps/api/src/database/e2e-personas.ts` (Platform Admin, Super Admin, Tax staff,
 Assurance staff, staff with no department, client, guest). The Office → PDF specs need LibreOffice
 (`soffice`) where the worker runs.
+
+### Postgres integration tests
+
+`*.int-spec.ts` files run against a real, migrated database (the dev one is fine — they create and
+remove their own rows; library events are append-only, so test events stay with a null item):
+
+```bash
+pnpm --filter @abdcshare/api test:int   # uses DATABASE_URL from apps/api/.env
+```

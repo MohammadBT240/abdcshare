@@ -11,7 +11,7 @@ import {
   Property,
 } from '@mikro-orm/core';
 import { randomUUID } from 'node:crypto';
-import { FilePreviewStatus, LibraryItemStatus, LibraryVisibility } from '@abdcshare/shared';
+import { FilePreviewStatus, LibraryItemStatus, LibraryLicence, LibraryVisibility } from '@abdcshare/shared';
 import { DepartmentEntity } from '../../../departments/infrastructure/persistence/department.entity';
 import { UserEntity } from '../../../users/infrastructure/persistence/user.entity';
 import { LibraryCategoryEntity } from './library-category.entity';
@@ -46,7 +46,9 @@ export class LibraryItemEntity {
     | 'previewStatus'
     | 'viewCount'
     | 'downloadCount'
-    | 'searchVector';
+    | 'searchVector'
+    | 'licence'
+    | 'downloadable';
 
   @PrimaryKey({ type: 'uuid' })
   id: string = randomUUID();
@@ -126,6 +128,24 @@ export class LibraryItemEntity {
 
   @Property({ type: 'timestamptz', nullable: true })
   archivedAt?: Date | null;
+
+  // ---- sharing (S2) ----
+  @Enum({ items: () => LibraryLicence, default: LibraryLicence.InternalUseOnly })
+  licence: LibraryLicence = LibraryLicence.InternalUseOnly;
+
+  @Property({ type: 'text', nullable: true })
+  licenceNote?: string | null;
+
+  /** View-only when false: download is refused to everyone but editors (D22). */
+  @Property({ default: true })
+  downloadable: boolean = true;
+
+  /** Upload declaration (D18) — set on create and on every file replacement. */
+  @Property({ type: 'timestamptz', nullable: true })
+  declaredAt?: Date | null;
+
+  @ManyToOne(() => UserEntity, { nullable: true })
+  declaredBy?: UserEntity | null;
 
   @Property({ default: 0 })
   viewCount: number = 0;

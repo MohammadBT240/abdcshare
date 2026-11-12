@@ -8,7 +8,8 @@ import { cn } from '@/lib/utils';
 import { useDepartments } from '@/features/users/hooks/use-users';
 import { useLibraryCategories } from '@/features/library/hooks/use-library';
 import { TagInput } from '@/features/library/components/tag-input';
-import type { LibraryItem, LibraryItemFields, LibraryVisibility } from '@/features/library/types';
+import type { LibraryItem, LibraryItemFields, LibraryLicence, LibraryVisibility } from '@/features/library/types';
+import { LICENCE_OPTIONS, VIEW_ONLY_LIMIT } from '@/features/library/lib/licence';
 
 export interface LibraryFormState {
   title: string;
@@ -20,6 +21,9 @@ export interface LibraryFormState {
   tags: string[];
   visibility: LibraryVisibility;
   departmentIds: string[];
+  licence: LibraryLicence;
+  licenceNote: string;
+  viewOnly: boolean;
 }
 
 export const EMPTY_LIBRARY_FORM: LibraryFormState = {
@@ -32,6 +36,9 @@ export const EMPTY_LIBRARY_FORM: LibraryFormState = {
   tags: [],
   visibility: 'Firm',
   departmentIds: [],
+  licence: 'InternalUseOnly',
+  licenceNote: '',
+  viewOnly: false,
 };
 
 export function formFromItem(item: LibraryItem): LibraryFormState {
@@ -45,6 +52,9 @@ export function formFromItem(item: LibraryItem): LibraryFormState {
     tags: item.tags,
     visibility: item.visibility,
     departmentIds: item.departments.map((d) => String(d.id)),
+    licence: item.licence,
+    licenceNote: item.licenceNote ?? '',
+    viewOnly: !item.downloadable,
   };
 }
 
@@ -60,6 +70,9 @@ export function fieldsFromForm(state: LibraryFormState): LibraryItemFields {
     tags: state.tags,
     visibility: state.visibility,
     departmentIds: state.visibility === 'Departments' ? state.departmentIds.map(Number) : [],
+    licence: state.licence,
+    licenceNote: state.licenceNote.trim() || null,
+    downloadable: !state.viewOnly,
   };
 }
 
@@ -264,6 +277,74 @@ export function LibraryItemFieldsForm({
         onChange={(v) => onChange({ ...value, ...v })}
         disabled={disabled}
       />
+
+      <SharingFields
+        licence={value.licence}
+        licenceNote={value.licenceNote}
+        viewOnly={value.viewOnly}
+        onChange={(next) => onChange({ ...value, ...next })}
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
+/** Licence + view-only (S2, D21/D22). Shared by single upload, bulk upload and edit. */
+export function SharingFields({
+  licence,
+  licenceNote,
+  viewOnly,
+  onChange,
+  disabled,
+  idPrefix = 'library',
+}: {
+  licence: LibraryLicence;
+  licenceNote: string;
+  viewOnly: boolean;
+  onChange: (next: { licence?: LibraryLicence; licenceNote?: string; viewOnly?: boolean }) => void;
+  disabled?: boolean;
+  idPrefix?: string;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField label="Licence" hint={LICENCE_OPTIONS.find((o) => o.value === licence)?.hint}>
+          <AppSelect
+            options={LICENCE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            value={licence}
+            onValueChange={(v) => onChange({ licence: v as LibraryLicence })}
+            disabled={disabled}
+          />
+        </FormField>
+        <FormField
+          label="Licence note"
+          htmlFor={`${idPrefix}-licence-note`}
+          hint={licence === 'Licensed' ? 'e.g. “Subscription — internal use, 5 seats”.' : 'Optional.'}
+        >
+          <Input
+            id={`${idPrefix}-licence-note`}
+            value={licenceNote}
+            maxLength={500}
+            disabled={disabled}
+            onChange={(e) => onChange({ licenceNote: e.target.value })}
+          />
+        </FormField>
+      </div>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={viewOnly}
+          disabled={disabled}
+          onChange={(e) => onChange({ viewOnly: e.target.checked })}
+        />
+        <span>
+          <span className="font-medium text-foreground">View-only</span>
+          <span className="block text-xs text-muted-foreground">
+            Staff can read it in the browser but can&apos;t download it. {VIEW_ONLY_LIMIT}
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

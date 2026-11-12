@@ -66,12 +66,15 @@ function setup(opts: { collection?: unknown; members?: { item: { id: string }; p
     create: jest.fn((_e: unknown, d: Record<string, unknown>) => ({ ...coll(), ...d })),
     getReference: jest.fn((_e: unknown, id: string) => ({ id })),
     getConnection: jest.fn(() => ({ execute })),
+    execute,
   };
+  Object.assign(em, { transactional: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(em)) });
   const library = { editableCollection: jest.fn(), appendToCollection: jest.fn(async () => 1), toDtos: jest.fn(async () => []) };
   const outbox = { enqueue: jest.fn() };
   const storage = { presignDownload: jest.fn(async () => 'https://r2/x.zip') };
-  const service = new LibraryCollectionsService(em as never, library as never, outbox as never, storage as never);
-  return { service, em, library, outbox, execute, storage };
+  const events = { stage: jest.fn((..._a: unknown[]) => undefined as unknown), insertNow: jest.fn(async (..._a: unknown[]) => undefined) };
+  const service = new LibraryCollectionsService(em as never, library as never, outbox as never, storage as never, events as never);
+  return { service, em, library, outbox, execute, storage, events };
 }
 
 describe('LibraryCollectionsService', () => {
@@ -146,20 +149,55 @@ describe('LibraryCollectionsService', () => {
     expect(library.appendToCollection).not.toHaveBeenCalled();
   });
 
-  it('queues a ZIP of only the visible items, within the caps', async () => {
-    const { service, outbox } = setup({ rows: [{ item_id: 'a', size_bytes: 10 }, { item_id: 'b', size_bytes: 20 }] });
-    await expect(service.requestExport('col-1', tax)).resolves.toEqual({ accepted: true, files: 2 });
+  const row = (item_id: string, size_bytes: number, extra: Record<string, unknown> = {}) => ({
+    item_id,
+    size_bytes,
+    downloadable: true,
+    uploaded_by_id: 'u-someone',
+    ...extra,
+  });
+
+  it('queues a ZIP of only the visible items, within the caps, and logs it', async () => {
+    const { service, outbox, events } = setup({ rows: [row('a', 10), row('b', 20)] });
+    await expect(service.requestExport('col-1', tax)).resolves.toEqual({ accepted: true, files: 2, viewOnlySkipped: 0 });
     expect(outbox.enqueue).toHaveBeenCalledWith(EVENT.LibraryCollectionExportRequested, {
       collectionId: 'col-1',
       actorUserId: 'u-tax',
       itemIds: ['a', 'b'],
+      viewOnlyItemIds: [],
+      editorItemIds: [],
     });
+    expect(events.stage).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'ZipExported', collectionId: 'col-1', metadata: expect.objectContaining({ files: 2 }) }),
+    );
+  });
+
+  it('skips view-only items (listed for index.csv) unless the requester can edit them', async () => {
+    const { service, outbox } = setup({
+      rows: [row('a', 10), row('vo', 20, { downloadable: false }), row('mine', 5, { downloadable: false, uploaded_by_id: 'u-tax' })],
+    });
+    await expect(service.requestExport('col-1', tax)).resolves.toMatchObject({ files: 2, viewOnlySkipped: 1 });
+    expect(outbox.enqueue).toHaveBeenCalledWith(
+      EVENT.LibraryCollectionExportRequested,
+      expect.objectContaining({ itemIds: ['a', 'mine'], viewOnlyItemIds: ['vo'], editorItemIds: ['mine'] }),
+    );
+    const allViewOnly = setup({ rows: [row('vo', 20, { downloadable: false })] });
+    await expect(allViewOnly.service.requestExport('col-1', tax)).rejects.toThrow('view-only');
+  });
+
+  it('logs removal from a collection in the same transaction', async () => {
+    const { service, em, events } = setup();
+    await service.removeItem('col-1', 'item-9', tax);
+    expect((em as unknown as { transactional: jest.Mock }).transactional).toHaveBeenCalled();
+    expect(events.insertNow).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'RemovedFromCollection', itemId: 'item-9', collectionId: 'col-1' }),
+    );
   });
 
   it('refuses oversized exports', async () => {
-    const big = setup({ rows: [{ item_id: 'a', size_bytes: 2 * 1024 * 1024 * 1024 }] });
+    const big = setup({ rows: [row('a', 2 * 1024 * 1024 * 1024)] });
     await expect(big.service.requestExport('col-1', tax)).rejects.toThrow('over 1 GB');
-    const many = setup({ rows: Array.from({ length: 201 }, (_, i) => ({ item_id: `i${i}`, size_bytes: 1 })) });
+    const many = setup({ rows: Array.from({ length: 201 }, (_, i) => row(`i${i}`, 1)) });
     await expect(many.service.requestExport('col-1', tax)).rejects.toThrow('200 files');
   });
 

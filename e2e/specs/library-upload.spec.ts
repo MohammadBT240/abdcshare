@@ -40,7 +40,10 @@ test.describe('Library upload and in-browser viewing (UI)', () => {
     const title = unique('E2E PDF upload');
     await uploadViaDialog(page, 'sample.pdf', title, 'Research Papers');
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
-    await expect(page.locator('iframe[title^="Preview of"]')).toBeVisible();
+    // PDF.js (not the browser's own viewer): the first page is drawn on a canvas.
+    await expect(page.getByTestId('pdf-page-indicator')).toHaveText(/Page 1 of \d+/);
+    await expect(page.locator('[data-pdf-page="1"][data-ever-rendered="true"]')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('iframe')).toHaveCount(0);
     await expect(page.getByText('#ifrs')).toBeVisible();
     await page.screenshot({ path: 'test-results/library-item-pdf.png', fullPage: true });
     await context.close();
@@ -51,7 +54,7 @@ test.describe('Library upload and in-browser viewing (UI)', () => {
     const title = unique('E2E DOCX upload');
     await uploadViaDialog(page, 'sample.docx', title, 'Training Materials');
     // Pending → Ready via LibreOffice in the worker; the viewer polls on its own.
-    await expect(page.locator('iframe[title^="Preview of"]')).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('[data-pdf-page="1"][data-ever-rendered="true"]')).toBeVisible({ timeout: 60_000 });
     await context.close();
   });
 

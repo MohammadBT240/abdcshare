@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { useEditableCollections } from '@/features/library/hooks/use-library-collections';
 import { Button } from '@/components/ui/button';
 import { BffClientError } from '@/lib/bff/client';
+import { DeclarationCheckbox } from '@/features/library/components/declaration-checkbox';
 import { useUploadLibraryItem } from '@/features/library/hooks/use-library';
 import {
   EMPTY_LIBRARY_FORM,
@@ -119,6 +120,7 @@ export function UploadLibraryItemDialog({
         draftId,
         onDraftCreated: rememberDraft,
         onProgress: setPercent,
+        declared: true,
       });
       toast.success('Added to the library', {
         description: item.title,
@@ -197,10 +199,7 @@ export function UploadLibraryItemDialog({
           </div>
         ) : null}
 
-        <label className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
-          <input type="checkbox" className="mt-0.5" checked={declared} disabled={busy} onChange={(e) => setDeclared(e.target.checked)} />
-          <span>This file contains no client-identifiable information, or I have restricted it to the right departments.</span>
-        </label>
+        <DeclarationCheckbox checked={declared} onChange={setDeclared} disabled={busy} />
 
         {busy && percent != null ? (
           <div className="space-y-1" aria-live="polite">

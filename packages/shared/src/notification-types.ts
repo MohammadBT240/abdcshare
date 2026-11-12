@@ -31,6 +31,8 @@ export const NOTIFICATION_TYPES = [
   'partner-report.reviewed',
   'partner-report.reminder',
   'library.export_ready',
+  'library.reported',
+  'library.report_resolved',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -228,6 +230,18 @@ export const NOTIFICATION_TYPE_CATALOG: NotificationTypeMeta[] = [
     type: 'library.export_ready',
     label: 'Library download ready',
     description: 'When a collection ZIP you asked for is ready to download',
+    category: 'library',
+  },
+  {
+    type: 'library.reported',
+    label: 'Library item reported',
+    description: 'Curators: when someone reports a library item',
+    category: 'library',
+  },
+  {
+    type: 'library.report_resolved',
+    label: 'Your library report was resolved',
+    description: 'When a curator acts on an item you reported',
     category: 'library',
   },
 ];

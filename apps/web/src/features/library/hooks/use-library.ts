@@ -1,14 +1,26 @@
 'use client';
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { bffApi } from '@/lib/bff/client';
 import { uploadFilesWithUppy } from '@/lib/uploads/uppy-client';
 import { withLibraryMime } from '@/features/library/lib/library-files';
 import type {
   LibraryCategory,
+  LibraryEventPage,
   LibraryItem,
   LibraryItemFields,
   LibraryPreview,
+  LibraryReportEntry,
+  LibraryReportGroup,
+  LibraryReportOutcome,
+  LibraryReportReason,
+  LibraryReportStatus,
   LibraryTag,
   Paginated,
 } from '@/features/library/types';
@@ -68,6 +80,82 @@ export function fetchLibraryPreview(id: string, opts?: { retry?: boolean }) {
   return bffApi<LibraryPreview>(`/api/library/items/${id}/preview${opts?.retry ? '?retry=true' : ''}`);
 }
 
+/** Activity timeline (uploader + curators), newest first. */
+export function useLibraryItemEvents(id: string | undefined, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...KEY, 'item', id, 'events'],
+    queryFn: ({ pageParam }) =>
+      bffApi<LibraryEventPage>(
+        `/api/library/items/${id}/events?limit=30${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''}`,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+    enabled: Boolean(id) && enabled,
+  });
+}
+
+export function useLibraryItemEventSummary(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: [...KEY, 'item', id, 'events', 'summary'],
+    queryFn: () => bffApi<{ counts: Record<string, number> }>(`/api/library/items/${id}/events/summary`),
+    enabled: Boolean(id) && enabled,
+  });
+}
+
+/** Curator queue badge: items with open reports (0 for non-curators). */
+export function useLibraryReportCount(enabled = true) {
+  return useQuery({
+    queryKey: [...KEY, 'reports', 'count'],
+    queryFn: () => bffApi<{ open: number }>('/api/library/reports/count'),
+    enabled,
+    staleTime: 30_000,
+    refetchInterval: 120_000,
+  });
+}
+
+export function useLibraryReports(status: LibraryReportStatus, page: number) {
+  return useQuery({
+    queryKey: [...KEY, 'reports', status, page],
+    queryFn: () =>
+      bffApi<Paginated<LibraryReportGroup>>(`/api/library/reports?status=${status}&page=${page}&pageSize=20`),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useReportLibraryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason, note }: { id: string; reason: LibraryReportReason; note?: string | null }) =>
+      bffApi<LibraryReportEntry>(`/api/library/items/${id}/reports`, {
+        method: 'POST',
+        body: JSON.stringify({ reason, note: note || null }),
+      }),
+    onSuccess: (_r, vars) => qc.invalidateQueries({ queryKey: [...KEY, 'item', vars.id] }),
+  });
+}
+
+export function useResolveLibraryReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      reportId,
+      outcome,
+      departmentIds,
+      note,
+    }: {
+      reportId: string;
+      outcome: LibraryReportOutcome;
+      departmentIds?: number[];
+      note?: string | null;
+    }) =>
+      bffApi<{ resolved: number; outcome: LibraryReportOutcome }>(`/api/library/reports/${reportId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ outcome, departmentIds, note: note || null }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...KEY] }),
+  });
+}
+
 export async function downloadLibraryItem(id: string): Promise<void> {
   const { url } = await bffApi<{ url: string }>(`/api/library/items/${id}/download`);
   window.open(url, '_blank', 'noopener,noreferrer');
@@ -96,21 +184,29 @@ export interface UploadLibraryFileArgs {
   draftId?: string | null;
   onDraftCreated?: (id: string) => void;
   onProgress?: (percent: number) => void;
+  /** The uploader ticked the upload declaration (D18) — the API refuses uploads without it. */
+  declared: true;
 }
 
 /** Draft (or reuse a draft) → Uppy upload → confirm. Used by single and bulk upload. */
-export async function uploadLibraryFile({ fields, file, draftId, onDraftCreated, onProgress }: UploadLibraryFileArgs) {
+export async function uploadLibraryFile({ fields, file, draftId, onDraftCreated, onProgress, declared }: UploadLibraryFileArgs) {
   let id = draftId ?? null;
   if (id) {
     // Retry of a failed upload: refresh metadata, but never re-send the collection link.
     const { collectionId: _c, section: _s, ...rest } = fields;
     await bffApi<LibraryItem>(`/api/library/items/${id}`, { method: 'PATCH', body: JSON.stringify(rest) });
   } else {
-    const draft = await bffApi<LibraryItem>('/api/library/items', { method: 'POST', body: JSON.stringify(fields) });
+    const draft = await bffApi<LibraryItem>('/api/library/items', {
+      method: 'POST',
+      body: JSON.stringify({ ...fields, declaration: declared }),
+    });
     id = draft.id;
     onDraftCreated?.(id);
   }
-  await uploadFilesWithUppy({ kind: 'library-item', parentId: id, onProgress }, [withLibraryMime(file)]);
+  await uploadFilesWithUppy(
+    { kind: 'library-item', parentId: id, onProgress, confirmExtra: { declaration: declared } },
+    [withLibraryMime(file)],
+  );
   return bffApi<LibraryItem>(`/api/library/items/${id}`);
 }
 
@@ -154,12 +250,17 @@ export function useReplaceLibraryFile() {
       id,
       file,
       onProgress,
+      declared,
     }: {
       id: string;
       file: File;
       onProgress?: (percent: number) => void;
+      declared: true;
     }) => {
-      await uploadFilesWithUppy({ kind: 'library-item', parentId: id, onProgress }, [withLibraryMime(file)]);
+      await uploadFilesWithUppy(
+        { kind: 'library-item', parentId: id, onProgress, confirmExtra: { declaration: declared } },
+        [withLibraryMime(file)],
+      );
       return bffApi<LibraryItem>(`/api/library/items/${id}`);
     },
     onSuccess: (item) => invalidate(item.id),

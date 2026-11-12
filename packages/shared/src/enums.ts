@@ -219,3 +219,52 @@ export enum LibraryCollectionStatus {
   Active = 'Active',
   Archived = 'Archived',
 }
+
+/** Library activity log actions (S2, D15). Every event counts — no de-duplication. */
+export enum LibraryEventAction {
+  Viewed = 'Viewed',
+  Downloaded = 'Downloaded',
+  Uploaded = 'Uploaded',
+  FileReplaced = 'FileReplaced',
+  Edited = 'Edited',
+  VisibilityChanged = 'VisibilityChanged',
+  Archived = 'Archived',
+  Restored = 'Restored',
+  Deleted = 'Deleted',
+  Reported = 'Reported',
+  ReportResolved = 'ReportResolved',
+  OwnershipTransferred = 'OwnershipTransferred',
+  AddedToCollection = 'AddedToCollection',
+  RemovedFromCollection = 'RemovedFromCollection',
+  ZipExported = 'ZipExported',
+}
+
+/** How a library item may be shared (S2, D21). */
+export enum LibraryLicence {
+  FreeToShare = 'FreeToShare',
+  InternalUseOnly = 'InternalUseOnly',
+  Licensed = 'Licensed',
+}
+
+/** Why someone reported a library item (S2, D19). */
+export enum LibraryReportReason {
+  ClientConfidential = 'ClientConfidential',
+  Copyright = 'Copyright',
+  OutdatedOrWrong = 'OutdatedOrWrong',
+  Inappropriate = 'Inappropriate',
+  Other = 'Other',
+}
+
+export enum LibraryReportStatus {
+  Open = 'Open',
+  Dismissed = 'Dismissed',
+  Actioned = 'Actioned',
+}
+
+/** What a curator did about a report (S2, D20). */
+export enum LibraryReportOutcome {
+  Dismiss = 'Dismiss',
+  Restrict = 'Restrict',
+  Archive = 'Archive',
+  Delete = 'Delete',
+}

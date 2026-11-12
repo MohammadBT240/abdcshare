@@ -62,6 +62,7 @@ export async function createItem(
         visibility: opts.visibility ?? 'Firm',
         departmentIds: opts.departmentIds ?? [],
         tags: opts.tags ?? [],
+        declaration: true,
         ...(opts.extra ?? {}),
       },
     }),
@@ -76,7 +77,7 @@ export async function createItem(
   await ok(await api.put(presign.uploadUrl, { data: body, headers: presign.headers }), 'upload PUT');
   await ok(
     await api.post(bff(`library/items/${draft.id}/files`), {
-      data: { storageKey: presign.storageKey, fileName, mimeType: MIME[ext], sizeBytes: body.length, ...(opts.extra ?? {}) },
+      data: { storageKey: presign.storageKey, fileName, mimeType: MIME[ext], sizeBytes: body.length, declaration: true },
     }),
     'confirm',
   );

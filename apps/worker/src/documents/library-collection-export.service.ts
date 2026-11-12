@@ -20,6 +20,7 @@ interface Row {
   published_year: number | null;
   section: string | null;
   position: number;
+  downloadable: boolean;
 }
 
 /**
@@ -75,30 +76,38 @@ export class LibraryCollectionExportService {
     const collectionId = String(payload.collectionId ?? '');
     const actorUserId = String(payload.actorUserId ?? '');
     const itemIds = Array.isArray(payload.itemIds) ? payload.itemIds.map(String) : [];
+    // View-only items (S2, D22) are listed in index.csv but never zipped — unless the requester may edit them.
+    const viewOnlyIds = Array.isArray(payload.viewOnlyItemIds) ? payload.viewOnlyItemIds.map(String) : [];
+    const editorIds = new Set(Array.isArray(payload.editorItemIds) ? payload.editorItemIds.map(String) : []);
     if (!collectionId || !actorUserId || itemIds.length === 0) throw new Error('Invalid collection export payload');
 
     const conn = em.getConnection();
     const [collection] = await conn.execute<{ title: string }[]>(`select title from library_collections where id = ?`, [collectionId]);
     if (!collection) throw new Error('Collection not found');
     const rows = await conn.execute<Row[]>(
-      `select i.id as item_id, i.title, i.file_name, i.storage_key, i.authors, i.published_year, ci.section, ci.position
+      `select i.id as item_id, i.title, i.file_name, i.storage_key, i.authors, i.published_year, ci.section, ci.position,
+              i.downloadable
          from library_collection_items ci join library_items i on i.id = ci.item_id
-        where ci.collection_id = ? and i.id in (${itemIds.map(() => '?').join(', ')}) and i.storage_key is not null
+        where ci.collection_id = ? and i.id in (${[...itemIds, ...viewOnlyIds].map(() => '?').join(', ')})
+          and i.storage_key is not null
         order by ci.position asc`,
-      [collectionId, ...itemIds],
+      [collectionId, ...itemIds, ...viewOnlyIds],
     );
-    if (rows.length === 0) throw new Error('No files to export');
+    // Re-check at build time: an item made view-only after the request is skipped too.
+    const zipped = rows.filter((r) => itemIds.includes(r.item_id) && (r.downloadable || editorIds.has(r.item_id)));
+    const skipped = rows.filter((r) => !zipped.includes(r));
+    if (zipped.length === 0) throw new Error('No files to export');
 
     const dir = await mkdtemp(path.join(tmpdir(), 'libzip-'));
     const zipPath = path.join(dir, 'export.zip');
     try {
       const archive = archiver('zip', { zlib: { level: 6 } });
       const done = pipeline(archive, createWriteStream(zipPath));
-      const width = String(rows.length).length;
+      const width = String(zipped.length).length;
       const index: (string | number | null)[][] = [['#', 'Section', 'Title', 'Authors', 'Year', 'File in archive']];
       const used = new Set<string>();
       // One source stream at a time: wait for archiver to finish each entry before opening the next.
-      for (const [i, r] of rows.entries()) {
+      for (const [i, r] of zipped.entries()) {
         const ext = path.extname(r.file_name);
         const folder = r.section ? `${LibraryCollectionExportService.safe(r.section, 'section')}/` : '';
         let name = `${folder}${String(i + 1).padStart(width, '0')} - ${LibraryCollectionExportService.safe(r.title)}${ext}`;
@@ -108,6 +117,9 @@ export class LibraryCollectionExportService {
         const entryDone = new Promise<void>((resolve) => archive.once('entry', () => resolve()));
         archive.append(await this.open(r.storage_key), { name });
         await entryDone;
+      }
+      for (const r of skipped) {
+        index.push(['', r.section, r.title, r.authors, r.published_year, 'View-only: open it in the library']);
       }
       archive.append(LibraryCollectionExportService.csv(index), { name: 'index.csv' });
       await archive.finalize();
@@ -148,7 +160,8 @@ export class LibraryCollectionExportService {
           actorUserId,
           'library.export_ready',
           'Collection download ready',
-          `${rows.length} file(s) from “${collection.title}” are ready to download`,
+          `${zipped.length} file(s) from “${collection.title}” are ready to download` +
+            (skipped.length ? ` (${skipped.length} view-only item(s) listed in index.csv)` : ''),
           'library_collection',
           collectionId,
           link,

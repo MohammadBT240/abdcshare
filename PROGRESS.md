@@ -844,6 +844,31 @@ Plan: project doc `abdcshare/sprint-s1-plan.md`. Status: `abdcshare/sprint-s1-st
 - **Verify:** api jest 280/280; turbo typecheck+lint 14/14; e2e 16/16 (new: collections create/bulk/
   reorder/add/ZIP, restricted collection counts, bulk retry); `migration:create` → no changes.
 
+## S2 — Library hardening, part 1 (Nov 2026) ⚠️ **has a migration** (`Migration20261112170452`) + new web dependency (`pdfjs-dist@6.4.299` — run `pnpm install`)
+Plan: project doc `abdcshare/sprint-s2-plan.md`. Status: `abdcshare/sprint-s2-status.md`.
+- **Activity log:** `library_events` (bigserial, append-only via trigger; FK set-null + title snapshot on
+  delete). Every view, download, upload, replacement, edit (changed field names), visibility change,
+  archive/restore/delete, report/resolution, collection add/remove and ZIP export is recorded with IP and
+  user agent. Mutations are staged in the same flush; reads are inserted after presigning.
+  `GET /library/items/:id/events` (keyset cursor) + `/events/summary` for uploader/curators.
+- **Declaration enforced server-side:** create needs `declaration: true`; replacing a published file needs
+  it again (confirm / multipart complete). Stored as `declared_at` / `declared_by_id`.
+- **Report + review queue:** `POST /library/items/:id/reports`; curators get `library.reported`
+  (in-app + email); `/library/review` (Open / Actioned / Dismissed, grouped by item) with Dismiss / Restrict /
+  Archive / Delete; reporters get `library.report_resolved`. Sidebar badge for curators.
+- **Licence + view-only:** `licence` (InternalUseOnly default / Licensed / FreeToShare) + note, banner and
+  card badges; `downloadable=false` → download 403 except editors, no Download buttons, ZIPs skip the item
+  (listed in `index.csv`).
+- **PDF.js viewer** replaces the iframe (self-hosted worker): continuous scroll, zoom, page count, lazy
+  rendering with canvas release; password-protected PDFs get a clear message.
+- **Tests:** new `pnpm --filter @abdcshare/api test:int` (Postgres, `*.int-spec.ts`): rollback, append-only
+  trigger, cursor paging, EXPLAIN uses the timeline index, curator recipients. e2e: report → Restrict →
+  notifications/access, Delete outcome, view-only 403 + ZIP skip, activity tab, 30-page PDF at phone width.
+- **Deviations:** mobile PDF test runs on Chromium with the iPhone 13 profile (no WebKit in the test
+  environment); integration tests are not in CI yet (needs a Postgres service — S4).
+- **Verify:** api jest 306/306; int 6/6; turbo typecheck+lint 14/14; e2e 23/23; `next build` ok;
+  `migration:create` → no changes.
+
 ## Pending / next
 1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
    replace sidebar `#` stub.

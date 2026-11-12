@@ -37,3 +37,6 @@ apps/web/public/users/
 # Local storage driver data (dev)
 apps/api/storage/
 apps/worker/storage/
+
+# pdf.js worker copied from node_modules by apps/web/scripts/copy-pdf-worker.mjs
+apps/web/public/pdfjs/

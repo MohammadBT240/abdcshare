@@ -138,8 +138,11 @@ The seed is idempotent (reference data + Platform Admin with `mustChangePassword
    values (Postgres password, JWT secrets ≥32 chars, R2 keys, Resend key, seed admin),
    `ansible-vault encrypt` each, commit.
 3. **R2**: create `abdcshare-uploads` + `abdcshare-uploads-staging` buckets; CORS must
-   allow PUT/GET/HEAD from the web origins with `ExposeHeaders: ETag`.
-   Required for Uppy direct uploads (submissions, documents, company profiles, planning docs).
+   allow PUT/GET/HEAD from the web origins with `AllowedHeaders: *` and
+   `ExposeHeaders: ETag, Content-Length, Content-Range, Accept-Ranges`.
+   Required for Uppy direct uploads (submissions, documents, company profiles, planning docs)
+   and, since S2, for the library's PDF.js viewer, which fetches PDFs from presigned GET URLs
+   with `Range` requests (without these headers previews fail with a CORS error).
 4. **GitHub**: set the secrets (§3), create the `production` environment with a
    required reviewer.
 5. Push the `staging` branch → watch the pipeline → run the seed profile (§6) →
@@ -170,6 +173,15 @@ migrations additive/backward-compatible so old code can run against new schema.
 - Local storage (dev only) URLs are HMAC-signed and expire; keys can't escape `LOCAL_STORAGE_DIR`.
 - Company Profiles Office previews are converted in-house by the worker (LibreOffice); no URLs are
   sent to Office Online.
+
+## 8b. Library hardening (S2, Nov 2026)
+
+- Migration `Migration20261112170452`: `library_events` (append-only — a trigger rejects deletes
+  and rewrites), `library_reports`, and licence / view-only / declaration columns on `library_items`.
+- `apps/web` build copies the pdf.js worker + data files to `public/pdfjs/<version>/`
+  (`scripts/copy-pdf-worker.mjs`, run by `dev` and `build`); nothing to configure.
+- R2 CORS must expose range headers (§7 step 3) for the PDF viewer.
+- Curators (Super Admin / Platform Admin) get in-app + email notifications for reported items.
 
 ## 9. Known gaps / follow-ups
 

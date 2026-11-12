@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto';
 import {
   EVENT,
   LibraryCollectionStatus,
+  LibraryEventAction,
   LibraryVisibility,
   type Paginated,
 } from '@abdcshare/shared';
@@ -33,6 +34,7 @@ import {
 } from './library-access';
 import { slugify } from './library.constants';
 import { LibraryService } from './library.service';
+import { LibraryEventsService } from './library-events.service';
 import type {
   AddCollectionItemsDto,
   CreateLibraryCollectionDto,
@@ -72,6 +74,7 @@ export class LibraryCollectionsService {
     private readonly library: LibraryService,
     private readonly outbox: OutboxService,
     @Inject(STORAGE) private readonly storage: StoragePort,
+    private readonly events: LibraryEventsService,
   ) {}
 
   // ------------------------------------------------------------------ helpers
@@ -386,8 +389,17 @@ export class LibraryCollectionsService {
 
   async removeItem(id: string, itemId: string, viewer: LibraryViewer): Promise<void> {
     const c = await this.findEditable(id, viewer);
-    const removed = await this.em.nativeDelete(LibraryCollectionItemEntity, { collection: c.id, item: itemId });
-    if (!removed) throw new NotFoundException('That item is not in this collection');
+    await this.em.transactional(async (em) => {
+      const removed = await em.nativeDelete(LibraryCollectionItemEntity, { collection: c.id, item: itemId });
+      if (!removed) throw new NotFoundException('That item is not in this collection');
+      await this.events.insertNow({
+        action: LibraryEventAction.RemovedFromCollection,
+        viewer,
+        itemId,
+        collectionId: c.id,
+        metadata: { collectionTitle: c.title },
+      });
+    });
   }
 
   /**
@@ -415,17 +427,32 @@ export class LibraryCollectionsService {
 
   // ------------------------------------------------------------------ ZIP export (D13)
 
-  async requestExport(id: string, viewer: LibraryViewer): Promise<{ accepted: true; files: number }> {
+  async requestExport(
+    id: string,
+    viewer: LibraryViewer,
+  ): Promise<{ accepted: true; files: number; viewOnlySkipped: number }> {
     const c = await this.findVisible(id, viewer);
     const vis = visibleItemSql('i', viewer);
-    const rows = await this.em.getConnection().execute<{ item_id: string; size_bytes: number | null }[]>(
-      `select ci.item_id, i.size_bytes
+    const all = await this.em.execute<
+      { item_id: string; size_bytes: number | null; downloadable: boolean; uploaded_by_id: string }[]
+    >(
+      `select ci.item_id, i.size_bytes, i.downloadable, i.uploaded_by_id
          from library_collection_items ci join library_items i on i.id = ci.item_id
         where ci.collection_id = ? and i.storage_key is not null and ${vis.sql}
         order by ci.position asc`,
       [c.id, ...vis.params],
     );
-    if (rows.length === 0) throw new BadRequestException('There are no files you can download in this collection');
+    // View-only items (D22) are listed in index.csv but not zipped, unless the requester can edit them.
+    const editor = (r: { uploaded_by_id: string }) => viewer.isCurator || r.uploaded_by_id === viewer.userId;
+    const rows = all.filter((r) => r.downloadable || editor(r));
+    const viewOnly = all.filter((r) => !rows.includes(r));
+    if (rows.length === 0) {
+      throw new BadRequestException(
+        viewOnly.length
+          ? 'Everything in this collection is view-only — open the items in the library instead'
+          : 'There are no files you can download in this collection',
+      );
+    }
     if (rows.length > COLLECTION_EXPORT_MAX_FILES) {
       throw new BadRequestException(`Collections over ${COLLECTION_EXPORT_MAX_FILES} files can't be zipped in one go`);
     }
@@ -435,9 +462,17 @@ export class LibraryCollectionsService {
       collectionId: c.id,
       actorUserId: viewer.userId,
       itemIds: rows.map((r) => r.item_id),
+      viewOnlyItemIds: viewOnly.map((r) => r.item_id),
+      editorItemIds: rows.filter((r) => !r.downloadable).map((r) => r.item_id),
+    });
+    this.events.stage({
+      action: LibraryEventAction.ZipExported,
+      viewer,
+      collectionId: c.id,
+      metadata: { files: rows.length, viewOnlySkipped: viewOnly.length, collectionTitle: c.title },
     });
     await this.em.flush();
-    return { accepted: true, files: rows.length };
+    return { accepted: true, files: rows.length, viewOnlySkipped: viewOnly.length };
   }
 
   async exportDownloadUrl(id: string, key: string, name: string | undefined, viewer: LibraryViewer): Promise<{ url: string }> {

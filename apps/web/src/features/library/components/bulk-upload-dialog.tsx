@@ -11,7 +11,8 @@ import { BffClientError } from '@/lib/bff/client';
 import { uploadLibraryFile, useInvalidateLibrary, useLibraryCategories } from '@/features/library/hooks/use-library';
 import { useEditableCollections } from '@/features/library/hooks/use-library-collections';
 import { TagInput } from '@/features/library/components/tag-input';
-import { VisibilityPicker } from '@/features/library/components/library-item-fields';
+import { SharingFields, VisibilityPicker } from '@/features/library/components/library-item-fields';
+import { DeclarationCheckbox } from '@/features/library/components/declaration-checkbox';
 import {
   LIBRARY_ACCEPT,
   LIBRARY_FILE_HINT,
@@ -21,7 +22,7 @@ import {
   titleFromFileName,
   withLibraryMime,
 } from '@/features/library/lib/library-files';
-import type { LibraryCollection, LibraryVisibility } from '@/features/library/types';
+import type { LibraryCollection, LibraryLicence, LibraryVisibility } from '@/features/library/types';
 
 type RowStatus = 'queued' | 'uploading' | 'done' | 'failed';
 
@@ -66,6 +67,11 @@ export function BulkUploadDialog({
   const [collectionId, setCollectionId] = useState('');
   const [section, setSection] = useState('');
   const [declared, setDeclared] = useState(false);
+  const [sharing, setSharing] = useState<{ licence: LibraryLicence; licenceNote: string; viewOnly: boolean }>({
+    licence: 'InternalUseOnly',
+    licenceNote: '',
+    viewOnly: false,
+  });
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rowsRef = useRef<Row[]>([]);
@@ -85,6 +91,7 @@ export function BulkUploadDialog({
     setCollectionId(collection?.id ?? '');
     setSection('');
     setDeclared(false);
+    setSharing({ licence: 'InternalUseOnly', licenceNote: '', viewOnly: false });
     setError(null);
   }, [open, collection]);
 
@@ -115,12 +122,16 @@ export function BulkUploadDialog({
           publishedYear: year ? Number(year) : null,
           visibility: visibility.visibility,
           departmentIds: visibility.visibility === 'Departments' ? visibility.departmentIds.map(Number) : [],
+          licence: sharing.licence,
+          licenceNote: sharing.licenceNote.trim() || null,
+          downloadable: !sharing.viewOnly,
           ...(collectionId ? { collectionId, section: section.trim() || null } : {}),
         },
         file: row.file,
         draftId: row.draftId,
         onDraftCreated: (id) => patch(row.key, { draftId: id }),
         onProgress: (p) => patch(row.key, { percent: p }),
+        declared: true,
       });
       patch(row.key, { status: 'done', percent: 100 });
     } catch (err) {
@@ -311,18 +322,15 @@ export function BulkUploadDialog({
           onChange={setVisibility}
           disabled={running}
         />
-        <label className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={declared}
-            disabled={running}
-            onChange={(e) => setDeclared(e.target.checked)}
-          />
-          <span>
-            These files contain no client-identifiable information, or I have restricted them to the right departments.
-          </span>
-        </label>
+        <SharingFields
+          idPrefix="bulk"
+          licence={sharing.licence}
+          licenceNote={sharing.licenceNote}
+          viewOnly={sharing.viewOnly}
+          onChange={(next) => setSharing((s) => ({ ...s, ...next }))}
+          disabled={running}
+        />
+        <DeclarationCheckbox checked={declared} onChange={setDeclared} disabled={running} />
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}

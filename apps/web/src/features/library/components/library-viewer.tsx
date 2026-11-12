@@ -7,6 +7,8 @@ import { LoadingButton } from '@/components/forms';
 import { Button } from '@/components/ui/button';
 import { fetchLibraryPreview } from '@/features/library/hooks/use-library';
 import type { LibraryItem, LibraryPreview } from '@/features/library/types';
+import { LibraryPdfViewer } from '@/features/library/components/library-pdf-viewer';
+import { VIEW_ONLY_LIMIT } from '@/features/library/lib/licence';
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
@@ -17,8 +19,9 @@ function Centered({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Inline document viewer for `/library/[id]`. PDFs (native or converted from Office) render in the
- * browser's PDF viewer; images and text render directly. Office conversions are polled until ready.
+ * Inline document viewer for `/library/[id]`. PDFs (native or converted from Office) render with
+ * PDF.js (S2); images and text render directly. Office conversions are polled until ready.
+ * View-only items (D22) never offer a download button here.
  */
 export function LibraryViewer({
   item,
@@ -31,8 +34,8 @@ export function LibraryViewer({
 }) {
   const [retrying, setRetrying] = useState(false);
   const preview = useQuery({
-    // Keyed on the file so a replaced file reloads the preview.
-    queryKey: ['library', 'preview', item.id, item.fileName, item.updatedAt],
+    // Keyed on the file (not updatedAt) so a metadata edit doesn't re-open the file and count a view.
+    queryKey: ['library', 'preview', item.id, item.fileName, item.sizeBytes, item.declaredAt],
     queryFn: () => fetchLibraryPreview(item.id),
     // Each successful fetch counts a view and mints a fresh short-lived URL — don't refetch casually.
     staleTime: 10 * 60_000,
@@ -69,10 +72,12 @@ export function LibraryViewer({
     }
   }
 
-  const downloadButton = (
+  const downloadButton = item.canDownload ? (
     <LoadingButton type="button" variant="outline" loading={downloading} onClick={onDownload}>
       <IconDownload className="mr-1.5 h-4 w-4" aria-hidden /> Download
     </LoadingButton>
+  ) : (
+    <p className="max-w-sm text-xs text-muted-foreground">This item is view-only. {VIEW_ONLY_LIMIT}</p>
   );
 
   if (preview.isPending) {
@@ -117,7 +122,9 @@ export function LibraryViewer({
       <Centered>
         <IconAlertTriangle className="h-8 w-8 text-amber-600" aria-hidden />
         <p className="text-sm font-medium text-foreground">This file couldn't be converted for preview</p>
-        <p className="max-w-sm text-sm text-muted-foreground">Download it to open it in its own application.</p>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          {item.canDownload ? 'Download it to open it in its own application.' : 'Ask the uploader for a PDF version.'}
+        </p>
         <div className="flex gap-2">
           {item.canEdit ? (
             <LoadingButton type="button" variant="outline" loading={retrying} onClick={() => void retry()}>
@@ -143,7 +150,13 @@ export function LibraryViewer({
     return (
       <div className="flex h-full min-h-[50vh] items-center justify-center bg-muted/30 p-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={data.url} alt={item.title} className="max-h-[78vh] max-w-full object-contain" />
+        <img
+          src={data.url}
+          alt={item.title}
+          draggable={item.downloadable}
+          onContextMenu={item.downloadable ? undefined : (e) => e.preventDefault()}
+          className="max-h-[78vh] max-w-full object-contain"
+        />
       </div>
     );
   }
@@ -164,16 +177,11 @@ export function LibraryViewer({
     <div className="flex h-full flex-col">
       {item.fileType === 'excel' ? (
         <p className="border-b border-border bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          Spreadsheets are shown as a PDF snapshot — wide sheets may be split across pages. Download for the full
-          workbook.
+          Spreadsheets are shown as a PDF snapshot — wide sheets may be split across pages.
+          {item.canDownload ? ' Download for the full workbook.' : ''}
         </p>
       ) : null}
-      <iframe
-        key={data.url}
-        src={data.url}
-        title={`Preview of ${item.title}`}
-        className="h-[78vh] min-h-[32rem] w-full flex-1 bg-white"
-      />
+      <LibraryPdfViewer key={data.url} url={data.url} title={item.title} />
     </div>
   );
 }

@@ -7,9 +7,12 @@ import { toast } from 'sonner';
 import {
   IconArchive,
   IconArrowLeft,
+  IconCertificate,
   IconDots,
   IconDownload,
   IconEye,
+  IconEyeOff,
+  IconFlag,
   IconLock,
   IconFolders,
   IconPencil,
@@ -33,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BffClientError } from '@/lib/bff/client';
 import {
   downloadLibraryItem,
@@ -44,6 +48,9 @@ import { LibraryViewer } from '@/features/library/components/library-viewer';
 import { EditLibraryItemDialog } from '@/features/library/components/edit-library-item-dialog';
 import { ReplaceLibraryFileDialog } from '@/features/library/components/replace-library-file-dialog';
 import { AddToCollectionDialog } from '@/features/library/components/add-to-collection-dialog';
+import { ReportLibraryItemDialog } from '@/features/library/components/report-library-item-dialog';
+import { LibraryActivity } from '@/features/library/components/library-activity';
+import { VIEW_ONLY_LIMIT, licenceLabel } from '@/features/library/lib/licence';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { fileTypeLabel, formatBytes, formatDate } from '@/features/library/lib/library-files';
 
@@ -71,6 +78,8 @@ export function LibraryItemPage({ id }: { id: string }) {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [collectOpen, setCollectOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [tab, setTab] = useState<'preview' | 'activity'>('preview');
   const { can } = useAuthContext();
   const canCollect = can('library:contribute');
 
@@ -127,17 +136,23 @@ export function LibraryItemPage({ id }: { id: string }) {
         ]}
         actions={
           <div className="flex shrink-0 items-center gap-2">
-            <LoadingButton type="button" loading={downloading} onClick={() => void handleDownload()}>
-              <IconDownload className="mr-1.5 h-4 w-4" aria-hidden /> Download
-            </LoadingButton>
-            {data.canEdit || data.canDelete || (canCollect && !archived) ? (
+            {data.canDownload ? (
+              <LoadingButton type="button" loading={downloading} onClick={() => void handleDownload()}>
+                <IconDownload className="mr-1.5 h-4 w-4" aria-hidden /> Download
+              </LoadingButton>
+            ) : (
+              <Badge variant="secondary" className="h-8 gap-1 px-2.5" title={VIEW_ONLY_LIMIT}>
+                <IconEyeOff className="h-3.5 w-3.5" aria-hidden /> View-only
+              </Badge>
+            )}
+            {data.status !== 'Draft' ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button type="button" variant="outline" size="sm" className="h-10 w-10 p-0" aria-label="More actions">
                     <IconDots className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuContent align="end" className="w-56">
                   {canCollect && !archived ? (
                     <DropdownMenuItem onSelect={() => setCollectOpen(true)}>
                       <IconPlaylistAdd className="mr-2 h-4 w-4" aria-hidden /> Add to collection
@@ -173,6 +188,14 @@ export function LibraryItemPage({ id }: { id: string }) {
                       )}
                     </>
                   ) : null}
+                  {!archived ? (
+                    <>
+                      {canCollect || data.canEdit ? <DropdownMenuSeparator /> : null}
+                      <DropdownMenuItem onSelect={() => setReportOpen(true)}>
+                        <IconFlag className="mr-2 h-4 w-4" aria-hidden /> Report a problem
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
                   {data.canDelete ? (
                     <>
                       <DropdownMenuSeparator />
@@ -201,10 +224,66 @@ export function LibraryItemPage({ id }: { id: string }) {
         </div>
       ) : null}
 
+      {data.openReports > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+          <IconFlag className="h-4 w-4 text-destructive" aria-hidden />
+          <span className="flex-1 text-foreground">
+            {data.openReports === 1 ? 'Someone has reported this item.' : `${data.openReports} open reports on this item.`}
+          </span>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/library/review">Review</Link>
+          </Button>
+        </div>
+      ) : null}
+
+      {data.licence === 'Licensed' || !data.downloadable ? (
+        <div
+          className="mb-4 flex flex-wrap items-start gap-3 rounded-lg border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-100"
+          data-testid="licence-banner"
+        >
+          {data.licence === 'Licensed' ? (
+            <IconCertificate className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          ) : (
+            <IconEyeOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          )}
+          <div className="min-w-0 flex-1 space-y-0.5">
+            {data.licence === 'Licensed' ? (
+              <p className="font-medium">Licensed material — do not share outside the firm.</p>
+            ) : null}
+            {data.licenceNote ? <p>{data.licenceNote}</p> : null}
+            {!data.downloadable ? (
+              <p>
+                View-only: read it here{data.canDownload ? ' (you can download it as its uploader or a curator)' : ''}.{' '}
+                <span className="opacity-80">{VIEW_ONLY_LIMIT}</span>
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card className="min-w-0 overflow-hidden border-border shadow-aca">
-          <LibraryViewer item={data} onDownload={() => void handleDownload()} downloading={downloading} />
-        </Card>
+        {data.canEdit ? (
+          <Tabs value={tab} onValueChange={(v) => setTab(v as 'preview' | 'activity')} className="min-w-0">
+            <TabsList className="mb-3">
+              <TabsTrigger value="preview">Preview</TabsTrigger>
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+            </TabsList>
+            <TabsContent value="preview" className="mt-0">
+              <Card className="min-w-0 overflow-hidden border-border shadow-aca">
+                <LibraryViewer item={data} onDownload={() => void handleDownload()} downloading={downloading} />
+              </Card>
+            </TabsContent>
+            <TabsContent value="activity" className="mt-0">
+              <Card className="min-w-0 overflow-hidden border-border shadow-aca">
+                {tab === 'activity' ? <LibraryActivity itemId={data.id} /> : null}
+              </Card>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <Card className="min-w-0 overflow-hidden border-border shadow-aca">
+            <LibraryViewer item={data} onDownload={() => void handleDownload()} downloading={downloading} />
+          </Card>
+        )}
 
         <aside className="min-w-0 space-y-4">
           <Card className="border-border p-5 shadow-aca">
@@ -285,6 +364,10 @@ export function LibraryItemPage({ id }: { id: string }) {
                   </span>
                 )}
               </DetailRow>
+              <DetailRow label="Licence">
+                {licenceLabel(data.licence)}
+                {!data.downloadable ? <span className="block text-xs text-muted-foreground">View-only</span> : null}
+              </DetailRow>
               <DetailRow label="Uploaded by">
                 {data.uploadedBy.name}
                 <span className="block text-xs text-muted-foreground">{formatDate(data.publishedAt ?? data.createdAt)}</span>
@@ -327,6 +410,7 @@ export function LibraryItemPage({ id }: { id: string }) {
       <EditLibraryItemDialog item={data} open={editOpen} onOpenChange={setEditOpen} />
       <ReplaceLibraryFileDialog item={data} open={replaceOpen} onOpenChange={setReplaceOpen} />
       <AddToCollectionDialog item={data} open={collectOpen} onOpenChange={setCollectOpen} />
+      <ReportLibraryItemDialog item={data} open={reportOpen} onOpenChange={setReportOpen} />
       <ConfirmDialog
         open={archiveOpen}
         onOpenChange={setArchiveOpen}

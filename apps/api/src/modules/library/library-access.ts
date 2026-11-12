@@ -7,6 +7,9 @@ export interface LibraryViewer {
   departmentId: number | null;
   /** `library:curate` — sees everything, may edit/archive/delete any item. */
   isCurator: boolean;
+  /** Request context for the activity log (S2); absent in background jobs and tests. */
+  ip?: string | null;
+  userAgent?: string | null;
 }
 
 /** The minimum an item needs for an access decision. */

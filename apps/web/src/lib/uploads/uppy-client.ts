@@ -71,6 +71,8 @@ export interface CreateUploadUppyOptions {
   /** Aggregate bytes progress (for bandwidth / transferred-size UI). */
   onBytesProgress?: (progress: UploadBytesProgress) => void;
   onFileProgress?: (fileId: string, percent: number, fileName: string) => void;
+  /** Extra fields sent with the confirm / multipart-complete call (e.g. the library upload declaration). */
+  confirmExtra?: Record<string, unknown>;
 }
 
 function configureAwsS3(uppy: Uppy, options: CreateUploadUppyOptions): void {
@@ -204,6 +206,7 @@ function configureAwsS3(uppy: Uppy, options: CreateUploadUppyOptions): void {
             etag: p.ETag!,
           })),
           ...(replacesFileId ? { replacesFileId } : {}),
+          ...(options.confirmExtra ?? {}),
         }),
       });
       return {};
@@ -253,6 +256,7 @@ export async function confirmSimpleUpload(
   file: File,
   storageKey: string,
   replacesFileId?: string,
+  extra?: Record<string, unknown>,
 ): Promise<void> {
   const base = uploadBasePath(kind, parentId);
   await bffApi(base, {
@@ -263,6 +267,7 @@ export async function confirmSimpleUpload(
       mimeType: file.type || undefined,
       sizeBytes: file.size,
       ...(replacesFileId ? { replacesFileId } : {}),
+      ...(extra ?? {}),
     }),
   });
 }
@@ -290,6 +295,7 @@ async function confirmPendingSimpleUploads(
       asFile,
       storageKey,
       replacesFileId,
+      options.confirmExtra,
     );
     file.meta = { ...file.meta, confirmed: true };
   }

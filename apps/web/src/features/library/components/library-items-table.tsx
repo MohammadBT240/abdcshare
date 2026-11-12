@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { type ColumnDef } from '@tanstack/react-table';
-import { IconLock, IconWorld } from '@tabler/icons-react';
+import { IconCertificate, IconEyeOff, IconLock, IconWorld } from '@tabler/icons-react';
 import type { PageMeta } from '@abdcshare/api-client';
 import { DataTable } from '@/components/data/data-table';
 import { FileTypeIcon } from '@/components/data/file-type-icon';
@@ -79,20 +79,29 @@ export function LibraryItemsTable({
       {
         header: 'Access',
         id: 'visibility',
-        cell: ({ row }) =>
-          row.original.visibility === 'Firm' ? (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <IconWorld className="h-3.5 w-3.5" aria-hidden /> Firm-wide
-            </span>
-          ) : (
-            <span
-              className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300"
-              title={row.original.departments.map((d) => d.name).join(', ')}
-            >
-              <IconLock className="h-3.5 w-3.5" aria-hidden />
-              {row.original.departments.map((d) => d.name).join(', ')}
-            </span>
-          ),
+        cell: ({ row }) => (
+          <span className="inline-flex flex-wrap items-center gap-2">
+            {row.original.visibility === 'Firm' ? (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <IconWorld className="h-3.5 w-3.5" aria-hidden /> Firm-wide
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300"
+                title={row.original.departments.map((d) => d.name).join(', ')}
+              >
+                <IconLock className="h-3.5 w-3.5" aria-hidden />
+                {row.original.departments.map((d) => d.name).join(', ')}
+              </span>
+            )}
+            {row.original.licence === 'Licensed' ? (
+              <IconCertificate className="h-3.5 w-3.5 text-muted-foreground" aria-label="Licensed" />
+            ) : null}
+            {!row.original.downloadable ? (
+              <IconEyeOff className="h-3.5 w-3.5 text-muted-foreground" aria-label="View-only" />
+            ) : null}
+          </span>
+        ),
       },
       {
         header: 'Uploaded by',
