@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly abdcshare backup ({{ compose_project_name }})
+
+[Timer]
+# 02:15 UTC (03:15 WAT); staging is offset so the two dumps don't overlap.
+OnCalendar=*-*-* {{ backup_time | default('02:15') }}:00 UTC
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

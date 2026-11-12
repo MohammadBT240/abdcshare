@@ -29,6 +29,7 @@ const ALLOWED_PREFIXES = [
   'audit',
   'help',
   'library',
+  'admin',
 ] as const;
 
 function isAllowed(segments: string[]): boolean {

@@ -28,6 +28,9 @@ export const envSchema = z.object({
   STORAGE_SIGNING_SECRET: z.string().optional(),
   /** Browser origins allowed to PUT/GET local storage URLs (comma-separated, local driver only). */
   STORAGE_CORS_ORIGINS: z.string().default('http://localhost:3000'),
+  /** Optional: lets /health/ops and /admin/jobs report clamd reachability + signature age (S4). */
+  CLAMD_HOST: z.string().optional(),
+  CLAMD_PORT: z.coerce.number().int().positive().default(3310),
 
   /** Swagger UI at /api/docs: always on outside production; in production only when enabled + basic auth. */
   SWAGGER_ENABLED: z

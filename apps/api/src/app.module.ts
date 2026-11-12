@@ -40,6 +40,7 @@ import { CompanyProfileModule } from './modules/company-profile/company-profile.
 import { HelpModule } from './modules/help/help.module';
 import { LibraryModule } from './modules/library/library.module';
 import { HealthModule } from './health/health.module';
+import { OpsModule } from './modules/ops/ops.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { HealthModule } from './health/health.module';
     HelpModule,
     LibraryModule,
     HealthModule,
+    OpsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

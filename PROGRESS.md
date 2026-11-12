@@ -897,18 +897,39 @@ Plan: project doc `abdcshare/sprint-s3-plan.md`. Status: `abdcshare/sprint-s3-st
 - **Not done here (needs the user's infrastructure):** staging deploy, VM memory measurement for clamd (D26),
   production go-live.
 
+## S4 — Production readiness (Nov 2026) ⚠️ new package `@abdcshare/persistence` (run `pnpm install`) + `system:jobs` permission
+Plan: project doc `abdcshare/sprint-s4-plan.md`. Status: `abdcshare/sprint-s4-status.md`.
+- **Backups:** `deploy/backup/{backup,backup-check,restore-drill}.sh` (pg_dump → age → rclone/R2, 30 daily +
+  12 monthly, manifest with row counts, 26 h freshness alert) + `ansible/playbooks/backups.yml` (systemd
+  timers). Restore drill run here: restored DB matched every recorded count; stale-backup alert and a
+  tampered file both caught.
+- **Deploy access:** CI uses `DEPLOY_SSH_KEY` (+ optional `DEPLOY_KNOWN_HOSTS` for strict host keys) and
+  falls back to the password with a warning; `ansible/playbooks/deploy_key.yml` installs the key and turns
+  off password logins for the deploy user only.
+- **Monitoring:** `GET /api/health/ops` (503 when degraded: outbox backlog / failed / stuck-in-Queued,
+  Redis, clamd, signature age); `/admin/jobs` page for Platform Admins (queue counts, failed jobs, failed or
+  stuck outbox rows with an audited Re-drive, clamd status). Worker: exports for deleted collections are
+  skipped instead of failing 5 times.
+- **Shared persistence:** `packages/persistence` holds `OutboxEntity` (API re-exports it for discovery) and
+  `NotificationDeliveryEntity` (worker's email-sent update, no raw SQL). Dockerfiles copy the package.
+- **Worker tests (real):** consumer routing/idempotency/failure sealing/email marking, preview mapping incl.
+  the library stale-file guard + error codes + a real LibreOffice conversion (skipped where soffice is
+  missing), ZIP export (order, sections, view-only/unscanned skips, deleted collection), clamd framing, scan
+  state machine. CI runs them via `pnpm test`; a new CI `integration` job runs the Postgres int tests
+  (migrations from scratch → seed → `test:int`), verified locally on a fresh database.
+- **Not done here (needs your infrastructure):** installing the timers and key on the VM, rotating the
+  deploy password, choosing an uptime monitor, the first production restore drill.
+
 ## Pending / next
-1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
-   replace sidebar `#` stub.
-2. **Global search UI** — header/command search over scoped `GET /api/search`.
-3. **Land `feature/engagement-UI`** — commit remaining Documents-tab + sidebar cleanup; smoke staff↔client
-   loop; open PR when ready.
-4. **v1 hardening (Phase 5)** — authz matrix pass, empty/error/a11y polish, observability; API e2e
-   (Supertest + live DB) — unit specs ~22 files.
-6. **Extract shared persistence** — worker still duplicates `outbox.entity.ts`; notifications
-   `email_sent` update uses raw SQL to avoid duplicating the entity.
-7. **Data note:** legacy `Auditor` role label should already be filtered in seed; confirm roles API
-   returns `Staff`.
+1. **Library launch** (needs the VM): staging rollout with clamd, memory check for two clamd containers
+   (D26), production go-live — DEPLOYMENT §8c.
+2. **Ops on the VM**: run `playbooks/backups.yml` and `playbooks/deploy_key.yml`, add the GitHub secrets,
+   rotate the deploy password, point an uptime monitor at `/api/health/ops` — DEPLOYMENT §8d–8f.
+3. **Library S5–S8** (planned in the project: superseded editions, links & recordings, restricted-access
+   log and activity reports, custom roles/RBAC).
+4. **v1 hardening (Phase 5)** — authz matrix pass across the non-library modules, empty/error/a11y polish;
+   API e2e for engagements/requests/documents (the library has Playwright + Postgres coverage).
+5. **Log shipping** — container logs stay on the VM (DEPLOYMENT §9).
 
 ## Open decisions still outstanding
 - Hosting/runtime, realtime vs polling, legacy data migration scope.

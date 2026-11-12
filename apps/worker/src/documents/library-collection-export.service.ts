@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EntityManager } from '@mikro-orm/postgresql';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -31,6 +31,8 @@ interface Row {
  */
 @Injectable()
 export class LibraryCollectionExportService {
+  private readonly logger = new Logger(LibraryCollectionExportService.name);
+
   constructor(private readonly config: ConfigService) {}
 
   private local(): boolean {
@@ -84,7 +86,11 @@ export class LibraryCollectionExportService {
 
     const conn = em.getConnection();
     const [collection] = await conn.execute<{ title: string }[]>(`select title from library_collections where id = ?`, [collectionId]);
-    if (!collection) throw new Error('Collection not found');
+    if (!collection) {
+      // Deleted after the request (e.g. by a curator) — nothing to build; don't burn retries.
+      this.logger.warn(`Collection ${collectionId} no longer exists — export skipped`);
+      return;
+    }
     const rows = await conn.execute<Row[]>(
       `select i.id as item_id, i.title, i.file_name, i.storage_key, i.authors, i.published_year, ci.section, ci.position,
               i.downloadable, i.scan_status

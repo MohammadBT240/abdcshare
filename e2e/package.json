@@ -4,8 +4,8 @@
   "private": true,
   "description": "Playwright end-to-end suite. Needs a running stack (pnpm dev) and `pnpm seed:e2e`.",
   "scripts": {
-    "test": "playwright test",
-    "test:headed": "playwright test --headed",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'e2e: no lint'"
   },

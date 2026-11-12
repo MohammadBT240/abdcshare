@@ -4,7 +4,7 @@ import { EntityManager, MikroORM } from '@mikro-orm/postgresql';
 import { Job, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { EVENT, OutboxStatus, QUEUE, type NotificationJob } from '@abdcshare/shared';
-import { OutboxEntity } from '../database/outbox.entity';
+import { NotificationDeliveryEntity, OutboxEntity } from '@abdcshare/persistence';
 import { EmailDispatchService } from '../email/email-dispatch.service';
 import { DocumentExportService } from '../documents/document-export.service';
 import { FilePreviewService } from '../documents/file-preview.service';
@@ -143,11 +143,11 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
             GenericNotificationEmail({ title: e.subject, body, link: e.link, appUrl }),
           );
           if (e.notificationId) {
-            await em
-              .getConnection()
-              .execute('update "notifications" set email_sent = true, email_sent_at = now() where id = ?', [
-                e.notificationId,
-              ]);
+            await em.nativeUpdate(
+              NotificationDeliveryEntity,
+              { id: e.notificationId },
+              { emailSent: true, emailSentAt: new Date() },
+            );
           }
         }
         break;

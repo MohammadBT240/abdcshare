@@ -21,6 +21,7 @@
     "seed:e2e": "ts-node -r tsconfig-paths/register src/database/seed-e2e.ts"
   },
   "dependencies": {
+    "@abdcshare/persistence": "workspace:*",
     "@abdcshare/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.1095.0",
     "@aws-sdk/s3-request-presigner": "^3.1095.0",

@@ -13,6 +13,7 @@ import {
   IconFolderOpen,
   IconHelpCircle,
   IconHistory,
+  IconServerCog,
   IconSettings,
   IconInbox,
   IconLayoutDashboard,
@@ -118,6 +119,12 @@ const SECTIONS: NavSection[] = [
         href: "/admin/activity",
         icon: IconHistory,
         permission: "audit:view",
+      },
+      {
+        label: "Background jobs",
+        href: "/admin/jobs",
+        icon: IconServerCog,
+        permission: "system:jobs",
       },
       {
         label: "Help content",
