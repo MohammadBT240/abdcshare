@@ -72,4 +72,6 @@ export interface StoragePort {
   getObject(storageKey: string): Promise<Buffer>;
   /** Inclusive byte range read (zip central directory / single-entry extract). */
   getObjectRange(storageKey: string, start: number, endInclusive: number): Promise<Buffer>;
+  /** Remove an object. Idempotent: deleting a missing key succeeds. */
+  delete(storageKey: string): Promise<void>;
 }

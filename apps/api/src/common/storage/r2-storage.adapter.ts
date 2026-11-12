@@ -2,6 +2,7 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -151,6 +152,11 @@ export class R2StorageAdapter implements StoragePort {
         UploadId: uploadId,
       }),
     );
+  }
+
+  async delete(storageKey: string): Promise<void> {
+    // S3/R2 DeleteObject is idempotent (204 for missing keys).
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: storageKey }));
   }
 
   async head(storageKey: string): Promise<{ sizeBytes: number } | null> {

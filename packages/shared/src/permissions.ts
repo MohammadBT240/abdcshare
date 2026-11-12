@@ -55,6 +55,10 @@ export const PERMISSIONS = [
   'notification:receive',
   'audit:view',
   'help:manage',
+  // staff knowledge library
+  'library:view', // browse/search/view items within visibility scope
+  'library:contribute', // upload; edit/replace/archive OWN items
+  'library:curate', // edit/archive/restore/delete ANY item; sees department-restricted items
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -66,6 +70,7 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'catalogue:manage', 'catalogue:view', 'reference-data:manage', 'reference-data:view',
     'department:manage', 'company-profile:manage', 'company-profile:view',
     'bulk-import:run', 'audit:view', 'notification:receive', 'help:manage',
+    'library:view', 'library:contribute', 'library:curate',
   ],
   'Super Admin': [
     ...ALL_VIEW, 'user:view', 'client:manage', 'client:view', 'catalogue:view', 'reference-data:view', 'company-profile:view',
@@ -74,6 +79,7 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'working-paper:upload', 'final-report:upload', 'document:delete', 'document:export',
     'submission:review', 'discussion:participate',
     'review:decide', 'review:signoff', 'report-review:manage', 'help:manage',
+    'library:view', 'library:contribute', 'library:curate',
   ],
   // Staff are the working practitioners. Engagements are created/managed by Super
   // Admin only; staff work inside the engagements they're attached to (raise
@@ -85,6 +91,7 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'working-paper:upload', 'document:export',
     'submission:review', 'discussion:participate',
     'review:submit',
+    'library:view', 'library:contribute',
   ],
   Client: [
     'engagement:view', 'request:view', 'document:view', 'supporting:upload',
