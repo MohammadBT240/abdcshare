@@ -45,6 +45,8 @@ RUN pnpm install --frozen-lockfile --prod --filter @abdcshare/api...
 COPY --from=builder /repo/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /repo/packages/persistence/dist ./packages/persistence/dist
 COPY --from=builder /repo/apps/api/dist ./apps/api/dist
+# Built-in Help Center articles + screenshots — synced into the database on start (HELP_SYNC_ON_START).
+COPY docs/help ./docs/help
 WORKDIR /repo/apps/api
 EXPOSE 4000
 CMD ["node", "dist/main.js"]

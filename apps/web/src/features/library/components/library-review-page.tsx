@@ -16,8 +16,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { BffClientError } from '@/lib/bff/client';
-import { useDepartments } from '@/features/users/hooks/use-users';
 import { useLibraryReports, useResolveLibraryReport } from '@/features/library/hooks/use-library';
+import { useLibraryDepartments } from '@/features/library/hooks/use-library';
 import { OUTCOME_LABEL, reportReasonLabel } from '@/features/library/lib/licence';
 import type { LibraryReportGroup, LibraryReportOutcome, LibraryReportStatus } from '@/features/library/types';
 
@@ -228,7 +228,7 @@ function ResolveDialog({
   onClose: () => void;
 }) {
   const resolve = useResolveLibraryReport();
-  const departments = useDepartments();
+  const departments = useLibraryDepartments();
   const [departmentIds, setDepartmentIds] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);

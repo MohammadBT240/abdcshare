@@ -92,6 +92,9 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
+      marked:
+        specifier: 15.0.12
+        version: 15.0.12
       pdfkit:
         specifier: ^0.19.1
         version: 0.19.1
@@ -219,9 +222,18 @@ importers:
       '@tiptap/core':
         specifier: ^3.30.6
         version: 3.30.6(@tiptap/pm@3.30.6)
+      '@tiptap/extension-heading':
+        specifier: ^3.30.6
+        version: 3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))
       '@tiptap/extension-image':
         specifier: ^3.30.6
         version: 3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))
+      '@tiptap/extension-table':
+        specifier: ^3.30.6
+        version: 3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)
+      '@tiptap/pm':
+        specifier: ^3.30.6
+        version: 3.30.6
       '@tiptap/react':
         specifier: ^3.30.6
         version: 3.30.6(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -2841,6 +2853,12 @@ packages:
     resolution: {integrity: sha512-aRtyDDS88+eT6r3krn94ajLTVccxaukEHWJoDwq0devAqFq9d0ftaYU9aNSSKzG/TAsIObXX/1MKSiJQC+Z/Rw==}
     peerDependencies:
       '@tiptap/core': 3.30.6
+
+  '@tiptap/extension-table@3.30.6':
+    resolution: {integrity: sha512-O3y8ncZ0+2vTLXJ19W8UDg2hR+oV5QMojOGMqMX4dZ+cv55j2q1R3DZODY1D7PtVFFfScd6aWSMcXSn8TtMVmw==}
+    peerDependencies:
+      '@tiptap/core': 3.30.6
+      '@tiptap/pm': 3.30.6
 
   '@tiptap/extension-text@3.30.6':
     resolution: {integrity: sha512-N55Mf9Xo3Zl5f7MSlBpxIYWktYIgE7yY3QT9IGrhm6VBSF9bAHToVDOEWCkgTEinerBcWraPFMDl8NMtX7Cdqw==}
@@ -9279,6 +9297,11 @@ snapshots:
   '@tiptap/extension-strike@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))':
     dependencies:
       '@tiptap/core': 3.30.6(@tiptap/pm@3.30.6)
+
+  '@tiptap/extension-table@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)':
+    dependencies:
+      '@tiptap/core': 3.30.6(@tiptap/pm@3.30.6)
+      '@tiptap/pm': 3.30.6
 
   '@tiptap/extension-text@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))':
     dependencies:

@@ -69,6 +69,16 @@ export class LibraryController {
     return this.library.list(query, await this.library.viewer(user, meta));
   }
 
+  /**
+   * Departments for the Library's access pickers and filter. Staff can't list `/departments`
+   * (that needs catalogue:view), but they choose departments when restricting an item.
+   */
+  @Get('departments')
+  @RequirePermission('library:view')
+  departments(): Promise<{ id: number; name: string; isActive: boolean }[]> {
+    return this.library.departmentOptions();
+  }
+
   @Get('tags')
   @RequirePermission('library:view')
   async tags(

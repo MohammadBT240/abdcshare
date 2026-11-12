@@ -56,6 +56,8 @@ export function ArticleEditorPage({ articleId }: { articleId?: string }) {
             ? {
                 title: existing.data.title,
                 slug: existing.data.slug,
+                summary: existing.data.summary ?? null,
+                source: existing.data.source,
                 categoryId: existing.data.categoryId,
                 bodyJson: existing.data.bodyJson,
                 visibleToRoles: existing.data.visibleToRoles,

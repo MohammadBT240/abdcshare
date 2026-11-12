@@ -66,6 +66,15 @@ export function useLibraryCategories(opts?: { includeInactive?: boolean }) {
   });
 }
 
+/** Departments for access pickers and the filter (`/library/departments` — staff can't list `/departments`). */
+export function useLibraryDepartments() {
+  return useQuery({
+    queryKey: ['library', 'departments'],
+    queryFn: () => bffApi<{ id: number; name: string; isActive: boolean }[]>('/api/library/departments'),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useLibraryTags(q: string, enabled = true) {
   return useQuery({
     queryKey: [...KEY, 'tags', q],

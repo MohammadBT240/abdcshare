@@ -109,6 +109,12 @@ export class LibraryService {
   // ------------------------------------------------------------------ viewer
 
   /** Resolve department + curator flag once per request (department is not on the JWT). */
+  /** Active departments, by name — for access pickers (see LibraryController.departments). */
+  async departmentOptions(): Promise<{ id: number; name: string; isActive: boolean }[]> {
+    const rows = await this.em.find(DepartmentEntity, { isActive: true }, { orderBy: { name: 'asc' } });
+    return rows.map((d) => ({ id: d.id, name: d.name, isActive: d.isActive }));
+  }
+
   async viewer(user: AuthenticatedUser, meta?: RequestMeta): Promise<LibraryViewer> {
     const row = await this.em.findOne(UserEntity, { id: user.userId }, { fields: ['id', 'department'] });
     return {

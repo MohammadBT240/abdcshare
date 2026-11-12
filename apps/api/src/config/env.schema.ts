@@ -32,6 +32,11 @@ export const envSchema = z.object({
   CLAMD_HOST: z.string().optional(),
   CLAMD_PORT: z.coerce.number().int().positive().default(3310),
 
+  /** Default Help Center content (Markdown). Defaults to <repo>/docs/help relative to apps/api. */
+  HELP_CONTENT_DIR: z.string().optional(),
+  /** Sync docs/help into the database when the API starts (edited articles are never overwritten). */
+  HELP_SYNC_ON_START: z.enum(['true', 'false']).default('true'),
+
   /** Swagger UI at /api/docs: always on outside production; in production only when enabled + basic auth. */
   SWAGGER_ENABLED: z
     .enum(['true', 'false'])

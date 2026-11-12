@@ -15,6 +15,7 @@
   },
   "include": [
     "**/*.ts",
-    "../apps/api/src/database/e2e-personas.ts"
+    "../apps/api/src/database/e2e-personas.ts",
+    "../apps/api/src/database/help-demo-personas.ts"
   ]
 }

@@ -5,8 +5,8 @@ import { AppSelect, FormField, MultiCombobox } from '@/components/forms';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { useDepartments } from '@/features/users/hooks/use-users';
 import { useLibraryCategories } from '@/features/library/hooks/use-library';
+import { useLibraryDepartments } from '@/features/library/hooks/use-library';
 import { TagInput } from '@/features/library/components/tag-input';
 import type { LibraryItem, LibraryItemFields, LibraryLicence, LibraryVisibility } from '@/features/library/types';
 import { LICENCE_OPTIONS, VIEW_ONLY_LIMIT } from '@/features/library/lib/licence';
@@ -142,7 +142,7 @@ export function VisibilityPicker({
   disabled?: boolean;
   restrictedHint?: string;
 }) {
-  const departments = useDepartments();
+  const departments = useLibraryDepartments();
   return (
     <>
       <FormField label="Who can see this">

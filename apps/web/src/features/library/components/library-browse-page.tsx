@@ -33,13 +33,13 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { BffClientError } from '@/lib/bff/client';
-import { useDepartments } from '@/features/users/hooks/use-users';
 import {
   useLibraryCategories,
   useLibraryItems,
   useLibraryReportCount,
   useLibraryTags,
 } from '@/features/library/hooks/use-library';
+import { useLibraryDepartments } from '@/features/library/hooks/use-library';
 import { HelpTip } from '@/features/help/components/help-tip';
 import { LibraryCategoryRail, type LibraryScope } from '@/features/library/components/library-category-rail';
 import { LibraryItemCard } from '@/features/library/components/library-item-card';
@@ -104,7 +104,7 @@ export function LibraryBrowsePage() {
   const list = useLibraryItems(apiQuery);
   // (collections tab fetches its own list)
   const categories = useLibraryCategories();
-  const departments = useDepartments();
+  const departments = useLibraryDepartments();
   const popularTags = useLibraryTags('', !filters.tag);
 
   const setFilter = (key: string, value: string | undefined) => setParams({ extra: { [key]: value || undefined } });
