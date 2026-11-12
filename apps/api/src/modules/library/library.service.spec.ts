@@ -88,6 +88,7 @@ function setup(opts: { item?: FakeItem | null; category?: unknown; departments?:
       uploadedBy: { id: 'u-staff', fullName: 'Amina Staff' },
     })),
     persistAndFlush: jest.fn(),
+    persist: jest.fn(),
     flush: jest.fn(),
     removeAndFlush: jest.fn(),
     getReference: jest.fn((_e: unknown, id: unknown) => ({ id })),
@@ -123,7 +124,7 @@ describe('LibraryService.create', () => {
     const { service, em } = setup();
     em.findOne.mockImplementation(async (entity: unknown) => {
       if (entity === LibraryCategoryEntity) return { id: 'cat-1', name: 'Research Papers', isActive: true };
-      if (entity === LibraryItemEntity) return em.persistAndFlush.mock.calls[0]?.[0] ?? null;
+      if (entity === LibraryItemEntity) return em.persist.mock.calls[0]?.[0] ?? null;
       return null;
     });
     const result = await service.create(

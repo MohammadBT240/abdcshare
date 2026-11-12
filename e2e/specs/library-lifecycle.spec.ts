@@ -48,7 +48,12 @@ test("staff can't edit someone else's item, but can edit their own", async ({ br
   const { context, page } = await pageAs(browser, 'tax');
   await page.goto(`/library/${theirs.id}`);
   await expect(page.getByRole('button', { name: 'Download' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'More actions' })).toHaveCount(0);
+  // Staff may add any visible item to their own collection, but get no edit actions.
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Add to collection' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Edit details' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: 'Archive' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
   const taxApi = await apiAs(playwright, 'tax', baseURL!);
   const mine = await createItem(taxApi, { title: unique('E2E my item') });

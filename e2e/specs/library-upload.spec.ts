@@ -15,6 +15,7 @@ test.describe('Library upload and in-browser viewing (UI)', () => {
   async function uploadViaDialog(page: import('@playwright/test').Page, file: string, title: string, category: string) {
     await page.goto('/library');
     await page.getByRole('button', { name: 'Upload', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'One file' }).click();
     const dialog = page.getByRole('dialog', { name: 'Add to the library' });
     await dialog.locator('input[type=file]').setInputFiles(path.join(FILES, file));
     await dialog.getByLabel('Title').fill(title);
@@ -22,6 +23,10 @@ test.describe('Library upload and in-browser viewing (UI)', () => {
     await page.getByRole('option', { name: category }).click();
     await dialog.getByLabel('Tags').fill('e2e, ifrs');
     await dialog.getByLabel('Tags').press('Enter');
+    // Declaration is required (confidentiality guard).
+    await dialog.getByRole('button', { name: 'Upload', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText('client-identifiable');
+    await dialog.getByRole('checkbox', { name: /no client-identifiable information/ }).check();
     await dialog.getByRole('button', { name: 'Upload', exact: true }).click();
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await expect(page.getByText('Added to the library')).toBeVisible();

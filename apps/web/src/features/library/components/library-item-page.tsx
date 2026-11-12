@@ -11,7 +11,9 @@ import {
   IconDownload,
   IconEye,
   IconLock,
+  IconFolders,
   IconPencil,
+  IconPlaylistAdd,
   IconReplace,
   IconRestore,
   IconTrash,
@@ -41,6 +43,8 @@ import {
 import { LibraryViewer } from '@/features/library/components/library-viewer';
 import { EditLibraryItemDialog } from '@/features/library/components/edit-library-item-dialog';
 import { ReplaceLibraryFileDialog } from '@/features/library/components/replace-library-file-dialog';
+import { AddToCollectionDialog } from '@/features/library/components/add-to-collection-dialog';
+import { useAuthContext } from '@/components/providers/auth-provider';
 import { fileTypeLabel, formatBytes, formatDate } from '@/features/library/lib/library-files';
 
 function errorMessage(err: unknown, fallback: string) {
@@ -66,6 +70,9 @@ export function LibraryItemPage({ id }: { id: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [collectOpen, setCollectOpen] = useState(false);
+  const { can } = useAuthContext();
+  const canCollect = can('library:contribute');
 
   async function handleDownload() {
     setDownloading(true);
@@ -123,14 +130,19 @@ export function LibraryItemPage({ id }: { id: string }) {
             <LoadingButton type="button" loading={downloading} onClick={() => void handleDownload()}>
               <IconDownload className="mr-1.5 h-4 w-4" aria-hidden /> Download
             </LoadingButton>
-            {data.canEdit || data.canDelete ? (
+            {data.canEdit || data.canDelete || (canCollect && !archived) ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button type="button" variant="outline" size="sm" className="h-10 w-10 p-0" aria-label="More actions">
                     <IconDots className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-52">
+                  {canCollect && !archived ? (
+                    <DropdownMenuItem onSelect={() => setCollectOpen(true)}>
+                      <IconPlaylistAdd className="mr-2 h-4 w-4" aria-hidden /> Add to collection
+                    </DropdownMenuItem>
+                  ) : null}
                   {data.canEdit ? (
                     <>
                       <DropdownMenuItem onSelect={() => setEditOpen(true)}>
@@ -238,6 +250,25 @@ export function LibraryItemPage({ id }: { id: string }) {
                   )}
                 </DetailRow>
               ) : null}
+              {data.collections.length ? (
+                <DetailRow label="Part of">
+                  <span className="flex flex-col gap-1">
+                    {data.collections.map((c) => (
+                      <Link
+                        key={c.id}
+                        href={`/library/collections/${c.id}`}
+                        className="inline-flex items-start gap-1.5 hover:text-primary hover:underline"
+                      >
+                        <IconFolders className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                        <span>
+                          {c.title}
+                          {c.section ? <span className="text-muted-foreground"> · {c.section}</span> : null}
+                        </span>
+                      </Link>
+                    ))}
+                  </span>
+                </DetailRow>
+              ) : null}
               <DetailRow label="Access">
                 {data.visibility === 'Firm' ? (
                   <span className="inline-flex items-center gap-1.5">
@@ -295,6 +326,7 @@ export function LibraryItemPage({ id }: { id: string }) {
 
       <EditLibraryItemDialog item={data} open={editOpen} onOpenChange={setEditOpen} />
       <ReplaceLibraryFileDialog item={data} open={replaceOpen} onOpenChange={setReplaceOpen} />
+      <AddToCollectionDialog item={data} open={collectOpen} onOpenChange={setCollectOpen} />
       <ConfirmDialog
         open={archiveOpen}
         onOpenChange={setArchiveOpen}

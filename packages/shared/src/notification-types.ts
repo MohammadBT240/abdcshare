@@ -30,6 +30,7 @@ export const NOTIFICATION_TYPES = [
   'partner-report.submitted',
   'partner-report.reviewed',
   'partner-report.reminder',
+  'library.export_ready',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -39,7 +40,7 @@ export interface NotificationTypeMeta {
   label: string;
   description: string;
   /** Preference UI groups. */
-  category: 'engagement' | 'request' | 'document' | 'collaboration' | 'review' | 'partner-report';
+  category: 'engagement' | 'request' | 'document' | 'collaboration' | 'review' | 'partner-report' | 'library';
 }
 
 export const NOTIFICATION_TYPE_CATALOG: NotificationTypeMeta[] = [
@@ -222,6 +223,12 @@ export const NOTIFICATION_TYPE_CATALOG: NotificationTypeMeta[] = [
     label: 'Report reminder',
     description: 'Reminder to submit a Principal report',
     category: 'partner-report',
+  },
+  {
+    type: 'library.export_ready',
+    label: 'Library download ready',
+    description: 'When a collection ZIP you asked for is ready to download',
+    category: 'library',
   },
 ];
 

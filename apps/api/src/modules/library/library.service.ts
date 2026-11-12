@@ -36,10 +36,15 @@ import { UserEntity } from '../users/infrastructure/persistence/user.entity';
 import { DepartmentEntity } from '../departments/infrastructure/persistence/department.entity';
 import { LibraryItemEntity } from './infrastructure/persistence/library-item.entity';
 import { LibraryCategoryEntity } from './infrastructure/persistence/library-category.entity';
+import { LibraryCollectionEntity } from './infrastructure/persistence/library-collection.entity';
+import { LibraryCollectionItemEntity } from './infrastructure/persistence/library-collection-item.entity';
 import {
+  canEditCollection,
   canEditItem,
+  canSeeCollection,
   canSeeItem,
   libraryScopeSql,
+  visibleCollectionSql,
   type LibraryAccessItem,
   type LibraryViewer,
 } from './library-access';
@@ -118,7 +123,11 @@ export class LibraryService {
     };
   }
 
-  toDto(item: LibraryItemEntity, viewer: LibraryViewer): LibraryItemResponseDto {
+  toDto(
+    item: LibraryItemEntity,
+    viewer: LibraryViewer,
+    collections: LibraryItemResponseDto['collections'] = [],
+  ): LibraryItemResponseDto {
     const departments = item.departments.isInitialized()
       ? item.departments
           .getItems()
@@ -150,9 +159,36 @@ export class LibraryService {
       downloadCount: item.downloadCount,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
+      collections,
       canEdit: canEditItem({ uploadedById: item.uploadedBy.id }, viewer),
       canDelete: viewer.isCurator && deletable,
     };
+  }
+
+  /** Collections (visible to the viewer) each item belongs to, keyed by item id. */
+  async collectionsFor(
+    itemIds: string[],
+    viewer: LibraryViewer,
+  ): Promise<Map<string, LibraryItemResponseDto['collections']>> {
+    const out = new Map<string, LibraryItemResponseDto['collections']>();
+    if (itemIds.length === 0) return out;
+    const scope = visibleCollectionSql('c', viewer);
+    const rows = await this.em.getConnection().execute<
+      { item_id: string; id: string; title: string; type: string; section: string | null }[]
+    >(
+      `select ci.item_id, c.id, c.title, c.type, ci.section
+         from library_collection_items ci
+         join library_collections c on c.id = ci.collection_id
+        where ci.item_id in (${itemIds.map(() => '?').join(', ')}) and ${scope.sql}
+        order by c.starts_on desc nulls last, c.title asc`,
+      [...itemIds, ...scope.params],
+    );
+    for (const r of rows) {
+      const list = out.get(r.item_id) ?? [];
+      list.push({ id: r.id, title: r.title, type: r.type, section: r.section });
+      out.set(r.item_id, list);
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------ lookups
@@ -276,6 +312,15 @@ export class LibraryService {
       where[raw((alias) => scope.sql.replaceAll('__alias__', alias), scope.params)] = true;
     }
     if (query.categoryId) where.category = query.categoryId;
+    if (query.collectionId) {
+      where[
+        raw(
+          (alias) =>
+            `exists (select 1 from library_collection_items fc where fc.item_id = ${alias}.id and fc.collection_id = ?)`,
+          [query.collectionId],
+        )
+      ] = true;
+    }
     if (query.year) where.publishedYear = query.year;
     if (query.fileType) where.mimeType = { $in: mimeTypesFor(query.fileType) };
     if (query.departmentId) {
@@ -338,8 +383,12 @@ export class LibraryService {
       limit,
       offset,
     });
+    const collections = await this.collectionsFor(
+      rows.map((r) => r.id),
+      viewer,
+    );
     return paginated(
-      rows.map((r) => this.toDto(r, viewer)),
+      rows.map((r) => this.toDto(r, viewer, collections.get(r.id))),
       total,
       page,
       pageSize,
@@ -347,7 +396,63 @@ export class LibraryService {
   }
 
   async get(id: string, viewer: LibraryViewer): Promise<LibraryItemResponseDto> {
-    return this.toDto(await this.findVisible(id, viewer), viewer);
+    const item = await this.findVisible(id, viewer);
+    const collections = await this.collectionsFor([item.id], viewer);
+    return this.toDto(item, viewer, collections.get(item.id));
+  }
+
+  /** Map already-loaded items to DTOs with their collections (used by collection pages). */
+  async toDtos(items: LibraryItemEntity[], viewer: LibraryViewer): Promise<LibraryItemResponseDto[]> {
+    const collections = await this.collectionsFor(
+      items.map((i) => i.id),
+      viewer,
+    );
+    return items.map((i) => this.toDto(i, viewer, collections.get(i.id)));
+  }
+
+  /** Load a collection the viewer may add items to (owner or curator), or throw. */
+  async editableCollection(id: string, viewer: LibraryViewer): Promise<LibraryCollectionEntity> {
+    const c = await this.em.findOne(LibraryCollectionEntity, { id }, { populate: ['owner', 'departments'] });
+    const access = c && {
+      status: c.status,
+      visibility: c.visibility,
+      ownerId: c.owner.id,
+      departmentIds: c.departments.getItems().map((d) => d.id),
+    };
+    if (!c || !access || !canSeeCollection(access, viewer)) throw new NotFoundException('Collection not found');
+    if (!canEditCollection(access, viewer)) {
+      throw new ForbiddenException('Only the collection owner or a library curator can add items to it');
+    }
+    if (c.status !== 'Active') throw new ConflictException('Restore the collection before adding items');
+    return c;
+  }
+
+  /** Append items to a collection at the end, in the given order (skips existing members). */
+  async appendToCollection(
+    collection: LibraryCollectionEntity,
+    items: LibraryItemEntity[],
+    section: string | null | undefined,
+    viewer: LibraryViewer,
+  ): Promise<number> {
+    const existing = await this.em.find(LibraryCollectionItemEntity, { collection: collection.id }, { fields: ['item', 'position'] });
+    const present = new Set(existing.map((m) => m.item.id));
+    let next = existing.reduce((max, m) => Math.max(max, m.position), -1) + 1;
+    let added = 0;
+    for (const item of items) {
+      if (present.has(item.id)) continue;
+      this.em.persist(
+        this.em.create(LibraryCollectionItemEntity, {
+          collection,
+          item,
+          position: next++,
+          section: clean(section ?? undefined),
+          addedBy: this.em.getReference(UserEntity, viewer.userId),
+        }),
+      );
+      present.add(item.id);
+      added += 1;
+    }
+    return added;
   }
 
   // ------------------------------------------------------------------ create / update
@@ -357,6 +462,7 @@ export class LibraryService {
     const title = clean(dto.title);
     if (!title) throw new BadRequestException('Title is required');
     const category = await this.activeCategory(dto.categoryId);
+    const collection = dto.collectionId ? await this.editableCollection(dto.collectionId, viewer) : null;
     const item = this.em.create(LibraryItemEntity, {
       title,
       description: clean(dto.description),
@@ -368,8 +474,16 @@ export class LibraryService {
       uploadedBy: this.em.getReference(UserEntity, viewer.userId),
       status: LibraryItemStatus.Draft,
     });
-    await this.applyVisibility(item, dto.visibility ?? LibraryVisibility.Firm, dto.departmentIds);
-    await this.em.persistAndFlush(item);
+    // Uploading into a restricted collection defaults the item to the same departments (D9).
+    const inherit = !dto.visibility && collection?.visibility === LibraryVisibility.Departments;
+    await this.applyVisibility(
+      item,
+      inherit ? LibraryVisibility.Departments : (dto.visibility ?? LibraryVisibility.Firm),
+      inherit ? collection!.departments.getItems().map((d) => d.id) : dto.departmentIds,
+    );
+    this.em.persist(item);
+    if (collection) await this.appendToCollection(collection, [item], dto.section, viewer);
+    await this.em.flush();
     return this.get(item.id, viewer);
   }
 

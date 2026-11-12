@@ -40,8 +40,62 @@ export interface LibraryItem {
   downloadCount: number;
   createdAt: string;
   updatedAt: string;
+  collections: LibraryCollectionRef[];
   canEdit: boolean;
   canDelete: boolean;
+}
+
+export type LibraryCollectionType = 'Training' | 'Workshop' | 'Conference' | 'Project' | 'Programme' | 'Other';
+export type LibraryCollectionStatus = 'Active' | 'Archived';
+
+export interface LibraryCollectionRef {
+  id: string;
+  title: string;
+  type: LibraryCollectionType;
+  section: string | null;
+}
+
+export interface LibraryCollection {
+  id: string;
+  title: string;
+  slug: string;
+  type: LibraryCollectionType;
+  description: string | null;
+  startsOn: string | null;
+  endsOn: string | null;
+  facilitator: string | null;
+  venue: string | null;
+  externalUrl: string | null;
+  visibility: LibraryVisibility;
+  departments: LibraryDepartmentRef[];
+  status: LibraryCollectionStatus;
+  owner: LibraryRef;
+  itemCount: number;
+  hiddenItemCount: number;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
+export interface LibraryCollectionMember {
+  position: number;
+  section: string | null;
+  item: LibraryItem;
+}
+
+export interface LibraryCollectionFields {
+  title: string;
+  type: LibraryCollectionType;
+  description?: string | null;
+  startsOn?: string | null;
+  endsOn?: string | null;
+  facilitator?: string | null;
+  venue?: string | null;
+  externalUrl?: string | null;
+  visibility?: LibraryVisibility;
+  departmentIds?: number[];
 }
 
 export interface LibraryCategory {
@@ -74,6 +128,9 @@ export interface LibraryItemFields {
   tags?: string[];
   visibility?: LibraryVisibility;
   departmentIds?: number[];
+  /** Create only: add to this collection. */
+  collectionId?: string;
+  section?: string | null;
 }
 
 export interface LibraryPreview {

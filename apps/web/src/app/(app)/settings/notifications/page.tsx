@@ -17,6 +17,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   collaboration: 'Collaboration',
   review: 'Reviews',
   'partner-report': 'Reports',
+  library: 'Library',
 };
 
 export default function NotificationPreferencesPage() {

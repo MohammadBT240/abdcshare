@@ -65,6 +65,9 @@ export class LibraryCategoryResponseDto {
 export class LibraryItemListQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() categoryId?: string;
 
+  @ApiPropertyOptional({ description: 'Items in this collection.' })
+  @IsOptional() @IsUUID() collectionId?: string;
+
   @ApiPropertyOptional({ description: 'Items restricted to this department.' })
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) departmentId?: number;
 
@@ -111,6 +114,11 @@ class LibraryItemFieldsDto {
 export class CreateLibraryItemDto extends LibraryItemFieldsDto {
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(300) title!: string;
   @ApiProperty() @IsUUID() categoryId!: string;
+
+  @ApiPropertyOptional({ description: 'Add the new item to this collection (needs edit rights on it).' })
+  @IsOptional() @IsUUID() collectionId?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) section?: string | null;
 }
 
 export class UpdateLibraryItemDto extends LibraryItemFieldsDto {
@@ -165,6 +173,8 @@ export class LibraryItemResponseDto {
   @ApiProperty() downloadCount!: number;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiProperty({ description: 'Collections (visible to the viewer) this item belongs to.' })
+  collections!: { id: string; title: string; type: string; section: string | null }[];
   @ApiProperty({ description: 'Viewer may edit metadata, replace the file, archive/restore.' })
   canEdit!: boolean;
   @ApiProperty({ description: 'Viewer may permanently delete (curators, archived items).' })

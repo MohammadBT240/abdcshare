@@ -204,3 +204,18 @@ export enum LibraryVisibility {
   /** Only users in the item's departments (+ uploader + curators). */
   Departments = 'Departments',
 }
+
+/** What a library collection groups items by (S1). Drives icons and copy. */
+export enum LibraryCollectionType {
+  Training = 'Training',
+  Workshop = 'Workshop',
+  Conference = 'Conference',
+  Project = 'Project',
+  Programme = 'Programme',
+  Other = 'Other',
+}
+
+export enum LibraryCollectionStatus {
+  Active = 'Active',
+  Archived = 'Archived',
+}

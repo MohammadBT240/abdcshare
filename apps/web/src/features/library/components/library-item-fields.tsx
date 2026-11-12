@@ -115,6 +115,61 @@ function VisibilityOption({
   );
 }
 
+/** Firm-wide vs specific departments, shared by items and collections. */
+export function VisibilityPicker({
+  visibility,
+  departmentIds,
+  onChange,
+  disabled,
+  restrictedHint = 'Only those departments (plus you and curators).',
+}: {
+  visibility: LibraryVisibility;
+  departmentIds: string[];
+  onChange: (next: { visibility: LibraryVisibility; departmentIds: string[] }) => void;
+  disabled?: boolean;
+  restrictedHint?: string;
+}) {
+  const departments = useDepartments();
+  return (
+    <>
+      <FormField label="Who can see this">
+        <div role="radiogroup" className="flex flex-col gap-2 sm:flex-row">
+          <VisibilityOption
+            active={visibility === 'Firm'}
+            icon={<IconWorld className="h-4 w-4" />}
+            title="Everyone in the firm"
+            hint="All staff can find and open it."
+            onClick={() => onChange({ visibility: 'Firm', departmentIds: [] })}
+            disabled={disabled}
+          />
+          <VisibilityOption
+            active={visibility === 'Departments'}
+            icon={<IconLock className="h-4 w-4" />}
+            title="Specific departments"
+            hint={restrictedHint}
+            onClick={() => onChange({ visibility: 'Departments', departmentIds })}
+            disabled={disabled}
+          />
+        </div>
+      </FormField>
+      {visibility === 'Departments' ? (
+        <FormField label="Departments" required>
+          <MultiCombobox
+            options={(departments.data ?? [])
+              .filter((d) => d.isActive)
+              .map((d) => ({ value: String(d.id), label: d.name }))}
+            values={departmentIds}
+            onValuesChange={(ids) => onChange({ visibility, departmentIds: ids })}
+            placeholder="Choose departments"
+            isLoading={departments.isPending}
+            disabled={disabled}
+          />
+        </FormField>
+      ) : null}
+    </>
+  );
+}
+
 /** Metadata fields shared by the upload and edit dialogs. */
 export function LibraryItemFieldsForm({
   value,
@@ -126,7 +181,6 @@ export function LibraryItemFieldsForm({
   disabled?: boolean;
 }) {
   const categories = useLibraryCategories();
-  const departments = useDepartments();
   const set = <K extends keyof LibraryFormState>(key: K, v: LibraryFormState[K]) =>
     onChange({ ...value, [key]: v });
 
@@ -204,41 +258,12 @@ export function LibraryItemFieldsForm({
         <TagInput id="library-tags" value={value.tags} onChange={(tags) => set('tags', tags)} disabled={disabled} />
       </FormField>
 
-      <FormField label="Who can see this">
-        <div role="radiogroup" className="flex flex-col gap-2 sm:flex-row">
-          <VisibilityOption
-            active={value.visibility === 'Firm'}
-            icon={<IconWorld className="h-4 w-4" />}
-            title="Everyone in the firm"
-            hint="All staff can find and open it."
-            onClick={() => onChange({ ...value, visibility: 'Firm', departmentIds: [] })}
-            disabled={disabled}
-          />
-          <VisibilityOption
-            active={value.visibility === 'Departments'}
-            icon={<IconLock className="h-4 w-4" />}
-            title="Specific departments"
-            hint="Only those departments (plus you and curators)."
-            onClick={() => set('visibility', 'Departments')}
-            disabled={disabled}
-          />
-        </div>
-      </FormField>
-
-      {value.visibility === 'Departments' ? (
-        <FormField label="Departments" required>
-          <MultiCombobox
-            options={(departments.data ?? [])
-              .filter((d) => d.isActive)
-              .map((d) => ({ value: String(d.id), label: d.name }))}
-            values={value.departmentIds}
-            onValuesChange={(ids) => set('departmentIds', ids)}
-            placeholder="Choose departments"
-            isLoading={departments.isPending}
-            disabled={disabled}
-          />
-        </FormField>
-      ) : null}
+      <VisibilityPicker
+        visibility={value.visibility}
+        departmentIds={value.departmentIds}
+        onChange={(v) => onChange({ ...value, ...v })}
+        disabled={disabled}
+      />
     </div>
   );
 }

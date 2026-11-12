@@ -90,41 +90,52 @@ function useInvalidate() {
  * Confirming publishes the item. A failed upload leaves the Draft (`draftId`) so the dialog can
  * retry the file without creating a second item; unconfirmed drafts are swept after 24 h.
  */
+export interface UploadLibraryFileArgs {
+  fields: LibraryItemFields;
+  file: File;
+  draftId?: string | null;
+  onDraftCreated?: (id: string) => void;
+  onProgress?: (percent: number) => void;
+}
+
+/** Draft (or reuse a draft) → Uppy upload → confirm. Used by single and bulk upload. */
+export async function uploadLibraryFile({ fields, file, draftId, onDraftCreated, onProgress }: UploadLibraryFileArgs) {
+  let id = draftId ?? null;
+  if (id) {
+    // Retry of a failed upload: refresh metadata, but never re-send the collection link.
+    const { collectionId: _c, section: _s, ...rest } = fields;
+    await bffApi<LibraryItem>(`/api/library/items/${id}`, { method: 'PATCH', body: JSON.stringify(rest) });
+  } else {
+    const draft = await bffApi<LibraryItem>('/api/library/items', { method: 'POST', body: JSON.stringify(fields) });
+    id = draft.id;
+    onDraftCreated?.(id);
+  }
+  await uploadFilesWithUppy({ kind: 'library-item', parentId: id, onProgress }, [withLibraryMime(file)]);
+  return bffApi<LibraryItem>(`/api/library/items/${id}`);
+}
+
+/**
+ * Two-step upload: a Draft with metadata, then the file via Uppy (presign / multipart + confirm).
+ * Confirming publishes the item. A failed upload leaves the Draft (`draftId`) so the dialog can
+ * retry the file without creating a second item; unconfirmed drafts are swept after 24 h.
+ */
 export function useUploadLibraryItem() {
   const invalidate = useInvalidate();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      fields,
-      file,
-      draftId,
-      onDraftCreated,
-      onProgress,
-    }: {
-      fields: LibraryItemFields;
-      file: File;
-      draftId?: string | null;
-      onDraftCreated?: (id: string) => void;
-      onProgress?: (percent: number) => void;
-    }) => {
-      let id = draftId ?? null;
-      if (id) {
-        await bffApi<LibraryItem>(`/api/library/items/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify(fields),
-        });
-      } else {
-        const draft = await bffApi<LibraryItem>('/api/library/items', {
-          method: 'POST',
-          body: JSON.stringify(fields),
-        });
-        id = draft.id;
-        onDraftCreated?.(id);
-      }
-      await uploadFilesWithUppy({ kind: 'library-item', parentId: id, onProgress }, [withLibraryMime(file)]);
-      return bffApi<LibraryItem>(`/api/library/items/${id}`);
+    mutationFn: uploadLibraryFile,
+    onSuccess: async (item) => {
+      await invalidate(item.id);
+      await qc.invalidateQueries({ queryKey: [...KEY, 'collection'] });
+      await qc.invalidateQueries({ queryKey: [...KEY, 'collections'] });
     },
-    onSuccess: (item) => invalidate(item.id),
   });
+}
+
+/** Invalidate library lists after a batch of uploads (bulk dialog). */
+export function useInvalidateLibrary() {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries({ queryKey: [...KEY] });
 }
 
 export function useUpdateLibraryItem() {

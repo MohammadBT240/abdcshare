@@ -825,6 +825,25 @@ Plan: project doc `abdcshare/sprint-s0-plan.md`. Status: `abdcshare/sprint-s0-st
   matrix, UI upload (PDF/DOCX conversion/PNG/CSV), lifecycle (archive/restore/curator delete, edit rights),
   admin categories, and a phone-width layout check (fixed horizontal overflow on `/library` and the viewer).
 
+## S1 — Library collections + bulk upload (Nov 2026) ⚠️ **has a migration** (`Migration20261112163259`)
+Plan: project doc `abdcshare/sprint-s1-plan.md`. Status: `abdcshare/sprint-s1-status.md`.
+- **Collections:** `library_collections` (type Training/Workshop/Conference/Project/Programme/Other, dates,
+  facilitator, venue, link, visibility incl. departments, Active/Archived) + `library_collection_items`
+  (ordered, optional section). API under `/library/collections` — list (type/year/mine/editable/status),
+  CRUD, archive/restore, curator delete (archived only), items add/remove/reorder, ZIP export (202 +
+  worker + `library.export_ready` notification; caps 200 files / 1 GB). An item can sit in many
+  collections; counts and contents only include items the viewer can see.
+- **Items:** list filter `collectionId`; create can attach to a collection + section, and inherits the
+  collection's department restriction when no visibility is given. Item DTO lists the collections it is in.
+- **Web:** Library has Items | Collections tabs; collection page (sections, reorder ↑/↓, add existing,
+  upload into, remove, download ZIP); "Several files" bulk upload (2 at a time, per-file retry reuses the
+  draft — no duplicates); item page "Part of …" + "Add to collection"; upload declaration checkbox (UI only
+  until S2 enforces it server-side).
+- **Deviations from plan:** collection search uses ILIKE (not tsvector) — volumes are small; reorder via
+  buttons rather than drag; worker builds the ZIP to a temp file before upload.
+- **Verify:** api jest 280/280; turbo typecheck+lint 14/14; e2e 16/16 (new: collections create/bulk/
+  reorder/add/ZIP, restricted collection counts, bulk retry); `migration:create` → no changes.
+
 ## Pending / next
 1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
    replace sidebar `#` stub.
