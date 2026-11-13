@@ -18,8 +18,8 @@ The **Users** page lists everyone who can sign in to the firm side of the portal
 | Role | Who it is for | What it can do |
 | --- | --- | --- |
 | **Platform Admin** | The people who run the portal | Users, catalogues, departments, company profiles, the activity log, background jobs and help content. Platform Admins don't work on engagements. |
-| **Super Admin** | Partners and managers | Create and run engagements, set request status, decide reviews, sign off, send final reports to clients, manage clients. |
-| **Staff** | Practitioners | Work inside the engagements they are on: raise requests, review client files, upload working papers, submit work for review. |
+| **Super Admin** | Partners and managers | Create and run engagements, delete requests, decide reviews, sign off, send final reports to clients, manage clients. |
+| **Staff** | Practitioners | Work inside the engagements they are on: raise, edit and assign requests and set their status, review client files, upload working papers, submit work for review. |
 
 A Super Admin can also carry a **partner designation** — **Partner** or **Principal Partner** — which switches on [partner reports](help:partner-reports-overview). The full matrix is on [Who can do what](help:who-can-do-what).
 

@@ -134,7 +134,7 @@ export class TokenService {
     const row = await this.em.findOne(
       RefreshTokenEntity,
       { tokenHash: oldHash },
-      { populate: ['user', 'user.role'] },
+      { populate: ['user', 'user.role', 'user.client'] },
     );
     if (!row) throw new UnauthorizedException('Invalid refresh token');
 
@@ -153,8 +153,8 @@ export class TokenService {
     if (row.expiresAt.getTime() < Date.now()) {
       throw new UnauthorizedException('Refresh token expired');
     }
-    if (!row.user.isActive) {
-      // Deactivated since sign-in: end the session rather than minting fresh tokens.
+    if (!row.user.isActive || (row.user.client && !row.user.client.isActive)) {
+      // Deactivated (or their client was) since sign-in: end the session rather than minting fresh tokens.
       await this.em.nativeUpdate(RefreshTokenEntity, { familyId: row.familyId, revokedAt: null }, { revokedAt: new Date() });
       throw new UnauthorizedException('Account is inactive');
     }

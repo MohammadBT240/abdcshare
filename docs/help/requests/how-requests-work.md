@@ -34,7 +34,7 @@ Two separate things describe where a request is:
 | **In Progress** | The team has started accepting or returning files. |
 | **Reviewed** | All the expected files are accepted, or the status is Accepted or Closed. |
 
-**Status** is set by a Super Admin and says whose court the ball is in:
+**Status** is set by the team — staff on the engagement or a Super Admin — and says whose court the ball is in:
 
 | Status | Meaning |
 | --- | --- |

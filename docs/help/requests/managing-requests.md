@@ -1,12 +1,12 @@
 ---
 title: Managing requests — status, assignees, edits and bulk changes
-summary: For Super Admins — change a request's status, edit it, assign people, delete it, or update many requests at once.
-roles: [Platform Admin, Super Admin]
+summary: Change a request's status, edit it, assign people, update many requests at once — and, for Super Admins, delete one.
+roles: [Platform Admin, Super Admin, Staff]
 order: 3
 related: [how-requests-work, the-requests-page]
 ---
 
-Changing a request's lifecycle — its status, details and assignees — is done by **Super Admins**.
+**Staff** and **Super Admins** can change a request's status, details and assignees. Staff can do this on the engagements they're on the team of; Super Admins on any engagement. Only Super Admins can delete a request.
 
 ## Request details
 
@@ -30,14 +30,16 @@ Set **Pending Client** when you send a request to the client, and **Accepted** o
 
 ### Assignees
 
-**Assignees** opens **Manage assignees**. Only engagement team members can be assigned; each new assignee gets a notification.
+**Assignees** opens **Manage assignees**. Only people on the engagement team can be assigned — add someone to the team first (see [Team and client contacts](help:engagement-team-and-contacts)). Each new assignee gets a notification.
 
-### Delete
+### Delete (Super Admins)
 
 **Delete** is at the top right of the request page, next to **Engagement**. A request can be deleted only if the client hasn't sent anything and no documents are linked to it. Deleting is permanent.
 
 ## Changing many requests at once
 
 On the [Requests page](help:the-requests-page), tick the requests you want, then use **Set status** and/or **Set assignee** in the bar that appears and click **Apply**. **Clear** unticks everything.
+
+**Set assignee** lists the people on the teams of the engagements you can see. The person you choose must be on the team of every selected request's engagement — if they aren't, nothing is changed and the message names the person to add.
 
 ![Bulk actions on the Requests page](../images/requests/bulk-actions.webp)

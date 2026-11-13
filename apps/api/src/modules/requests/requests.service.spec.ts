@@ -14,6 +14,7 @@ import { EngagementRequestClassEntity } from "../engagements/infrastructure/pers
 import { EngagementSignOffEntity } from "../engagements/infrastructure/persistence/engagement-sign-off.entity";
 import { EngagementTeamMemberEntity } from "../engagements/infrastructure/persistence/engagement-team-member.entity";
 import { RequestTypeEntity } from "../request-types/infrastructure/persistence/request-type.entity";
+import { UserEntity } from "../users/infrastructure/persistence/user.entity";
 import type { AuthenticatedUser } from "../../common/interfaces/authenticated-user";
 
 // Super Admin ⇒ unscoped (resolveScope → 'all'), so no membership check runs.
@@ -222,9 +223,14 @@ describe("RequestsService", () => {
       const status = { id: 3, name: "Active" };
       const assignee = { id: "u2", fullName: "User Two", email: null };
       const em = {
-        find: jest.fn(async (entity: unknown) =>
-          entity === RequestEntity ? requests : [],
-        ),
+        find: jest.fn(async (entity: unknown) => {
+          if (entity === RequestEntity) return requests;
+          if (entity === UserEntity) return [assignee];
+          // The assignee is on engagement e1's team.
+          if (entity === EngagementTeamMemberEntity)
+            return [{ engagement: { id: "e1" }, user: { id: "u2" } }];
+          return [];
+        }),
         findOne: jest.fn(async (entity: unknown) => {
           if (entity === RequestStatusEntity) return status;
           if (entity === RequestEntity) return requests[0];

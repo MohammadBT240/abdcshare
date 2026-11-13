@@ -23,9 +23,9 @@ export const PERMISSION_GROUPS: { area: string; items: PermissionRow[] }[] = [
       { permission: 'engagement:transition', label: 'Move an engagement between stages (only on engagements you created)' },
       { permission: 'request:view', label: 'See requests' },
       { permission: 'request:create', label: 'Raise requests' },
-      { permission: 'request:update', label: 'Attach or replace a request’s brief' },
-      { permission: 'request:update', alsoNeeds: ['catalogue:view'], label: 'Edit requests and change their stage or status' },
-      { permission: 'request:assign', alsoNeeds: ['catalogue:view'], label: 'Assign requests' },
+      { permission: 'request:update', label: 'Edit requests, change their status and attach a brief (staff: on their engagements)' },
+      { permission: 'request:assign', label: 'Assign requests to people on the engagement team' },
+      { permission: 'request:delete', label: 'Delete a request the client hasn’t sent anything for' },
     ],
   },
   {

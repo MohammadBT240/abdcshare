@@ -26,6 +26,7 @@ export const PERMISSIONS = [
   'request:create',
   'request:update',
   'request:assign',
+  'request:delete', // Super Admin: delete a request nothing has been sent or linked to
   'request:view',
   // documents (split upload per category)
   'working-paper:upload',
@@ -76,7 +77,7 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
   'Super Admin': [
     ...ALL_VIEW, 'user:view', 'client:manage', 'client:view', 'catalogue:view', 'reference-data:view', 'company-profile:view',
     'engagement:create', 'engagement:update', 'engagement:transition',
-    'request:create', 'request:update', 'request:assign',
+    'request:create', 'request:update', 'request:assign', 'request:delete',
     'working-paper:upload', 'final-report:upload', 'document:delete', 'document:export',
     'submission:review', 'discussion:participate',
     'review:decide', 'review:signoff', 'report-review:manage', 'help:manage',

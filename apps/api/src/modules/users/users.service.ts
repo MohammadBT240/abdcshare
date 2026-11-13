@@ -326,6 +326,12 @@ export class UsersService {
     return this.update(id, { isActive: false });
   }
 
+  /** A client was deactivated: sign all its contacts out everywhere. */
+  async endSessionsForClient(clientId: string): Promise<void> {
+    const contacts = await this.em.find(UserEntity, { client: clientId }, { fields: ['id'] });
+    for (const c of contacts) await this.tokens.revokeAllForUser(c.id);
+  }
+
   /**
    * Admin password reset (B-4): mint a new temporary password, force change on next
    * login, revoke sessions, and email credentials via the existing `user.created` worker path.
