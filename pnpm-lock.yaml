@@ -489,13 +489,13 @@ importers:
       '@abdcshare/shared':
         specifier: workspace:*
         version: link:../shared
+      '@mikro-orm/core':
+        specifier: ^6.6.16
+        version: 6.6.16
     devDependencies:
       '@abdcshare/config':
         specifier: workspace:*
         version: link:../config
-      '@mikro-orm/core':
-        specifier: ^6.6.16
-        version: 6.6.16
       eslint:
         specifier: ^9.18.0
         version: 9.39.5(jiti@1.21.7)(supports-color@10.2.2)

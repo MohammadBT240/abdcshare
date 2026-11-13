@@ -58,4 +58,6 @@ COPY --from=builder /repo/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /repo/packages/persistence/dist ./packages/persistence/dist
 COPY --from=builder /repo/apps/worker/dist ./apps/worker/dist
 WORKDIR /repo/apps/worker
+# Fail the image build, not the deploy, if a runtime dependency is missing from the --prod install.
+RUN node -e "require('@abdcshare/persistence')"
 CMD ["node", "dist/main.js"]

@@ -12,14 +12,11 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@abdcshare/shared": "workspace:*"
-  },
-  "peerDependencies": {
+    "@abdcshare/shared": "workspace:*",
     "@mikro-orm/core": "^6.6.16"
   },
   "devDependencies": {
     "@abdcshare/config": "workspace:*",
-    "@mikro-orm/core": "^6.6.16",
     "eslint": "^9.18.0",
     "typescript": "^5.7.3"
   }
