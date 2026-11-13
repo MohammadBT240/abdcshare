@@ -19,6 +19,9 @@ import {
 } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/data/empty-state';
 import { ConfirmDialog } from '@/components/forms/confirm-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { HelpFeedbackPanel } from './help-feedback-panel';
+import { HelpTip } from './help-tip';
 import {
   useCreateHelpCategory,
   useDeleteHelpArticle,
@@ -59,7 +62,8 @@ export function HelpAdminPage() {
             and marked <strong>Edited</strong> — use Restore default to go back to the shipped text.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <HelpTip slug="help-content" />
           <Button
             type="button"
             variant="outline"
@@ -85,6 +89,15 @@ export function HelpAdminPage() {
         </div>
       </div>
 
+      <Tabs defaultValue="articles" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="articles">Articles</TabsTrigger>
+          <TabsTrigger value="feedback">Reader feedback</TabsTrigger>
+        </TabsList>
+        <TabsContent value="feedback" className="mt-0">
+          <HelpFeedbackPanel />
+        </TabsContent>
+        <TabsContent value="articles" className="mt-0 space-y-8">
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Categories</h2>
         <div className="flex gap-2">
@@ -235,6 +248,8 @@ export function HelpAdminPage() {
           </div>
         )}
       </section>
+        </TabsContent>
+      </Tabs>
 
       <ConfirmDialog
         open={Boolean(restoreTarget)}

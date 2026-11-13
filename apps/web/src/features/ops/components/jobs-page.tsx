@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BffClientError, bffApi } from '@/lib/bff/client';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 interface JobsOverview {
   queue: { name: string; connected: boolean; counts: Record<string, number> | null };
@@ -67,9 +68,12 @@ export function JobsPage() {
           { label: 'Background jobs', href: '/admin/jobs' },
         ]}
         actions={
-          <Button type="button" variant="outline" onClick={() => void data.refetch()} disabled={data.isFetching}>
+          <div className="flex flex-wrap items-center gap-2">
+            <HelpTip slug="background-jobs" />
+            <Button type="button" variant="outline" onClick={() => void data.refetch()} disabled={data.isFetching}>
             <IconRefresh className="mr-1.5 h-4 w-4" aria-hidden /> Refresh
           </Button>
+          </div>
         }
       />
       {data.isPending ? (

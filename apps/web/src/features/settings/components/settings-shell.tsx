@@ -9,6 +9,7 @@ import {
   isSettingsSectionActive,
 } from '@/features/settings/settings-sections';
 import { cn } from '@/lib/utils';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 interface SettingsShellProps {
   children: React.ReactNode;
@@ -45,6 +46,7 @@ export function SettingsShell({ children }: SettingsShellProps) {
           { label: 'Settings' },
         ]}
         description="Manage your profile and notification preferences"
+        actions={<HelpTip slug="your-account" />}
       />
 
       <Card className="overflow-hidden border-border shadow-aca">

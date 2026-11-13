@@ -2,7 +2,7 @@ import { devices, expect, test } from '@playwright/test';
 import { bff } from '../support/library';
 import { apiAs, pageAs, shot } from './support';
 
-/** Getting started screenshots (docs/help/getting-started/*). Runs after the library tour (needs its items). */
+/** Getting started screenshots (docs/help/getting-started/*). Runs last: dashboards and search show the other tours' data. */
 test('getting started tour', async ({ browser, playwright, baseURL }) => {
   // Install the latest docs/help articles (the API also does this when it starts).
   const admin = await apiAs(playwright, 'manager', baseURL!);

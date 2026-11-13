@@ -66,3 +66,19 @@ export async function shot(target: Page | Locator, name: string, opts: { pad?: n
   });
   await save(file, png);
 }
+
+/** Open a searchable combobox (by its current text), search, and pick an option. */
+export async function combo(scope: Locator | Page, trigger: string | RegExp, search: string, option?: string | RegExp): Promise<void> {
+  const page = 'page' in scope && typeof (scope as Locator).page === 'function' ? (scope as Locator).page() : (scope as Page);
+  await scope.getByRole('combobox').filter({ hasText: trigger }).first().click();
+  const input = page.locator('[cmdk-input]').last();
+  await input.fill(search);
+  await page.getByRole('option', { name: option ?? search }).first().click();
+}
+
+/** Radix select (AppSelect): open by its current text and pick an option. */
+export async function choose(scope: Locator | Page, trigger: string | RegExp, option: string | RegExp): Promise<void> {
+  const page = 'page' in scope && typeof (scope as Locator).page === 'function' ? (scope as Locator).page() : (scope as Page);
+  await scope.getByRole('combobox').filter({ hasText: trigger }).first().click();
+  await page.getByRole('option', { name: option }).first().click();
+}

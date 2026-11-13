@@ -153,6 +153,11 @@ export class TokenService {
     if (row.expiresAt.getTime() < Date.now()) {
       throw new UnauthorizedException('Refresh token expired');
     }
+    if (!row.user.isActive) {
+      // Deactivated since sign-in: end the session rather than minting fresh tokens.
+      await this.em.nativeUpdate(RefreshTokenEntity, { familyId: row.familyId, revokedAt: null }, { revokedAt: new Date() });
+      throw new UnauthorizedException('Account is inactive');
+    }
 
     row.revokedAt = new Date();
     await this.em.flush();

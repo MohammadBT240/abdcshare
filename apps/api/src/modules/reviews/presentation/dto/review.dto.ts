@@ -40,6 +40,10 @@ export class ReviewResponseDto {
   @ApiPropertyOptional() notes?: string | null;
   @ApiProperty() submittedAt!: Date;
   @ApiPropertyOptional() decidedAt?: Date | null;
+  @ApiPropertyOptional({ description: 'Request type name, or document title.' }) itemTitle?: string | null;
+  @ApiPropertyOptional() engagementId?: string | null;
+  @ApiPropertyOptional() engagementTitle?: string | null;
+  @ApiPropertyOptional() engagementReference?: string | null;
 }
 
 export class ReviewListResponseDto {

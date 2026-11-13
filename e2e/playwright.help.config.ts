@@ -7,7 +7,7 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './help',
-  testMatch: /\.tour\.ts$/, // files run in name order: 01-library first, later tours reuse its data
+  testMatch: /\.tour\.ts$/, // files run in name order and later tours reuse earlier data
   timeout: 300_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
@@ -22,5 +22,7 @@ export default defineConfig({
     deviceScaleFactor: 2,
     colorScheme: 'light',
     trace: 'retain-on-failure',
+    actionTimeout: 15_000,
+    screenshot: 'only-on-failure',
   },
 });

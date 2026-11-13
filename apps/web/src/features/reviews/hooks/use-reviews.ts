@@ -19,6 +19,11 @@ export interface Review {
   notes?: string | null;
   submittedAt: string;
   decidedAt?: string | null;
+  /** Request type name, or the document title. */
+  itemTitle?: string | null;
+  engagementId?: string | null;
+  engagementTitle?: string | null;
+  engagementReference?: string | null;
 }
 
 export interface ReviewListResponse {

@@ -25,6 +25,7 @@ import {
   useDeleteCompanyProfile,
   type CompanyProfileRecord,
 } from '@/features/company-profiles/hooks/use-company-profiles';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 function CompanyProfilesPageInner() {
   const { can } = useAuthContext();
@@ -59,12 +60,15 @@ function CompanyProfilesPageInner() {
           { label: 'Company Profiles' },
         ]}
         actions={
-          canManage ? (
+          <>
+            <HelpTip slug="company-profiles" />
+            {canManage ? (
             <Button type="button" onClick={() => setUploadOpen(true)}>
               <IconPlus className="mr-1.5 h-4 w-4" aria-hidden />
               Upload
             </Button>
-          ) : null
+          ) : null}
+          </>
         }
       />
 

@@ -5,10 +5,13 @@ import Link from 'next/link';
 import { IconCheck, IconChevronRight, IconMinus } from '@tabler/icons-react';
 import { DESIGNATION_PERMISSIONS, ROLE_NAMES, ROLE_PERMISSIONS, type Permission } from '@abdcshare/shared';
 import { useAuth } from '@/features/auth/hooks/use-auth';
-import { PERMISSION_GROUPS, PERMISSION_NOTES } from '@/features/help/lib/permission-labels';
+import { PERMISSION_GROUPS, PERMISSION_NOTES, type PermissionRow } from '@/features/help/lib/permission-labels';
 import { cn } from '@/lib/utils';
 
-type Column = { key: string; label: string; sub?: string; has: (p: Permission) => boolean };
+type Column = { key: string; label: string; sub?: string; has: (p: Permission) => boolean; base?: (p: Permission) => boolean };
+
+/** A designation adds to the Super Admin role, so its column checks both. */
+const saHas = (p: Permission) => ROLE_PERMISSIONS['Super Admin'].includes(p);
 
 const COLUMNS: Column[] = [
   ...ROLE_NAMES.map((r) => ({ key: r, label: r, has: (p: Permission) => ROLE_PERMISSIONS[r].includes(p) })),
@@ -17,14 +20,25 @@ const COLUMNS: Column[] = [
     label: 'Partner',
     sub: 'Super Admin +',
     has: (p: Permission) => DESIGNATION_PERMISSIONS.Partner.includes(p),
+    base: saHas,
   },
   {
     key: 'PrincipalPartner',
     label: 'Principal Partner',
     sub: 'Super Admin +',
     has: (p: Permission) => DESIGNATION_PERMISSIONS.PrincipalPartner.includes(p),
+    base: saHas,
   },
 ];
+
+/**
+ * Whether a column can do a row's action. Designation columns show only what the designation adds;
+ * extra checks (`alsoNeeds`) may be met by the Super Admin role underneath.
+ */
+function allows(c: Column, item: PermissionRow): boolean {
+  if (!c.has(item.permission)) return false;
+  return (item.alsoNeeds ?? []).every((p) => c.has(p) || Boolean(c.base?.(p)));
+}
 
 /** HC6 — generated from the same permission tables the API enforces, so it can't go stale. */
 export default function WhoCanDoWhatPage() {
@@ -73,13 +87,13 @@ export default function WhoCanDoWhatPage() {
                   </th>
                 </tr>
                 {g.items.map((item) => (
-                  <tr key={item.permission} className="border-b border-border last:border-0 hover:bg-muted/30">
+                  <tr key={[item.permission, ...(item.alsoNeeds ?? [])].join('+')} className="border-b border-border last:border-0 hover:bg-muted/30">
                     <th scope="row" className="px-4 py-2 text-left font-normal text-foreground">
                       {item.label}
                     </th>
                     {COLUMNS.map((c) => (
                       <td key={c.key} className={cn('px-2 py-2 text-center', mine.has(c.key) && 'bg-primary/5')}>
-                        {c.has(item.permission) ? (
+                        {allows(c, item) ? (
                           <IconCheck className="mx-auto h-4 w-4 text-primary" aria-label="Yes" />
                         ) : (
                           <IconMinus className="mx-auto h-3.5 w-3.5 text-muted-foreground/40" aria-label="No" />

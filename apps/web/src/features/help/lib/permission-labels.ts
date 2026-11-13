@@ -5,7 +5,15 @@ import type { Permission } from '@abdcshare/shared';
  * ROLE_PERMISSIONS / DESIGNATION_PERMISSIONS, so it can't drift from what the API enforces;
  * a unit test fails if a permission is added without a label here.
  */
-export const PERMISSION_GROUPS: { area: string; items: { permission: Permission; label: string }[] }[] = [
+export interface PermissionRow {
+  /** The permission this row describes. */
+  permission: Permission;
+  /** Other permissions the app also checks for this action (all must be held). */
+  alsoNeeds?: Permission[];
+  label: string;
+}
+
+export const PERMISSION_GROUPS: { area: string; items: PermissionRow[] }[] = [
   {
     area: 'Engagements & requests',
     items: [
@@ -15,8 +23,9 @@ export const PERMISSION_GROUPS: { area: string; items: { permission: Permission;
       { permission: 'engagement:transition', label: 'Move an engagement between stages (only on engagements you created)' },
       { permission: 'request:view', label: 'See requests' },
       { permission: 'request:create', label: 'Raise requests' },
-      { permission: 'request:update', label: 'Edit requests and change their status' },
-      { permission: 'request:assign', label: 'Assign requests and set due dates' },
+      { permission: 'request:update', label: 'Attach or replace a request’s brief' },
+      { permission: 'request:update', alsoNeeds: ['catalogue:view'], label: 'Edit requests and change their stage or status' },
+      { permission: 'request:assign', alsoNeeds: ['catalogue:view'], label: 'Assign requests' },
     ],
   },
   {
