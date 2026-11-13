@@ -20,6 +20,7 @@ import {
   type ReportReviewState,
   useClientFinalReports,
 } from '@/features/report-reviews/hooks/use-report-reviews';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 type ClientFilter = 'pending' | 'all';
 
@@ -138,6 +139,7 @@ function FinalReportsInner() {
             : 'All final reports shared with you for this engagement'
         }
         breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Final reports' }]}
+        actions={<HelpTip slug="reviewing-a-final-report" />}
       />
 
       <Tabs

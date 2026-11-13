@@ -1,0 +1,11 @@
+[Unit]
+Description=abdcshare Postgres backup ({{ compose_project_name }})
+After=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile={{ backup_env_file }}
+ExecStart={{ backup_scripts_dir }}/backup.sh
+Nice=10
+IOSchedulingClass=idle

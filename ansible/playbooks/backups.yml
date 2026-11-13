@@ -1,0 +1,81 @@
+---
+# Nightly encrypted Postgres backups to R2 + an hourly freshness check (S4).
+#
+#   ansible-playbook --ask-vault-pass --ask-become-pass -i inventory/production.ini playbooks/backups.yml
+#
+# Needs in group_vars/<group>/main.yml:  backup_name, backup_r2_bucket, backup_age_recipient
+#                     vault.yml:         vault_backup_r2_access_key_id, vault_backup_r2_secret_access_key
+#                     optional:          vault_backup_healthcheck_url, vault_backup_alert_url
+# The age PRIVATE key never goes to the server — keep it in the firm's password manager; restore
+# drills bring it to the machine running restore-drill.sh for the duration of the drill only.
+- name: Postgres backups (abdcshare)
+  hosts: all
+  become: true
+
+  vars:
+    backup_scripts_dir: "{{ deploy_dir }}/backup"
+    backup_env_file: "/etc/abdcshare/backup-{{ compose_project_name }}.env"
+    backup_unit: "abdcshare-backup-{{ compose_project_name }}"
+
+  tasks:
+    - name: Require backup settings
+      ansible.builtin.assert:
+        that:
+          - backup_name is defined and backup_name | length > 0
+          - backup_r2_bucket is defined and backup_r2_bucket | length > 0
+          - backup_age_recipient is defined and backup_age_recipient is match('^age1')
+          - vault_backup_r2_access_key_id is defined
+          - vault_backup_r2_secret_access_key is defined
+        fail_msg: "Set backup_name, backup_r2_bucket, backup_age_recipient and the vault_backup_* secrets."
+
+    - name: Install age, rclone and the Postgres client
+      ansible.builtin.apt:
+        name: [age, rclone, curl]
+        state: present
+        update_cache: true
+
+    - name: Backup env (secrets) directory
+      ansible.builtin.file:
+        path: /etc/abdcshare
+        state: directory
+        mode: "0700"
+
+    - name: Render backup env
+      ansible.builtin.template:
+        src: backup.env.j2
+        dest: "{{ backup_env_file }}"
+        mode: "0600"
+      no_log: true
+
+    - name: Make the scripts executable (synced with deploy/ by the deploy playbook)
+      ansible.builtin.file:
+        path: "{{ backup_scripts_dir }}/{{ item }}"
+        mode: "0755"
+      loop: [backup.sh, backup-check.sh, restore-drill.sh]
+
+    - name: systemd units
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "/etc/systemd/system/{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - { src: backup.service.j2, dest: "{{ backup_unit }}.service" }
+        - { src: backup.timer.j2, dest: "{{ backup_unit }}.timer" }
+        - { src: backup-check.service.j2, dest: "{{ backup_unit }}-check.service" }
+        - { src: backup-check.timer.j2, dest: "{{ backup_unit }}-check.timer" }
+
+    - name: Enable timers
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+      loop:
+        - "{{ backup_unit }}.timer"
+        - "{{ backup_unit }}-check.timer"
+
+    - name: Take a first backup now
+      ansible.builtin.systemd:
+        name: "{{ backup_unit }}.service"
+        state: started
+      when: backup_run_now | default(true) | bool

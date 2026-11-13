@@ -308,6 +308,7 @@ export class UsersService {
     if (dto.phoneNumber !== undefined) user.phoneNumber = dto.phoneNumber ?? null;
     if (dto.officialAddress !== undefined) user.officialAddress = dto.officialAddress ?? null;
     if (dto.residentialAddress !== undefined) user.residentialAddress = dto.residentialAddress ?? null;
+    const deactivating = dto.isActive === false && user.isActive;
     if (dto.isActive != null) user.isActive = dto.isActive;
 
     if (dto.roleId != null && dto.roleId !== user.role.id) {
@@ -317,11 +318,18 @@ export class UsersService {
       if (role.roleName !== SUPER_ADMIN) user.partnerDesignation = null;
     }
     await this.em.flush();
+    if (deactivating) await this.tokens.revokeAllForUser(user.id); // sign them out everywhere
     return this.toDto(user, { includeAvatar: true });
   }
 
   async deactivate(id: string): Promise<UserResponseDto> {
     return this.update(id, { isActive: false });
+  }
+
+  /** A client was deactivated: sign all its contacts out everywhere. */
+  async endSessionsForClient(clientId: string): Promise<void> {
+    const contacts = await this.em.find(UserEntity, { client: clientId }, { fields: ['id'] });
+    for (const c of contacts) await this.tokens.revokeAllForUser(c.id);
   }
 
   /**

@@ -1,6 +1,7 @@
 name: ci
 on:
-  push: { branches: [main] }
+  # staging pushes deploy (deploy-staging.yml), so they must pass CI too.
+  push: { branches: [main, staging] }
   pull_request: {}
 jobs:
   build:
@@ -15,3 +16,35 @@ jobs:
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm test
+
+  # Postgres integration tests (*.int-spec.ts): migrations, seed, then the library/ops queries
+  # against a real database (append-only trigger, keyset paging, needs-attention, transfers…).
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: abdcshare
+          POSTGRES_PASSWORD: abdcshare
+          POSTGRES_DB: abdcshare
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abdcshare" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://abdcshare:abdcshare@localhost:5432/abdcshare
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci-only-access-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-at-least-32-characters
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @abdcshare/shared --filter @abdcshare/persistence build
+      - run: pnpm --filter @abdcshare/api migration:up
+      - run: pnpm --filter @abdcshare/api seed:dev
+      - run: pnpm --filter @abdcshare/api seed:e2e
+      - run: pnpm --filter @abdcshare/api test:int

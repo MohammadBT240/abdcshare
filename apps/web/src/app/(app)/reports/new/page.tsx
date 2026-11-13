@@ -23,6 +23,7 @@ import {
   type SavePartnerReportFormValues,
 } from '@/features/partner-reports/schemas/report.schema';
 import { BffClientError, bffApi } from '@/lib/bff/client';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 function NewReportInner() {
   const router = useRouter();
@@ -86,9 +87,12 @@ function NewReportInner() {
           { label: 'New' },
         ]}
         actions={
-          <Button type="button" variant="outline" onClick={() => router.push('/reports')}>
+          <div className="flex flex-wrap items-center gap-2">
+            <HelpTip slug="writing-a-partner-report" />
+            <Button type="button" variant="outline" onClick={() => router.push('/reports')}>
             Cancel
           </Button>
+          </div>
         }
       />
       <PartnerReportForm

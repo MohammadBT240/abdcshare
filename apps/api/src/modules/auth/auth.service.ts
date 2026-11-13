@@ -41,8 +41,8 @@ export class AuthService {
    * either way — no account enumeration.
    */
   async requestPasswordReset(dto: ForgotPasswordDto): Promise<void> {
-    const user = await this.em.findOne(UserEntity, { email: dto.email.toLowerCase() });
-    if (!user || !user.isActive) return;
+    const user = await this.em.findOne(UserEntity, { email: dto.email.toLowerCase() }, { populate: ['client'] });
+    if (!user || !user.isActive || (user.client && !user.client.isActive)) return;
     const raw = randomBytes(32).toString('hex');
     const ttl = this.config.get<number>('PASSWORD_RESET_TTL', 3600);
     this.em.create(PasswordResetTokenEntity, {
@@ -91,9 +91,13 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, ipAddress?: string | null): Promise<AuthTokensDto> {
-    const user = await this.em.findOne(UserEntity, { email: dto.email.toLowerCase() }, { populate: ['role'] });
+    const user = await this.em.findOne(UserEntity, { email: dto.email.toLowerCase() }, { populate: ['role', 'client'] });
     if (!user || !user.isActive || !(await bcrypt.compare(dto.password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+    if (user.client && !user.client.isActive) {
+      // The password was right, so saying why doesn't reveal anything new.
+      throw new UnauthorizedException("Your organisation's portal access is switched off — contact the firm");
     }
     const pair = await this.tokens.issuePair({
       id: user.id,

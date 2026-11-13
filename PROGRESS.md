@@ -92,7 +92,7 @@ pnpm --filter @abdcshare/api seed:dev                    # roles/departments/cat
 # prove the async pipeline (or start everything with `pnpm dev`):
 pnpm dev          # turbo: shared watch + api :4000 + worker + web :3000
 # (or only api+worker: pnpm dev:api & pnpm dev:worker)
-curl -X POST localhost:4000/api/demo/outbox -H 'content-type: application/json' -d '{"message":"hello"}'
+# (the demo outbox endpoint was removed in S0 — exercise the pipeline through any real flow, e.g. creating a user)
 # -> worker logs "Processing user.created"; the outbox row flips Pending -> Queued -> Sent
 ```
 If the first real TS compile (`shared build` / `migration:create`) flags a type or MikroORM nit, paste it.
@@ -810,18 +810,126 @@ Spec: `docs/superpowers/specs/2026-11-12-staff-library-design.md`.
 - **Verify:** web `tsc --noEmit` clean; eslint clean on all touched files (one pre-existing warning in
   catalogue-admin-page).
 
+## S0 — Close-out and guardrails (Nov 2026) ⚠️ **has a migration** (`Migration20261112162200`)
+Plan: project doc `abdcshare/sprint-s0-plan.md`. Status: `abdcshare/sprint-s0-status.md`.
+- **Security:** demo outbox endpoint removed; Swagger off in production unless `SWAGGER_ENABLED` + basic
+  auth; production refuses default/short JWT secrets; local storage URLs HMAC-signed + expiring with
+  traversal-safe paths (`local-url-signer.ts`) and CORS for the web origin (local driver only, so browser
+  uploads work in dev); Company Profiles Office previews converted in-house (LibreOffice) — no more
+  Office Online URLs; migration backfills conversion jobs for existing Office profiles.
+- **Schema drift:** entity metadata aligned with the database (reporter/contact timestamp defaults,
+  help `visible_to_roles` default, three hand-written indexes incl. `engagement_client_contacts_one_main`).
+  `migration:create` → "No changes required".
+- **CI:** runs on push to `staging` too.
+- **E2E harness:** `e2e/` (Playwright 1.63) + `pnpm seed:e2e` personas; specs for the library visibility
+  matrix, UI upload (PDF/DOCX conversion/PNG/CSV), lifecycle (archive/restore/curator delete, edit rights),
+  admin categories, and a phone-width layout check (fixed horizontal overflow on `/library` and the viewer).
+
+## S1 — Library collections + bulk upload (Nov 2026) ⚠️ **has a migration** (`Migration20261112163259`)
+Plan: project doc `abdcshare/sprint-s1-plan.md`. Status: `abdcshare/sprint-s1-status.md`.
+- **Collections:** `library_collections` (type Training/Workshop/Conference/Project/Programme/Other, dates,
+  facilitator, venue, link, visibility incl. departments, Active/Archived) + `library_collection_items`
+  (ordered, optional section). API under `/library/collections` — list (type/year/mine/editable/status),
+  CRUD, archive/restore, curator delete (archived only), items add/remove/reorder, ZIP export (202 +
+  worker + `library.export_ready` notification; caps 200 files / 1 GB). An item can sit in many
+  collections; counts and contents only include items the viewer can see.
+- **Items:** list filter `collectionId`; create can attach to a collection + section, and inherits the
+  collection's department restriction when no visibility is given. Item DTO lists the collections it is in.
+- **Web:** Library has Items | Collections tabs; collection page (sections, reorder ↑/↓, add existing,
+  upload into, remove, download ZIP); "Several files" bulk upload (2 at a time, per-file retry reuses the
+  draft — no duplicates); item page "Part of …" + "Add to collection"; upload declaration checkbox (UI only
+  until S2 enforces it server-side).
+- **Deviations from plan:** collection search uses ILIKE (not tsvector) — volumes are small; reorder via
+  buttons rather than drag; worker builds the ZIP to a temp file before upload.
+- **Verify:** api jest 280/280; turbo typecheck+lint 14/14; e2e 16/16 (new: collections create/bulk/
+  reorder/add/ZIP, restricted collection counts, bulk retry); `migration:create` → no changes.
+
+## S2 — Library hardening, part 1 (Nov 2026) ⚠️ **has a migration** (`Migration20261112170452`) + new web dependency (`pdfjs-dist@6.4.299` — run `pnpm install`)
+Plan: project doc `abdcshare/sprint-s2-plan.md`. Status: `abdcshare/sprint-s2-status.md`.
+- **Activity log:** `library_events` (bigserial, append-only via trigger; FK set-null + title snapshot on
+  delete). Every view, download, upload, replacement, edit (changed field names), visibility change,
+  archive/restore/delete, report/resolution, collection add/remove and ZIP export is recorded with IP and
+  user agent. Mutations are staged in the same flush; reads are inserted after presigning.
+  `GET /library/items/:id/events` (keyset cursor) + `/events/summary` for uploader/curators.
+- **Declaration enforced server-side:** create needs `declaration: true`; replacing a published file needs
+  it again (confirm / multipart complete). Stored as `declared_at` / `declared_by_id`.
+- **Report + review queue:** `POST /library/items/:id/reports`; curators get `library.reported`
+  (in-app + email); `/library/review` (Open / Actioned / Dismissed, grouped by item) with Dismiss / Restrict /
+  Archive / Delete; reporters get `library.report_resolved`. Sidebar badge for curators.
+- **Licence + view-only:** `licence` (InternalUseOnly default / Licensed / FreeToShare) + note, banner and
+  card badges; `downloadable=false` → download 403 except editors, no Download buttons, ZIPs skip the item
+  (listed in `index.csv`).
+- **PDF.js viewer** replaces the iframe (self-hosted worker): continuous scroll, zoom, page count, lazy
+  rendering with canvas release; password-protected PDFs get a clear message.
+- **Tests:** new `pnpm --filter @abdcshare/api test:int` (Postgres, `*.int-spec.ts`): rollback, append-only
+  trigger, cursor paging, EXPLAIN uses the timeline index, curator recipients. e2e: report → Restrict →
+  notifications/access, Delete outcome, view-only 403 + ZIP skip, activity tab, 30-page PDF at phone width.
+- **Deviations:** mobile PDF test runs on Chromium with the iPhone 13 profile (no WebKit in the test
+  environment); integration tests are not in CI yet (needs a Postgres service — S4).
+- **Verify:** api jest 306/306; int 6/6; turbo typecheck+lint 14/14; e2e 23/23; `next build` ok;
+  `migration:create` → no changes.
+
+## S3 — Library hardening, part 2 + launch prep (Nov 2026) ⚠️ **2 migrations** (`Migration20261112173707`, `Migration20261112190000`) + worker dev deps (jest) — run `pnpm install`
+Plan: project doc `abdcshare/sprint-s3-plan.md`. Status: `abdcshare/sprint-s3-status.md`.
+- **Virus scanning (ClamAV):** every confirmed upload/replacement queues `library.scan_requested`; the worker
+  streams the object to clamd (INSTREAM, never to disk) while hashing it. `scan_status` Pending → Clean |
+  Infected | Error (3 attempts, queue backoff). Infected → `Quarantined` (curators only, object under
+  `quarantine/`, preview deleted, event logged, uploader + curators notified in-app + email). Downloads and ZIPs
+  need Clean; viewing doesn't. Worker refuses to boot in production without `CLAMD_HOST`; in dev without it,
+  files are hashed and marked Clean with a "not scanned" note. Migration queues scans for existing files.
+- **Duplicates:** browser SHA-256 → `GET /library/items/duplicates?hash=` (visible items only) → warning in the
+  single and bulk dialogs; worker stores `content_hash`; curator Duplicates view.
+- **Conversion fidelity:** worker image adds Carlito/Caladea/Liberation 2/DejaVu; failures classified into
+  `preview_error_code` (password_protected / corrupt / timeout / unknown) with specific viewer messages;
+  encrypted .docx/.xlsx/.pptx detected before LibreOffice (no 2-minute hang).
+- **Ownership + orphans:** `POST /library/admin/items|collections/:id/transfer`, `/library/admin/transfer-all`;
+  "Needs attention" (quarantined, scan errors, leavers' content, items restricted to inactive departments,
+  failed previews, open reports) as a tab of `/library/review`; department deactivation shows the impact.
+- **Launch extras:** header search (⌘K) over `/api/search`, which now includes library items + collections and
+  returns `href`s; Help article "Using the Library" (migration) + HelpTips on `/library` and the upload dialog;
+  `PageToolbar` stacks actions under the title on phones; docs (USER_STORIES epic S, ERD §12a, TRACEABILITY,
+  design spec §12, DEPLOYMENT §8c incl. clamd service + rollout checklist).
+- **Tests:** worker jest (new): clamd framing against a test double + real clamd (EICAR), failure
+  classification with password-protected fixtures, scan state machine + quarantine. API: scan/quarantine/
+  duplicates/transfer specs; Postgres int: needs-attention, department impact, transfer-all. e2e: EICAR →
+  quarantine, duplicate warning + hidden-duplicate privacy, password-protected DOCX/PDF messages, department
+  deactivation → needs attention, transfer, header search.
+- **Not done here (needs the user's infrastructure):** staging deploy, VM memory measurement for clamd (D26),
+  production go-live.
+
+## S4 — Production readiness (Nov 2026) ⚠️ new package `@abdcshare/persistence` (run `pnpm install`) + `system:jobs` permission
+Plan: project doc `abdcshare/sprint-s4-plan.md`. Status: `abdcshare/sprint-s4-status.md`.
+- **Backups:** `deploy/backup/{backup,backup-check,restore-drill}.sh` (pg_dump → age → rclone/R2, 30 daily +
+  12 monthly, manifest with row counts, 26 h freshness alert) + `ansible/playbooks/backups.yml` (systemd
+  timers). Restore drill run here: restored DB matched every recorded count; stale-backup alert and a
+  tampered file both caught.
+- **Deploy access:** CI uses `DEPLOY_SSH_KEY` (+ optional `DEPLOY_KNOWN_HOSTS` for strict host keys) and
+  falls back to the password with a warning; `ansible/playbooks/deploy_key.yml` installs the key and turns
+  off password logins for the deploy user only.
+- **Monitoring:** `GET /api/health/ops` (503 when degraded: outbox backlog / failed / stuck-in-Queued,
+  Redis, clamd, signature age); `/admin/jobs` page for Platform Admins (queue counts, failed jobs, failed or
+  stuck outbox rows with an audited Re-drive, clamd status). Worker: exports for deleted collections are
+  skipped instead of failing 5 times.
+- **Shared persistence:** `packages/persistence` holds `OutboxEntity` (API re-exports it for discovery) and
+  `NotificationDeliveryEntity` (worker's email-sent update, no raw SQL). Dockerfiles copy the package.
+- **Worker tests (real):** consumer routing/idempotency/failure sealing/email marking, preview mapping incl.
+  the library stale-file guard + error codes + a real LibreOffice conversion (skipped where soffice is
+  missing), ZIP export (order, sections, view-only/unscanned skips, deleted collection), clamd framing, scan
+  state machine. CI runs them via `pnpm test`; a new CI `integration` job runs the Postgres int tests
+  (migrations from scratch → seed → `test:int`), verified locally on a fresh database.
+- **Not done here (needs your infrastructure):** installing the timers and key on the VM, rotating the
+  deploy password, choosing an uptime monitor, the first production restore drill.
+
 ## Pending / next
-1. **Partner Reports web** — list/create/edit/submit (Partner/Guest), Chairman inbox + review, invite flow;
-   replace sidebar `#` stub.
-2. **Global search UI** — header/command search over scoped `GET /api/search`.
-3. **Land `feature/engagement-UI`** — commit remaining Documents-tab + sidebar cleanup; smoke staff↔client
-   loop; open PR when ready.
-4. **v1 hardening (Phase 5)** — authz matrix pass, empty/error/a11y polish, observability; API e2e
-   (Supertest + live DB) — unit specs ~22 files.
-6. **Extract shared persistence** — worker still duplicates `outbox.entity.ts`; notifications
-   `email_sent` update uses raw SQL to avoid duplicating the entity.
-7. **Data note:** legacy `Auditor` role label should already be filtered in seed; confirm roles API
-   returns `Staff`.
+1. **Library launch** (needs the VM): staging rollout with clamd, memory check for two clamd containers
+   (D26), production go-live — DEPLOYMENT §8c.
+2. **Ops on the VM**: run `playbooks/backups.yml` and `playbooks/deploy_key.yml`, add the GitHub secrets,
+   rotate the deploy password, point an uptime monitor at `/api/health/ops` — DEPLOYMENT §8d–8f.
+3. **Library S5–S8** (planned in the project: superseded editions, links & recordings, restricted-access
+   log and activity reports, custom roles/RBAC).
+4. **v1 hardening (Phase 5)** — authz matrix pass across the non-library modules, empty/error/a11y polish;
+   API e2e for engagements/requests/documents (the library has Playwright + Postgres coverage).
+5. **Log shipping** — container logs stay on the VM (DEPLOYMENT §9).
 
 ## Open decisions still outstanding
 - Hosting/runtime, realtime vs polling, legacy data migration scope.

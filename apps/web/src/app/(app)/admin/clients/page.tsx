@@ -39,6 +39,7 @@ import {
 } from '@/features/clients/hooks/use-clients';
 import { useLookup } from '@/features/users/hooks/use-users';
 import { BffClientError } from '@/lib/bff/client';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 function ClientsListInner() {
   const router = useRouter();
@@ -168,12 +169,15 @@ function ClientsListInner() {
           { label: 'Clients' },
         ]}
         actions={
-          canManage ? (
+          <>
+            <HelpTip slug="clients-and-contacts" />
+            {canManage ? (
             <Button type="button" size="sm" onClick={() => setAddOpen(true)}>
               <IconPlus className="h-4 w-4" />
               Add Client
             </Button>
-          ) : null
+          ) : null}
+          </>
         }
       />
       <AddClientDialog open={addOpen} onOpenChange={setAddOpen} />

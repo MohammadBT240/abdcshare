@@ -1,7 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { RawQueryFragment } from '@mikro-orm/core';
 import { HelpService } from './help.service';
-import { HelpArticleEntity } from './infrastructure/persistence/help-article.entity';
 import { HelpCategoryEntity } from './infrastructure/persistence/help-category.entity';
 
 function buildStorage() {
@@ -25,29 +23,10 @@ function buildEm(overrides: Partial<Record<string, unknown>> = {}) {
   return em;
 }
 
-/**
- * Stands in for Postgres: applies the raw `visible_to_roles` fragment the service pushes
- * into its where clause, so fixtures are filtered the way the database filters them —
- * i.e. *before* any LIMIT. If the service ever stops pushing the fragment down, no
- * filtering happens here and the role-scoping assertions below fail.
- */
-function applyVisibilityFragment<T extends { visibleToRoles: string[] }>(
-  where: Record<string, unknown>,
-  rows: T[],
-): T[] {
-  const rawKey = Object.keys(where).find((k) => k.startsWith('[raw]:'));
-  if (!rawKey) return rows;
-  const fragment = RawQueryFragment.getKnownFragment(rawKey);
-  const roles = JSON.parse(String(fragment?.params?.[0] ?? '[]')) as string[];
-  return rows.filter(
-    (r) => r.visibleToRoles.length === 0 || r.visibleToRoles.some((role) => roles.includes(role)),
-  );
-}
-
 describe('HelpService categories', () => {
   it('creates a category', async () => {
     const em = buildEm();
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     const result = await service.createCategory({ name: 'Engagements', slug: 'engagements', order: 1 });
 
@@ -57,7 +36,7 @@ describe('HelpService categories', () => {
 
   it('rejects a duplicate slug on create', async () => {
     const em = buildEm({ findOne: jest.fn(async () => ({ id: 'cat-1' })) });
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     await expect(
       service.createCategory({ name: 'Engagements', slug: 'engagements' }),
@@ -70,7 +49,7 @@ describe('HelpService categories', () => {
         throw new NotFoundException('Help category not found');
       }),
     });
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     await expect(service.updateCategory('missing', { name: 'X' })).rejects.toBeInstanceOf(
       NotFoundException,
@@ -82,7 +61,7 @@ describe('HelpService categories', () => {
       findOneOrFail: jest.fn(async () => ({ id: 'cat-1' })),
       count: jest.fn(async () => 3),
     });
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     await expect(service.deleteCategory('cat-1')).rejects.toBeInstanceOf(ConflictException);
     expect(em.removeAndFlush).not.toHaveBeenCalled();
@@ -90,7 +69,7 @@ describe('HelpService categories', () => {
 
   it('deletes an empty category', async () => {
     const em = buildEm({ findOneOrFail: jest.fn(async () => ({ id: 'cat-1' })) });
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     await service.deleteCategory('cat-1');
     expect(em.removeAndFlush).toHaveBeenCalled();
@@ -117,11 +96,10 @@ describe('HelpService articles', () => {
 
   const clientUser = { userId: 'u-1', role: 'Client' as const, partnerDesignation: null };
   const platformAdmin = { userId: 'u-2', role: 'Platform Admin' as const, partnerDesignation: null };
-  const staffUser = { userId: 'u-3', role: 'Staff' as const, partnerDesignation: null };
 
   it('hides a draft article from a non-manager role by slug', async () => {
     const em = buildEm({ findOne: jest.fn(async () => article({ status: 'draft' })) });
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     await expect(service.getArticleBySlug('how-to-raise-a-request', clientUser)).rejects.toThrow(
       NotFoundException,
@@ -130,7 +108,7 @@ describe('HelpService articles', () => {
 
   it('shows a draft article to a help:manage role by slug', async () => {
     const em = buildEm({ findOne: jest.fn(async () => article({ status: 'draft' })) });
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     const result = await service.getArticleBySlug('how-to-raise-a-request', platformAdmin);
     expect(result.status).toBe('draft');
@@ -140,7 +118,7 @@ describe('HelpService articles', () => {
     const em = buildEm({
       findOne: jest.fn(async () => article({ visibleToRoles: ['Staff', 'Super Admin'] })),
     });
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     await expect(service.getArticleBySlug('how-to-raise-a-request', clientUser)).rejects.toThrow(
       NotFoundException,
@@ -151,7 +129,7 @@ describe('HelpService articles', () => {
     const em = buildEm({
       findOne: jest.fn(async () => article({ visibleToRoles: ['Client'] })),
     });
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     const result = await service.getArticleBySlug('how-to-raise-a-request', clientUser);
     expect(result.slug).toBe('how-to-raise-a-request');
@@ -159,65 +137,69 @@ describe('HelpService articles', () => {
 
   it('returns a draft article by id on the authoring route', async () => {
     const em = buildEm({ findOne: jest.fn(async () => article({ status: 'draft' })) });
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     const result = await service.getArticleByIdAdmin('art-1');
     expect(result).toMatchObject({ id: 'art-1', slug: 'how-to-raise-a-request', status: 'draft' });
   });
 
   it('throws NotFoundException fetching an unknown article id on the authoring route', async () => {
-    const service = new HelpService(buildEm() as never, buildStorage() as never);
+    const service = new HelpService(buildEm() as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     await expect(service.getArticleByIdAdmin('missing')).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('search restricts the query to published articles matching the term', async () => {
-    const em = buildEm({ find: jest.fn(async () => [article()]) });
-    const service = new HelpService(em as never, buildStorage() as never);
+  it('searches with prefix-matched terms, scoped to the viewer in SQL (role + designation)', async () => {
+    const execute = jest.fn(async () => [
+      { id: 'a1', slug: 'raise', title: 'Raise', summary: null, category: 'Requests', snippet: 'how to ⟦raise⟧ a request' },
+    ]);
+    const service = new HelpService(buildEm({ execute }) as never, buildStorage() as never, { sync: jest.fn() } as never);
 
-    const results = await service.searchArticles('raise', clientUser);
-    expect(em.find).toHaveBeenCalledWith(
-      HelpArticleEntity,
-      expect.objectContaining({
-        status: 'published',
-        $or: [{ title: { $ilike: '%raise%' } }, { bodyText: { $ilike: '%raise%' } }],
-      }),
-      expect.anything(),
-    );
-    expect(results).toHaveLength(1);
+    const results = await service.searchArticles('Raise req', { userId: 'u', role: 'Super Admin', partnerDesignation: 'Partner' });
+    const [sql, params] = execute.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toContain("a.status = 'published'");
+    expect(params[0]).toBe('raise:* & req:*');
+    expect(params).toEqual(expect.arrayContaining(['["Super Admin"]', '["Partner"]']));
+    expect(results).toEqual([
+      { id: 'a1', slug: 'raise', title: 'Raise', summary: null, category: 'Requests', snippet: 'how to ⟦raise⟧ a request' },
+    ]);
+  });
+
+  it('falls back to ILIKE when full-text search finds nothing, escaping wildcards', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'a1', slug: 's', title: '100% done', summary: null, category: 'C', snippet: null }]);
+    const service = new HelpService(buildEm({ execute }) as never, buildStorage() as never, { sync: jest.fn() } as never);
+
+    const results = await service.searchArticles('100%', clientUser);
+    const [sql, params] = execute.mock.calls[1] as [string, unknown[]];
+    expect(sql).toContain('ilike');
+    expect(params[0]).toBe('%100\\%%');
+    expect(results[0]?.snippet).toBeNull();
   });
 
   it('returns no search results for an empty query instead of every published article', async () => {
     const em = buildEm({ find: jest.fn(async () => [article()]) });
-    const service = new HelpService(em as never, buildStorage() as never);
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     expect(await service.searchArticles('', clientUser)).toEqual([]);
     expect(await service.searchArticles('   ', clientUser)).toEqual([]);
     expect(em.find).not.toHaveBeenCalled();
   });
 
-  it('excludes role-mismatched articles from search inside the query, not after the limit', async () => {
-    const rows = [
-      article(),
-      article({
-        id: 'art-2',
-        slug: 'staff-runbook',
-        title: 'Staff runbook',
-        visibleToRoles: ['Staff'],
-      }),
-    ];
-    const em = buildEm({
-      find: jest.fn(async (_entity: unknown, where: Record<string, unknown>) =>
-        applyVisibilityFragment(where, rows as never),
-      ),
-    });
-    const service = new HelpService(em as never, buildStorage() as never);
+  it('lists designation-scoped articles only for that designation', async () => {
+    const cat = { id: 'c', name: 'Partner reports', slug: 'partner-reports', order: 0, icon: null };
+    const rows = [article({ id: 'p', slug: 'writing-a-report', category: cat, visibleToRoles: ['Partner', 'Guest'] })];
+    const em = buildEm({ find: jest.fn(async (entity: unknown) => (entity === HelpCategoryEntity ? [cat] : rows)) });
+    const service = new HelpService(em as never, buildStorage() as never, { sync: jest.fn() } as never);
 
-    const forClient = await service.searchArticles('a', clientUser);
-    expect(forClient.map((a) => a.slug)).toEqual(['how-to-raise-a-request']);
-
-    const forStaff = await service.searchArticles('a', staffUser);
-    expect(forStaff.map((a) => a.slug)).toEqual(['how-to-raise-a-request', 'staff-runbook']);
+    expect(await service.getCategoriesForViewer({ role: 'Super Admin', partnerDesignation: null })).toEqual([]);
+    expect(await service.getCategoriesForViewer({ role: 'Super Admin', partnerDesignation: 'PrincipalPartner' })).toEqual([]);
+    const forPartner = await service.getCategoriesForViewer({ role: 'Super Admin', partnerDesignation: 'Partner' });
+    expect(forPartner[0]?.articles.map((x) => x.slug)).toEqual(['writing-a-report']);
+    const forGuest = await service.getCategoriesForViewer({ role: 'Guest', partnerDesignation: null });
+    expect(forGuest).toHaveLength(1);
   });
 });
 
@@ -244,13 +226,13 @@ describe('HelpService category tree', () => {
   }
 
   it('hides a category whose only articles are scoped to other roles', async () => {
-    const service = new HelpService(buildTreeEm() as never, buildStorage() as never);
+    const service = new HelpService(buildTreeEm() as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     expect(await service.getCategoriesForViewer(clientUser)).toEqual([]);
   });
 
   it('shows the category and its article to a matching role', async () => {
-    const service = new HelpService(buildTreeEm() as never, buildStorage() as never);
+    const service = new HelpService(buildTreeEm() as never, buildStorage() as never, { sync: jest.fn() } as never);
 
     const tree = await service.getCategoriesForViewer(staffUser);
     expect(tree).toHaveLength(1);
@@ -263,7 +245,7 @@ describe('HelpService images', () => {
   it('rejects a non-image content type', async () => {
     const em = buildEm();
     const storage = { upload: jest.fn(), presignDownload: jest.fn() };
-    const service = new HelpService(em as never, storage as never);
+    const service = new HelpService(em as never, storage as never, { sync: jest.fn() } as never);
 
     await expect(
       service.uploadImage({ fileName: 'x.pdf', contentType: 'application/pdf', data: 'abc' }),
@@ -273,7 +255,7 @@ describe('HelpService images', () => {
   it('rejects an image over 5 MB', async () => {
     const em = buildEm();
     const storage = { upload: jest.fn(), presignDownload: jest.fn() };
-    const service = new HelpService(em as never, storage as never);
+    const service = new HelpService(em as never, storage as never, { sync: jest.fn() } as never);
     const big = Buffer.alloc(6 * 1024 * 1024).toString('base64');
 
     await expect(
@@ -287,7 +269,7 @@ describe('HelpService images', () => {
       upload: jest.fn(async () => ({ storageKey: 'help-images/abc.png' })),
       presignDownload: jest.fn(),
     };
-    const service = new HelpService(em as never, storage as never);
+    const service = new HelpService(em as never, storage as never, { sync: jest.fn() } as never);
 
     const result = await service.uploadImage({
       fileName: 'diagram.png',
@@ -324,7 +306,7 @@ describe('HelpService images', () => {
         publishedAt: new Date(),
       })),
     });
-    const service = new HelpService(em as never, storage as never);
+    const service = new HelpService(em as never, storage as never, { sync: jest.fn() } as never);
 
     const result = await service.getArticleBySlug('s', { role: 'Client', partnerDesignation: null });
 

@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   IconBooks,
+  IconChevronDown,
+  IconFlag,
+  IconFolderPlus,
   IconLayoutGrid,
   IconList,
   IconPlus,
@@ -19,17 +23,33 @@ import { useListParams } from '@/components/data/use-list-params';
 import { AppSelect } from '@/components/forms';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { BffClientError } from '@/lib/bff/client';
-import { useDepartments } from '@/features/users/hooks/use-users';
-import { useLibraryCategories, useLibraryItems, useLibraryTags } from '@/features/library/hooks/use-library';
+import {
+  useLibraryCategories,
+  useLibraryItems,
+  useLibraryReportCount,
+  useLibraryTags,
+} from '@/features/library/hooks/use-library';
+import { useLibraryDepartments } from '@/features/library/hooks/use-library';
+import { HelpTip } from '@/features/help/components/help-tip';
 import { LibraryCategoryRail, type LibraryScope } from '@/features/library/components/library-category-rail';
 import { LibraryItemCard } from '@/features/library/components/library-item-card';
 import { LibraryItemsTable } from '@/features/library/components/library-items-table';
 import { UploadLibraryItemDialog } from '@/features/library/components/upload-library-item-dialog';
 import { FILE_TYPE_OPTIONS, SORT_OPTIONS } from '@/features/library/lib/library-files';
+import { BulkUploadDialog } from '@/features/library/components/bulk-upload-dialog';
+import { CollectionFormDialog } from '@/features/library/components/collection-form-dialog';
+import { LibraryCollectionsTab } from '@/features/library/components/library-collections-tab';
+import { COLLECTION_TYPES } from '@/features/library/lib/collection-types';
 
 const PAGE_SIZE = 24;
 const THIS_YEAR = new Date().getFullYear();
@@ -46,16 +66,21 @@ export function LibraryBrowsePage() {
   const router = useRouter();
   const { can } = useAuthContext();
   const canContribute = can('library:contribute');
+  const canCurate = can('library:curate');
+  const reportCount = useLibraryReportCount(canCurate);
   const isCurator = can('library:curate');
   const { params, setParams, setSearchQueryDebounced } = useListParams({ pageSize: PAGE_SIZE });
   const [searchInput, setSearchInput] = useState(params.q);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [collectionOpen, setCollectionOpen] = useState(false);
 
   useEffect(() => setSearchInput(params.q), [params.q]);
 
   const filters = params.extra;
   const scope = parseScope(filters.scope);
   const view = filters.view === 'table' ? 'table' : 'cards';
+  const tab = filters.tab === 'collections' ? 'collections' : 'items';
   const categoryId = filters.category ?? '';
   const sort = params.sort || (params.q ? 'relevance' : 'newest');
 
@@ -77,19 +102,20 @@ export function LibraryBrowsePage() {
   }, [params.page, params.pageSize, params.q, sort, categoryId, filters, scope, isCurator]);
 
   const list = useLibraryItems(apiQuery);
+  // (collections tab fetches its own list)
   const categories = useLibraryCategories();
-  const departments = useDepartments();
+  const departments = useLibraryDepartments();
   const popularTags = useLibraryTags('', !filters.tag);
 
   const setFilter = (key: string, value: string | undefined) => setParams({ extra: { [key]: value || undefined } });
   const hasFilters = Boolean(
-    params.q || categoryId || filters.department || filters.type || filters.year || filters.tag,
+    params.q || categoryId || filters.department || filters.type || filters.year || filters.tag || filters.ctype,
   );
   const clearFilters = () => {
     setSearchInput('');
     setParams({
       q: '',
-      extra: { category: undefined, department: undefined, type: undefined, year: undefined, tag: undefined },
+      extra: { category: undefined, department: undefined, type: undefined, year: undefined, tag: undefined, ctype: undefined },
     });
   };
 
@@ -106,30 +132,78 @@ export function LibraryBrowsePage() {
         description="Reports, research papers and materials shared across the firm."
         breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Library' }]}
         actions={
-          canContribute ? (
-            <Button type="button" onClick={() => setUploadOpen(true)}>
-              <IconPlus className="mr-1.5 h-4 w-4" aria-hidden />
-              Upload
-            </Button>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <HelpTip slug="using-the-library" />
+            {canCurate ? (
+              <Button asChild type="button" variant="outline">
+                <Link href="/library/review">
+                  <IconFlag className="mr-1.5 h-4 w-4" aria-hidden />
+                  Review queue
+                  {reportCount.data?.open ? (
+                    <span className="ml-1.5 rounded-full bg-amber-300/90 px-1.5 text-[10px] font-semibold text-amber-950">
+                      {reportCount.data.open}
+                    </span>
+                  ) : null}
+                </Link>
+              </Button>
+            ) : null}
+            {canContribute ? (
+              <Button type="button" variant="outline" onClick={() => setCollectionOpen(true)}>
+                <IconFolderPlus className="mr-1.5 h-4 w-4" aria-hidden />
+                New collection
+              </Button>
+            ) : null}
+            {canContribute ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button">
+                    <IconPlus className="mr-1.5 h-4 w-4" aria-hidden />
+                    Upload
+                    <IconChevronDown className="ml-1 h-4 w-4" aria-hidden />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onSelect={() => setUploadOpen(true)}>One file</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setBulkOpen(true)}>Several files</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[13.5rem_minmax(0,1fr)]">
-        <aside>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[13.5rem_minmax(0,1fr)]">
+        <aside className="min-w-0">
           <LibraryCategoryRail
             categories={categories.data ?? []}
             categoryId={categoryId}
             scope={scope}
             onCategory={(id) => setFilter('category', id)}
             onScope={(s) => setFilter('scope', s === 'all' ? undefined : s)}
+            showCategories={tab === 'items'}
           />
         </aside>
 
         <section aria-labelledby="library-heading" className="min-w-0">
+          <div role="tablist" aria-label="Library view" className="mb-3 inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
+            {(['items', 'collections'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={tab === t}
+                onClick={() => setParams({ extra: { tab: t === 'items' ? undefined : t } })}
+                className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                  tab === t ? 'bg-card font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t === 'items' ? 'Items' : 'Collections'}
+              </button>
+            ))}
+          </div>
           <FilterBar
             actions={
-              <ToggleGroup
+              tab === 'collections' ? null : <ToggleGroup
                 type="single"
                 value={view}
                 onValueChange={(v) => v && setFilter('view', v === 'cards' ? undefined : v)}
@@ -144,7 +218,7 @@ export function LibraryBrowsePage() {
               </ToggleGroup>
             }
           >
-            <div className="relative min-w-[12rem] flex-1 basis-56 sm:max-w-md">
+            <div className="relative min-w-[10rem] flex-1 basis-56 sm:max-w-sm">
               <IconSearch
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
                 aria-hidden
@@ -155,7 +229,7 @@ export function LibraryBrowsePage() {
                   setSearchInput(e.target.value);
                   setSearchQueryDebounced(e.target.value);
                 }}
-                placeholder="Search titles, authors, tags…"
+                placeholder={tab === 'collections' ? 'Search collections…' : 'Search titles, authors, tags…'}
                 className="h-9 pl-9"
                 aria-label="Search the library"
               />
@@ -172,7 +246,19 @@ export function LibraryBrowsePage() {
                 onValueChange={(v) => setFilter('scope', v === 'all' ? undefined : v)}
               />
             </div>
-            <div className="w-40">
+            {tab === 'collections' ? (
+              <div className="w-36">
+                <AppSelect
+                  size="sm"
+                  options={[{ value: '', label: 'Any kind' }, ...COLLECTION_TYPES.map((t) => ({ value: t.value, label: t.label }))]}
+                  value={filters.ctype ?? ''}
+                  onValueChange={(v) => setFilter('ctype', v)}
+                />
+              </div>
+            ) : null}
+            {tab === 'items' ? (
+            <>
+            <div className="w-44">
               <AppSelect
                 size="sm"
                 options={[
@@ -192,7 +278,9 @@ export function LibraryBrowsePage() {
                 onValueChange={(v) => setFilter('type', v)}
               />
             </div>
-            <div className="w-28">
+            </>
+            ) : null}
+            <div className="w-32">
               <AppSelect
                 size="sm"
                 options={YEAR_OPTIONS}
@@ -200,16 +288,35 @@ export function LibraryBrowsePage() {
                 onValueChange={(v) => setFilter('year', v)}
               />
             </div>
-            <div className="w-40">
-              <AppSelect
-                size="sm"
-                options={SORT_OPTIONS.filter((o) => o.value !== 'relevance' || params.q)}
-                value={sort}
-                onValueChange={(v) => setParams({ sort: v })}
-              />
-            </div>
+            {tab === 'items' ? (
+              <div className="w-40">
+                <AppSelect
+                  size="sm"
+                  options={SORT_OPTIONS.filter((o) => o.value !== 'relevance' || params.q)}
+                  value={sort}
+                  onValueChange={(v) => setParams({ sort: v })}
+                />
+              </div>
+            ) : null}
           </FilterBar>
 
+          {tab === 'collections' ? (
+            <LibraryCollectionsTab
+              q={params.q}
+              scope={scope}
+              type={filters.ctype ?? ''}
+              year={filters.year ?? ''}
+              page={params.page}
+              pageSize={params.pageSize}
+              isCurator={isCurator}
+              canContribute={canContribute}
+              onPage={(page) => setParams({ page })}
+              onPageSize={(pageSize) => setParams({ pageSize, page: 1 })}
+              onNew={() => setCollectionOpen(true)}
+              onClear={clearFilters}
+            />
+          ) : (
+          <>
           <div className="mb-3 flex min-h-7 flex-wrap items-center gap-2">
             <h2 id="library-heading" className="mr-1 text-sm font-semibold text-foreground">
               {heading}
@@ -326,6 +433,8 @@ export function LibraryBrowsePage() {
               ) : null}
             </>
           )}
+          </>
+          )}
         </section>
       </div>
 
@@ -334,6 +443,8 @@ export function LibraryBrowsePage() {
         onOpenChange={setUploadOpen}
         defaultCategoryId={categoryId || undefined}
       />
+      <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} />
+      <CollectionFormDialog open={collectionOpen} onOpenChange={setCollectionOpen} />
     </div>
   );
 }

@@ -46,6 +46,7 @@ import {
 } from "@/features/requests/lib/request-tabs";
 import { BffClientError } from "@/lib/bff/client";
 import { cn } from "@/lib/utils";
+import { HelpTip } from "@/features/help/components/help-tip";
 
 const TAB_ICONS: Record<RequestDetailTab, ReactNode> = {
   overview: <IconLayoutDashboard />,
@@ -71,12 +72,13 @@ function RequestDetailInner({ id }: { id: string }) {
   const [discussFile, setDiscussFile] = useState<DiscussFileSeed | null>(null);
   const workspace = useEngagementWorkspace(request.data?.engagementId ?? "");
 
-  /** Edit / stage / status / delete — Super Admin. */
-  const canManageRequest = can("request:update") && can("catalogue:view");
+  /** Edit / status — Staff and Super Admins; delete — Super Admins only. */
+  const canManageRequest = can("request:update");
+  const canDeleteRequest = can("request:delete");
   /** Expectation brief upload/replace/remove — staff with request:update. */
   const canManageBrief = can("request:update");
-  /** Assignees — Super Admin. */
-  const canManageAssignees = can("request:assign") && can("catalogue:view");
+  /** Assignees — Staff and Super Admins; only engagement team members can be assigned. */
+  const canManageAssignees = can("request:assign");
   /** Linked working papers — firm users only (Clients lack working-paper:upload). */
   const canViewLinkedWorkingPapers = can("working-paper:upload");
   const canSubmitReview = can("review:submit");
@@ -179,11 +181,13 @@ function RequestDetailInner({ id }: { id: string }) {
           { label: r.referenceCode },
         ]}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <HelpTip slug={canRespond ? "responding-to-a-request" : "how-requests-work"} />
+            <div className="flex items-center gap-2">
             <Button type="button" variant="outline" size="sm" asChild>
               <Link href={engagementHref}>Engagement</Link>
             </Button>
-            {canManageRequest ? (
+            {canDeleteRequest ? (
               <Button
                 type="button"
                 size="sm"
@@ -194,6 +198,7 @@ function RequestDetailInner({ id }: { id: string }) {
                 Delete
               </Button>
             ) : null}
+          </div>
           </div>
         }
       />

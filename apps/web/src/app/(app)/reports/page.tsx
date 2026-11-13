@@ -27,6 +27,7 @@ import {
   usePartnerReportDashboard,
   usePartnerReportsList,
 } from "@/features/partner-reports/hooks/use-partner-reports";
+import { HelpTip } from "@/features/help/components/help-tip";
 
 type ListTab = "awaiting" | "all" | "mine";
 
@@ -107,7 +108,9 @@ function ReportsInner() {
           { label: "Reports" },
         ]}
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <HelpTip slug="partner-reports-overview" />
+            <div className="flex flex-wrap gap-2">
             {canSeeAll ? (
               <ExportMenu
                 label={exporting ? "Exporting…" : "Export"}
@@ -131,6 +134,7 @@ function ReportsInner() {
                 New report
               </Button>
             ) : null}
+          </div>
           </div>
         }
       />

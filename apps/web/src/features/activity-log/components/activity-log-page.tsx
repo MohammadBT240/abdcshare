@@ -43,6 +43,7 @@ import {
   type ActivityLogRecord,
 } from '@/features/activity-log/types';
 import { useUsersList } from '@/features/users/hooks/use-users';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 function parseDateParam(value?: string): Date | undefined {
   if (!value) return undefined;
@@ -216,7 +217,10 @@ function ActivityLogInner() {
           { label: 'Activity log' },
         ]}
         actions={
-          <ExportMenu onExportCsv={() => void handleExport()} disabled={exporting} />
+          <div className="flex flex-wrap items-center gap-2">
+            <HelpTip slug="activity-log" />
+            <ExportMenu onExportCsv={() => void handleExport()} disabled={exporting} />
+          </div>
         }
       />
 

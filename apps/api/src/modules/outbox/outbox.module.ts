@@ -22,6 +22,6 @@ import { OUTBOX_REDIS } from './outbox.tokens';
       },
     },
   ],
-  exports: [OutboxService],
+  exports: [OutboxService, OUTBOX_REDIS],
 })
 export class OutboxModule {}

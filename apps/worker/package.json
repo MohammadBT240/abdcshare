@@ -9,9 +9,10 @@
     "start:dev": "nest start --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
-    "test": "echo 'no worker tests yet — consumer tests planned (ARCHITECTURE.md §13)'"
+    "test": "jest --passWithNoTests"
   },
   "dependencies": {
+    "@abdcshare/persistence": "workspace:*",
     "@abdcshare/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.1095.0",
     "@aws-sdk/s3-request-presigner": "^3.1095.0",
@@ -39,10 +40,13 @@
     "@abdcshare/config": "workspace:*",
     "@nestjs/cli": "^11.0.0",
     "@types/archiver": "^6.0.3",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.10.6",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.18.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
     "typescript": "^5.9.3"
   }
 }

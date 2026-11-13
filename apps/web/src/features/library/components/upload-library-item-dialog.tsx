@@ -3,9 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { FileUpload, FormDialog, FormField, LoadingButton } from '@/components/forms';
+import { AppSelect, FileUpload, FormDialog, FormField, LoadingButton } from '@/components/forms';
+import { Input } from '@/components/ui/input';
+import { useEditableCollections } from '@/features/library/hooks/use-library-collections';
 import { Button } from '@/components/ui/button';
 import { BffClientError } from '@/lib/bff/client';
+import { DeclarationCheckbox } from '@/features/library/components/declaration-checkbox';
+import { DuplicateWarning, useDuplicateCheck } from '@/features/library/components/duplicate-warning';
+import { HelpTip } from '@/features/help/components/help-tip';
 import { useUploadLibraryItem } from '@/features/library/hooks/use-library';
 import {
   EMPTY_LIBRARY_FORM,
@@ -43,6 +48,11 @@ export function UploadLibraryItemDialog({
   const [draftId, setDraftId] = useState<string | null>(null);
   const draftRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [collectionId, setCollectionId] = useState('');
+  const [section, setSection] = useState('');
+  const [declared, setDeclared] = useState(false);
+  const editable = useEditableCollections(open);
+  const duplicates = useDuplicateCheck(files[0]);
 
   function rememberDraft(id: string) {
     draftRef.current = id;
@@ -67,6 +77,9 @@ export function UploadLibraryItemDialog({
     setPercent(null);
     setDraftId(null);
     setError(null);
+    setCollectionId('');
+    setSection('');
+    setDeclared(false);
   }, [open, defaultCategoryId]);
 
   function handleOpenChange(next: boolean) {
@@ -90,7 +103,10 @@ export function UploadLibraryItemDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const file = files[0];
-    const invalid = !file ? 'Choose a file to upload' : validateLibraryForm(form);
+    const invalid = !file
+      ? 'Choose a file to upload'
+      : (validateLibraryForm(form) ??
+        (declared ? null : 'Please confirm the file contains no client-identifiable information'));
     if (invalid) {
       setError(invalid);
       return;
@@ -99,11 +115,15 @@ export function UploadLibraryItemDialog({
     try {
       setPercent(0);
       const item = await upload.mutateAsync({
-        fields: fieldsFromForm(form),
+        fields: {
+          ...fieldsFromForm(form),
+          ...(collectionId ? { collectionId, section: section.trim() || null } : {}),
+        },
         file: file!,
         draftId,
         onDraftCreated: rememberDraft,
         onProgress: setPercent,
+        declared: true,
       });
       toast.success('Added to the library', {
         description: item.title,
@@ -130,6 +150,9 @@ export function UploadLibraryItemDialog({
       maxWidthClass="sm:max-w-2xl"
       footer={
         <>
+          <span className="mr-auto">
+            <HelpTip slug="using-the-library" label="How uploading works" />
+          </span>
           <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={busy}>
             Cancel
           </Button>
@@ -151,8 +174,39 @@ export function UploadLibraryItemDialog({
             description={LIBRARY_FILE_HINT}
           />
         </FormField>
+        <DuplicateWarning checking={duplicates.checking} matches={duplicates.matches} />
 
         <LibraryItemFieldsForm value={form} onChange={setForm} disabled={busy} />
+
+        {(editable.data?.length ?? 0) > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Add to collection">
+              <AppSelect
+                options={[{ value: '', label: 'None' }, ...(editable.data ?? []).map((c) => ({ value: c.id, label: c.title }))]}
+                value={collectionId}
+                onValueChange={(v) => {
+                  setCollectionId(v);
+                  const c = editable.data?.find((x) => x.id === v);
+                  if (c?.visibility === 'Departments') {
+                    setForm((f) => ({ ...f, visibility: 'Departments', departmentIds: c.departments.map((d) => String(d.id)) }));
+                  }
+                }}
+                disabled={busy}
+              />
+            </FormField>
+            <FormField label="Section" htmlFor="upload-section" hint="Optional, e.g. “Day 1”.">
+              <Input
+                id="upload-section"
+                value={section}
+                maxLength={80}
+                disabled={busy || !collectionId}
+                onChange={(e) => setSection(e.target.value)}
+              />
+            </FormField>
+          </div>
+        ) : null}
+
+        <DeclarationCheckbox checked={declared} onChange={setDeclared} disabled={busy} />
 
         {busy && percent != null ? (
           <div className="space-y-1" aria-live="polite">

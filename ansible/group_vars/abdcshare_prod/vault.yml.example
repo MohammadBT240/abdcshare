@@ -18,3 +18,10 @@ vault_resend_api_key: ""
 # Seed profile only (first deploy): the initial Platform Admin.
 vault_seed_admin_email: ""
 vault_seed_admin_password: ""
+
+# Backups (S4): an R2 API token scoped to the backups bucket only (Object Read & Write).
+vault_backup_r2_access_key_id: ""
+vault_backup_r2_secret_access_key: ""
+# Optional: healthchecks.io-style ping URL (pinged on success, /fail on error) and an alert webhook.
+vault_backup_healthcheck_url: ""
+vault_backup_alert_url: ""

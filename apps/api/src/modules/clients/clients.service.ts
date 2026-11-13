@@ -172,6 +172,7 @@ export class ClientsService {
     }
     if (dto.email !== undefined) client.email = dto.email ?? null;
     if (dto.phoneNumber !== undefined) client.phoneNumber = dto.phoneNumber ?? null;
+    const deactivating = dto.isActive === false && client.isActive;
     if (dto.isActive != null) client.isActive = dto.isActive;
 
     if (dto.contact) {
@@ -206,6 +207,7 @@ export class ClientsService {
     }
 
     await this.em.flush();
+    if (deactivating) await this.users.endSessionsForClient(client.id); // contacts can't sign in now
     return this.toDto(client);
   }
 

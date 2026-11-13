@@ -121,8 +121,11 @@ export class CompanyProfileController {
 
   @Get(':id/preview')
   @RequirePermission('company-profile:view')
-  preview(@Param('id', ParseUUIDPipe) id: string): Promise<CompanyProfilePreviewDto> {
-    return this.companyProfile.preview(id);
+  preview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('retry') retry?: string,
+  ): Promise<CompanyProfilePreviewDto> {
+    return this.companyProfile.preview(id, { retryFailed: retry === 'true' });
   }
 
   @Get(':id')

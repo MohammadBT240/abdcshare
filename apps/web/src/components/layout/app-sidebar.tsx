@@ -13,6 +13,7 @@ import {
   IconFolderOpen,
   IconHelpCircle,
   IconHistory,
+  IconServerCog,
   IconSettings,
   IconInbox,
   IconLayoutDashboard,
@@ -28,6 +29,7 @@ import { AppSidebarSkeleton } from "@/components/skeletons";
 import { useAuthContext } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/store/useUIStore";
+import { useLibraryReportCount } from "@/features/library/hooks/use-library";
 
 interface NavItem {
   label: string;
@@ -119,6 +121,12 @@ const SECTIONS: NavSection[] = [
         permission: "audit:view",
       },
       {
+        label: "Background jobs",
+        href: "/admin/jobs",
+        icon: IconServerCog,
+        permission: "system:jobs",
+      },
+      {
         label: "Help content",
         href: "/admin/help",
         icon: IconHelpCircle,
@@ -163,6 +171,8 @@ interface SidebarPanelProps {
   onNavigate?: () => void;
   showClose?: boolean;
   onClose?: () => void;
+  /** Count pills by href (e.g. open library reports for curators). */
+  badges?: Record<string, number>;
 }
 
 function SidebarPanel({
@@ -172,6 +182,7 @@ function SidebarPanel({
   onNavigate,
   showClose,
   onClose,
+  badges,
 }: SidebarPanelProps) {
   return (
     <>
@@ -270,6 +281,22 @@ function SidebarPanel({
                     {!collapsed ? (
                       <span className="truncate">{item.label}</span>
                     ) : null}
+                    {badges?.[item.href] ? (
+                      collapsed ? (
+                        <span
+                          className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-300"
+                          aria-label={`${badges[item.href]} need attention`}
+                        />
+                      ) : (
+                        <span
+                          className="ml-auto rounded-full bg-amber-300/90 px-1.5 text-[10px] font-semibold leading-4 text-amber-950 tabular-nums"
+                          aria-label={`${badges[item.href]} need attention`}
+                          data-testid={`nav-badge-${item.href.slice(1)}`}
+                        >
+                          {badges[item.href]}
+                        </span>
+                      )
+                    ) : null}
                   </Link>
                 );
               })}
@@ -296,6 +323,9 @@ export function AppSidebar() {
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const mobileSidebarOpen = useUIStore((s) => s.mobileSidebarOpen);
   const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen);
+  const isCurator = !isPending && can("library:curate");
+  const reportCount = useLibraryReportCount(isCurator);
+  const badges = { "/library": isCurator ? (reportCount.data?.open ?? 0) : 0 };
 
   useEffect(() => {
     setMobileSidebarOpen(false);
@@ -333,6 +363,7 @@ export function AppSidebar() {
           collapsed={sidebarCollapsed}
           pathname={pathname}
           visibleSections={visibleSections}
+          badges={badges}
         />
       </aside>
 
@@ -352,6 +383,7 @@ export function AppSidebar() {
               onNavigate={closeMobile}
               showClose
               onClose={closeMobile}
+              badges={badges}
             />
           </aside>
         </div>

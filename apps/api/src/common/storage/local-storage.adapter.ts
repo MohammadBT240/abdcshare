@@ -10,6 +10,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { ConfigService } from "@nestjs/config";
 import { buildStorageKey } from "./storage-key.util";
+import { localScope, resolveUnderRoot, signLocal } from "./local-url-signer";
 import type {
   DirectUploadInput,
   MultipartCreateResult,
@@ -41,7 +42,27 @@ export class LocalStorageAdapter implements StoragePort {
     return this.config.get<string>("LOCAL_STORAGE_DIR", "./storage");
   }
 
+  /** HMAC secret for local URLs (STORAGE_SIGNING_SECRET, else the JWT access secret). */
+  signingSecret(): string {
+    return (
+      this.config.get<string>("STORAGE_SIGNING_SECRET") ||
+      this.config.get<string>("JWT_ACCESS_SECRET", "change-me-access")
+    );
+  }
+
+  private ttl(): number {
+    return this.config.get<number>("STORAGE_UPLOAD_TTL", 900);
+  }
+
+  /** Absolute path for a key, refusing traversal outside the storage root. */
+  pathFor(storageKey: string): string {
+    const full = resolveUnderRoot(this.rootDir(), storageKey);
+    if (!full) throw new Error("Invalid storage key");
+    return full;
+  }
+
   private multipartDir(uploadId: string): string {
+    if (!/^[0-9a-f-]{36}$/i.test(uploadId)) throw new Error("Invalid upload id");
     return path.join(this.rootDir(), ".multipart", uploadId);
   }
 
@@ -51,10 +72,11 @@ export class LocalStorageAdapter implements StoragePort {
 
   presignUpload(input: PresignUploadInput): Promise<PresignedUpload> {
     const storageKey = buildStorageKey(input.keyPrefix, input.fileName);
-    const expiresIn = this.config.get<number>("STORAGE_UPLOAD_TTL", 900);
+    const expiresIn = this.ttl();
+    const { exp, sig } = signLocal(this.signingSecret(), localScope.put(storageKey), expiresIn);
     return Promise.resolve({
       storageKey,
-      uploadUrl: `${this.base()}/api/storage/local/${encodeURIComponent(storageKey)}`,
+      uploadUrl: `${this.base()}/api/storage/local/${encodeURIComponent(storageKey)}?exp=${exp}&sig=${sig}`,
       method: "PUT",
       headers: { "Content-Type": input.contentType },
       expiresIn,
@@ -63,7 +85,7 @@ export class LocalStorageAdapter implements StoragePort {
 
   async upload(input: DirectUploadInput): Promise<{ storageKey: string }> {
     const storageKey = buildStorageKey(input.keyPrefix, input.fileName);
-    const filePath = path.join(this.rootDir(), storageKey);
+    const filePath = this.pathFor(storageKey);
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, input.body);
     return { storageKey };
@@ -75,6 +97,9 @@ export class LocalStorageAdapter implements StoragePort {
     options?: PresignDownloadOptions,
   ): Promise<string> {
     const params = new URLSearchParams();
+    const { exp, sig } = signLocal(this.signingSecret(), localScope.get(storageKey), this.ttl());
+    params.set("exp", String(exp));
+    params.set("sig", sig);
     if (downloadName) {
       const disposition = options?.disposition ?? "attachment";
       if (disposition === "inline") {
@@ -83,9 +108,8 @@ export class LocalStorageAdapter implements StoragePort {
         params.set("download", downloadName);
       }
     }
-    const q = params.size ? `?${params.toString()}` : "";
     return Promise.resolve(
-      `${this.base()}/api/storage/local/${encodeURIComponent(storageKey)}${q}`,
+      `${this.base()}/api/storage/local/${encodeURIComponent(storageKey)}?${params.toString()}`,
     );
   }
 
@@ -108,10 +132,15 @@ export class LocalStorageAdapter implements StoragePort {
     uploadId: string,
     partNumber: number,
   ): Promise<{ url: string }> {
-    // Local "presign" points at a part PUT endpoint on the API.
+    // Local "presign" points at a signed part PUT endpoint on the API.
+    const { exp, sig } = signLocal(
+      this.signingSecret(),
+      localScope.part(uploadId, partNumber, storageKey),
+      this.ttl(),
+    );
     const url =
       `${this.base()}/api/storage/local-multipart/${encodeURIComponent(uploadId)}` +
-      `/${partNumber}?key=${encodeURIComponent(storageKey)}`;
+      `/${partNumber}?key=${encodeURIComponent(storageKey)}&exp=${exp}&sig=${sig}`;
     return { url };
   }
 
@@ -131,7 +160,7 @@ export class LocalStorageAdapter implements StoragePort {
     for (const part of ordered) {
       chunks.push(await readFile(path.join(dir, String(part.partNumber))));
     }
-    const dest = path.join(this.rootDir(), storageKey);
+    const dest = this.pathFor(storageKey);
     await mkdir(path.dirname(dest), { recursive: true });
     await writeFile(dest, Buffer.concat(chunks));
     await rm(dir, { recursive: true, force: true });
@@ -142,12 +171,12 @@ export class LocalStorageAdapter implements StoragePort {
   }
 
   async delete(storageKey: string): Promise<void> {
-    await rm(path.join(this.rootDir(), storageKey), { force: true });
+    await rm(this.pathFor(storageKey), { force: true });
   }
 
   async head(storageKey: string): Promise<{ sizeBytes: number } | null> {
     try {
-      const s = await stat(path.join(this.rootDir(), storageKey));
+      const s = await stat(this.pathFor(storageKey));
       return { sizeBytes: s.size };
     } catch {
       return null;
@@ -155,7 +184,7 @@ export class LocalStorageAdapter implements StoragePort {
   }
 
   async getObject(storageKey: string): Promise<Buffer> {
-    return readFile(path.join(this.rootDir(), storageKey));
+    return readFile(this.pathFor(storageKey));
   }
 
   async getObjectRange(
@@ -164,7 +193,7 @@ export class LocalStorageAdapter implements StoragePort {
     endInclusive: number,
   ): Promise<Buffer> {
     const { open } = await import("node:fs/promises");
-    const filePath = path.join(this.rootDir(), storageKey);
+    const filePath = this.pathFor(storageKey);
     const length = endInclusive - start + 1;
     if (length <= 0) throw new Error("Invalid byte range");
     const fh = await open(filePath, "r");

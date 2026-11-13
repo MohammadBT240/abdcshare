@@ -136,6 +136,60 @@ export class RequestsService {
     return request;
   }
 
+  /**
+   * Only active people on the engagement's team can be assigned — the pickers only offer them,
+   * and now that Staff can assign, the API enforces it too. Returns the users.
+   */
+  private async assertAssignable(
+    engagementIds: string[],
+    userIds: string[],
+  ): Promise<UserEntity[]> {
+    const users = await this.em.find(UserEntity, {
+      id: { $in: userIds },
+      isActive: true,
+    });
+    if (users.length !== userIds.length)
+      throw new NotFoundException("One or more assignees not found");
+    const engagements = [...new Set(engagementIds)];
+    const members = await this.em.find(EngagementTeamMemberEntity, {
+      engagement: { $in: engagements },
+      user: { $in: userIds },
+    });
+    const onTeam = new Set(members.map((m) => `${m.engagement.id}:${m.user.id}`));
+    for (const e of engagements) {
+      for (const u of users) {
+        if (!onTeam.has(`${e}:${u.id}`)) {
+          throw new BadRequestException(
+            `${u.fullName} isn't on the engagement team — add them under the engagement's Settings first`,
+          );
+        }
+      }
+    }
+    return userIds.map((id) => users.find((u) => u.id === id)!);
+  }
+
+  /** People who can be assigned to requests the caller can see: active members of those engagement teams. */
+  async assignableUsers(
+    user: AuthenticatedUser,
+    engagementId?: string,
+  ): Promise<{ id: string; fullName: string; email: string }[]> {
+    const scope = engagementScopeWhere(resolveScope(user));
+    const where: Record<string, unknown> = { user: { isActive: true } };
+    const engagement: Record<string, unknown> = { ...scope };
+    if (engagementId) engagement.id = engagementId;
+    if (Object.keys(engagement).length) where.engagement = engagement;
+    const members = await this.em.find(
+      EngagementTeamMemberEntity,
+      where as FilterQuery<EngagementTeamMemberEntity>,
+      { populate: ["user"] },
+    );
+    const byId = new Map<string, { id: string; fullName: string; email: string }>();
+    for (const m of members) {
+      byId.set(m.user.id, { id: m.user.id, fullName: m.user.fullName, email: m.user.email });
+    }
+    return [...byId.values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
+  }
+
   private async toDto(
     r: RequestEntity,
     acceptedFileCount = 0,
@@ -315,9 +369,7 @@ export class RequestsService {
 
     if (dto.assigneeIds && dto.assigneeIds.length > 0) {
       const unique = [...new Set(dto.assigneeIds)];
-      const found = await this.em.find(UserEntity, { id: { $in: unique } });
-      if (found.length !== unique.length)
-        throw new NotFoundException("One or more assignees not found");
+      const found = await this.assertAssignable([dto.engagementId], unique);
       for (const assignee of found) {
         this.em.create(RequestAssigneeEntity, {
           request,
@@ -642,14 +694,12 @@ export class RequestsService {
       );
     }
 
-    // Status / assignees bulk changes require catalogue:view (Super Admin).
+    // The endpoint needs request:update (status); assigning also needs request:assign.
     if (
-      (dto.statusId != null || dto.assigneeUserId != null) &&
-      !hasPermission(user.role, "catalogue:view", user.partnerDesignation)
+      dto.assigneeUserId != null &&
+      !hasPermission(user.role, "request:assign", user.partnerDesignation)
     ) {
-      throw new ForbiddenException(
-        "Only Super Admin can bulk-update status or assignees",
-      );
+      throw new ForbiddenException("You can't assign requests");
     }
 
     const scope = engagementScopeWhere(resolveScope(user));
@@ -685,6 +735,12 @@ export class RequestsService {
       throw new NotFoundException("Request status not found");
     if (dto.assigneeUserId && !assignee)
       throw new NotFoundException("Assignee not found");
+    if (assignee) {
+      await this.assertAssignable(
+        requests.map((r) => r.engagement.id),
+        [assignee.id],
+      );
+    }
 
     for (const request of requests) {
       if (status) {
@@ -772,8 +828,10 @@ export class RequestsService {
     user: AuthenticatedUser,
   ): Promise<RequestDetailResponseDto> {
     const request = await this.findScoped(id, user);
-    const assignee = await this.em.findOne(UserEntity, { id: dto.userId });
-    if (!assignee) throw new NotFoundException("User not found");
+    const [assignee] = (await this.assertAssignable(
+      [request.engagement.id],
+      [dto.userId],
+    )) as [UserEntity];
     const existing = await this.em.findOne(RequestAssigneeEntity, {
       request: id,
       user: dto.userId,

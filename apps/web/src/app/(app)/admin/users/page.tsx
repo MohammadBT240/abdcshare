@@ -40,6 +40,7 @@ import {
 import { FILTERABLE_ROLE_NAMES } from '@/features/users/schemas/user.schema';
 import type { UserRecord } from '@/features/users/types';
 import { BffClientError } from '@/lib/bff/client';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 function UsersListInner() {
   const router = useRouter();
@@ -180,12 +181,15 @@ function UsersListInner() {
           { label: 'Users' },
         ]}
         actions={
-          canManage ? (
+          <>
+            <HelpTip slug="managing-users" />
+            {canManage ? (
             <Button type="button" size="sm" onClick={() => setAddOpen(true)}>
               <IconPlus className="h-4 w-4" />
               Add User
             </Button>
-          ) : null
+          ) : null}
+          </>
         }
       />
       <AddUserDialog open={addOpen} onOpenChange={setAddOpen} />

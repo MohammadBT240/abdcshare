@@ -10,7 +10,8 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { ROLE_NAMES, type PageMeta } from '@abdcshare/shared';
+import { type PageMeta } from '@abdcshare/shared';
+import { HELP_VISIBILITY_TOKENS } from '../../sync/help-content';
 import { PaginationQueryDto } from '../../../../common/dto/pagination-query.dto';
 
 export class CreateHelpArticleDto {
@@ -19,8 +20,10 @@ export class CreateHelpArticleDto {
   @ApiProperty() @IsString() @MaxLength(255) slug!: string;
   @ApiProperty({ description: 'Tiptap/ProseMirror document JSON.' }) @IsObject() bodyJson!: Record<string, unknown>;
   @ApiProperty({ description: 'editor.getText() plain-text extract, for search.' }) @IsString() bodyText!: string;
-  @ApiPropertyOptional({ enum: ROLE_NAMES, isArray: true })
-  @IsOptional() @IsArray() @IsIn(ROLE_NAMES, { each: true }) visibleToRoles?: string[];
+  @ApiPropertyOptional({ description: 'One line shown under the title and in search results.' })
+  @IsOptional() @IsString() @MaxLength(300) summary?: string | null;
+  @ApiPropertyOptional({ enum: HELP_VISIBILITY_TOKENS, isArray: true, description: 'Roles or partner designations; empty = everyone.' })
+  @IsOptional() @IsArray() @IsIn(HELP_VISIBILITY_TOKENS as string[], { each: true }) visibleToRoles?: string[];
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) order?: number;
 }
 
@@ -30,8 +33,10 @@ export class UpdateHelpArticleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(255) slug?: string;
   @ApiPropertyOptional() @IsOptional() @IsObject() bodyJson?: Record<string, unknown>;
   @ApiPropertyOptional() @IsOptional() @IsString() bodyText?: string;
-  @ApiPropertyOptional({ enum: ROLE_NAMES, isArray: true })
-  @IsOptional() @IsArray() @IsIn(ROLE_NAMES, { each: true }) visibleToRoles?: string[];
+  @ApiPropertyOptional({ description: 'One line shown under the title and in search results.' })
+  @IsOptional() @IsString() @MaxLength(300) summary?: string | null;
+  @ApiPropertyOptional({ enum: HELP_VISIBILITY_TOKENS, isArray: true, description: 'Roles or partner designations; empty = everyone.' })
+  @IsOptional() @IsArray() @IsIn(HELP_VISIBILITY_TOKENS as string[], { each: true }) visibleToRoles?: string[];
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) order?: number;
 }
 
@@ -41,11 +46,36 @@ export class HelpArticleListQueryDto extends PaginationQueryDto {
   @IsOptional() @IsIn(['draft', 'published']) status?: 'draft' | 'published';
 }
 
-export class HelpArticleResponseDto {
+export class HelpArticleSummaryDto {
   @ApiProperty() id!: string;
   @ApiProperty() categoryId!: string;
   @ApiProperty() title!: string;
   @ApiProperty() slug!: string;
+  @ApiPropertyOptional() summary?: string | null;
+  @ApiProperty({ enum: ['draft', 'published'] }) status!: 'draft' | 'published';
+  @ApiProperty() order!: number;
+  @ApiProperty({ enum: ['default', 'custom'] }) source!: 'default' | 'custom';
+  @ApiProperty({ description: 'Built-in article changed in the app (the sync keeps the edits).' }) edited!: boolean;
+  @ApiProperty() updatedAt!: Date;
+}
+
+export class HelpArticleCategoryRefDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty() slug!: string;
+}
+
+export class HelpArticleResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() categoryId!: string;
+  @ApiProperty({ type: HelpArticleCategoryRefDto }) category!: HelpArticleCategoryRefDto;
+  @ApiProperty() title!: string;
+  @ApiProperty() slug!: string;
+  @ApiPropertyOptional() summary?: string | null;
+  @ApiProperty({ enum: ['default', 'custom'] }) source!: 'default' | 'custom';
+  @ApiProperty() edited!: boolean;
+  @ApiProperty({ type: [HelpArticleSummaryDto] }) related!: HelpArticleSummaryDto[];
+  @ApiPropertyOptional({ description: "The viewer's own 'Was this helpful?' answer." }) myFeedback?: boolean | null;
   @ApiProperty() bodyJson!: Record<string, unknown>;
   @ApiProperty({ type: [String] }) visibleToRoles!: string[];
   @ApiProperty({ enum: ['draft', 'published'] }) status!: 'draft' | 'published';
@@ -54,14 +84,7 @@ export class HelpArticleResponseDto {
   @ApiPropertyOptional() publishedAt?: Date | null;
 }
 
-export class HelpArticleSummaryDto {
-  @ApiProperty() id!: string;
-  @ApiProperty() categoryId!: string;
-  @ApiProperty() title!: string;
-  @ApiProperty() slug!: string;
-  @ApiProperty({ enum: ['draft', 'published'] }) status!: 'draft' | 'published';
-  @ApiProperty() order!: number;
-}
+
 
 export class HelpArticleListResponseDto {
   @ApiProperty({ type: [HelpArticleSummaryDto] }) data!: HelpArticleSummaryDto[];
@@ -74,5 +97,6 @@ export class HelpCategoryWithArticlesDto {
   @ApiProperty() slug!: string;
   @ApiProperty() order!: number;
   @ApiPropertyOptional() icon?: string | null;
+  @ApiPropertyOptional() description?: string | null;
   @ApiProperty({ type: [HelpArticleSummaryDto] }) articles!: HelpArticleSummaryDto[];
 }

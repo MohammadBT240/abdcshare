@@ -16,6 +16,18 @@ export const envSchema = z.object({
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_OBJECT_PREFIX: z.string().default('abdcshare'),
+  /** clamd for library virus scanning (S3, D24). Required in production. */
+  CLAMD_HOST: z.string().optional(),
+  CLAMD_PORT: z.coerce.number().int().positive().default(3310),
+  LIBREOFFICE_BIN: z.string().optional(),
+}).superRefine((env, ctx) => {
+  if (env.NODE_ENV === 'production' && !env.CLAMD_HOST) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['CLAMD_HOST'],
+      message: 'CLAMD_HOST is required in production — library uploads must be virus-scanned',
+    });
+  }
 });
 export type Env = z.infer<typeof envSchema>;
 

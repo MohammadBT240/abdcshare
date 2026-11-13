@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly abdcshare backup freshness check ({{ compose_project_name }})
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

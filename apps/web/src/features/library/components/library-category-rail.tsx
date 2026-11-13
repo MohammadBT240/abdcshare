@@ -37,17 +37,19 @@ export function LibraryCategoryRail({
   scope,
   onCategory,
   onScope,
+  showCategories = true,
 }: {
   categories: LibraryCategory[];
   categoryId: string;
   scope: LibraryScope;
   onCategory: (id: string) => void;
   onScope: (scope: LibraryScope) => void;
+  showCategories?: boolean;
 }) {
   return (
     <>
       {/* Mobile */}
-      <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1 lg:hidden">
+      <div className={`-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1 lg:hidden ${showCategories ? '' : 'hidden'}`}>
         {[{ id: '', name: 'All categories' }, ...categories].map((c) => (
           <button
             key={c.id || 'all'}
@@ -78,7 +80,7 @@ export function LibraryCategoryRail({
             <IconArchive className="h-4 w-4" aria-hidden /> Archived
           </RailButton>
         </div>
-        <div>
+        <div className={showCategories ? '' : 'hidden'}>
           <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Categories
           </p>

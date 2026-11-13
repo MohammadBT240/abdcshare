@@ -1,7 +1,10 @@
 # Staging: branch `staging` -> build images (git-SHA tags) -> Ansible deploy to abdcshare_staging.
 #
 # Required secrets:
-#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_PASSWORD, ANSIBLE_VAULT_PASSWORD
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY (private key of the dedicated deploy key),
+#   DEPLOY_SUDO_PASSWORD, ANSIBLE_VAULT_PASSWORD
+# Optional: DEPLOY_KNOWN_HOSTS (`ssh-keyscan -p <port> <host>` output — enables strict host-key
+#   checking). DEPLOY_SSH_PASSWORD is a temporary fallback until the key is installed (DEPLOYMENT §8d).
 # Optional: DEPLOY_PORT, GHCR_PULL_TOKEN
 
 name: abdcshare-deploy-staging
@@ -112,6 +115,9 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    env:
+      HAS_DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY != '' }}
+      HAS_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -135,6 +141,17 @@ jobs:
         env:
           ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
 
+      - name: Write deploy SSH key
+        if: ${{ env.HAS_DEPLOY_KEY == 'true' }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/abdcshare_deploy
+          chmod 600 ~/.ssh/abdcshare_deploy
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/abdcshare_known_hosts; fi
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+
       - name: Write CI inventory
         run: |
           python3 ansible/scripts/write_ci_inventory.py \
@@ -145,6 +162,9 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_PASSWORD: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+          DEPLOY_SUDO_PASSWORD: ${{ secrets.DEPLOY_SUDO_PASSWORD }}
+          DEPLOY_SSH_KEY_FILE: ${{ env.HAS_DEPLOY_KEY == 'true' && '/home/runner/.ssh/abdcshare_deploy' || '' }}
+          DEPLOY_KNOWN_HOSTS_FILE: ${{ env.HAS_KNOWN_HOSTS == 'true' && '/home/runner/.ssh/abdcshare_known_hosts' || '' }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
 
       - name: Link group_vars beside CI inventory

@@ -26,6 +26,7 @@ export const PERMISSIONS = [
   'request:create',
   'request:update',
   'request:assign',
+  'request:delete', // Super Admin: delete a request nothing has been sent or linked to
   'request:view',
   // documents (split upload per category)
   'working-paper:upload',
@@ -55,6 +56,7 @@ export const PERMISSIONS = [
   'notification:receive',
   'audit:view',
   'help:manage',
+  'system:jobs', // background jobs page: queue counts, failed jobs/outbox rows, re-drive (Platform Admin)
   // staff knowledge library
   'library:view', // browse/search/view items within visibility scope
   'library:contribute', // upload; edit/replace/archive OWN items
@@ -69,13 +71,13 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'user:manage', 'user:view', 'client:manage', 'client:view',
     'catalogue:manage', 'catalogue:view', 'reference-data:manage', 'reference-data:view',
     'department:manage', 'company-profile:manage', 'company-profile:view',
-    'bulk-import:run', 'audit:view', 'notification:receive', 'help:manage',
+    'bulk-import:run', 'audit:view', 'notification:receive', 'help:manage', 'system:jobs',
     'library:view', 'library:contribute', 'library:curate',
   ],
   'Super Admin': [
     ...ALL_VIEW, 'user:view', 'client:manage', 'client:view', 'catalogue:view', 'reference-data:view', 'company-profile:view',
     'engagement:create', 'engagement:update', 'engagement:transition',
-    'request:create', 'request:update', 'request:assign',
+    'request:create', 'request:update', 'request:assign', 'request:delete',
     'working-paper:upload', 'final-report:upload', 'document:delete', 'document:export',
     'submission:review', 'discussion:participate',
     'review:decide', 'review:signoff', 'report-review:manage', 'help:manage',
