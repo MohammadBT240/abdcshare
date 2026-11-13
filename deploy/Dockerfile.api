@@ -48,5 +48,7 @@ COPY --from=builder /repo/apps/api/dist ./apps/api/dist
 # Built-in Help Center articles + screenshots — synced into the database on start (HELP_SYNC_ON_START).
 COPY docs/help ./docs/help
 WORKDIR /repo/apps/api
+# Fail the image build, not the deploy, if a runtime dependency is missing from the --prod install.
+RUN node -e "require('@abdcshare/persistence')"
 EXPOSE 4000
 CMD ["node", "dist/main.js"]
