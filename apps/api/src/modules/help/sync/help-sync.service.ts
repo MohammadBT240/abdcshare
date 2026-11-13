@@ -91,7 +91,9 @@ export class HelpSyncService implements OnApplicationBootstrap {
     };
     if (content.articles.length === 0) return { ...result, skipped: 'no-content' };
 
-    return this.em.fork().transactional(async (em) => {
+    // Query logging off: in development the full article bodies and ~100 image hashes would
+    // flood the console on every start. The one-line summary in logResult() is what matters.
+    return this.em.fork({ loggerContext: { enabled: false } }).transactional(async (em) => {
       const [lock] = await em.execute<{ ok: boolean }[]>('select pg_try_advisory_xact_lock(?) as ok', [SYNC_LOCK]);
       if (!lock?.ok) return { ...result, skipped: 'locked' as const };
 
