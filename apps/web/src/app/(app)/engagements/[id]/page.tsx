@@ -36,6 +36,7 @@ import {
   parseWorkspaceTab,
   type WorkspaceTab,
 } from "@/features/engagements/lib/workspace-tabs";
+import { HelpTip } from "@/features/help/components/help-tip";
 
 const WORKSPACE_TAB_ICONS: Record<WorkspaceTab, ReactNode> = {
   overview: <IconLayoutDashboard />,
@@ -195,7 +196,9 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
           { label: ws.referenceCode },
         ]}
         actions={
-          can("engagement:create") ? (
+          <>
+            <HelpTip slug="engagement-workspace" />
+            {can("engagement:create") ? (
             <Button
               type="button"
               variant="outline"
@@ -204,7 +207,8 @@ function EngagementWorkspaceInner({ id }: { id: string }) {
             >
               Clone for new period
             </Button>
-          ) : null
+          ) : null}
+          </>
         }
       />
 

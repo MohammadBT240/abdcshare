@@ -11,13 +11,17 @@ import { EntityManager, QueryOrder, raw, type FilterQuery, type QueryOrderMap } 
 import {
   EVENT,
   FilePreviewStatus,
+  LibraryEventAction,
   LibraryItemStatus,
+  LibraryLicence,
+  LibraryScanStatus,
   LibraryVisibility,
   hasPermission,
   type Paginated,
 } from '@abdcshare/shared';
 import { pageParams, paginated } from '../../common/pagination/paginate';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
+import type { RequestMeta } from '../../common/decorators/request-meta.decorator';
 import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import {
   initialPreviewStatus,
@@ -36,10 +40,16 @@ import { UserEntity } from '../users/infrastructure/persistence/user.entity';
 import { DepartmentEntity } from '../departments/infrastructure/persistence/department.entity';
 import { LibraryItemEntity } from './infrastructure/persistence/library-item.entity';
 import { LibraryCategoryEntity } from './infrastructure/persistence/library-category.entity';
+import { LibraryCollectionEntity } from './infrastructure/persistence/library-collection.entity';
+import { LibraryCollectionItemEntity } from './infrastructure/persistence/library-collection-item.entity';
+import { LibraryEventsService } from './library-events.service';
 import {
+  canEditCollection,
   canEditItem,
+  canSeeCollection,
   canSeeItem,
   libraryScopeSql,
+  visibleCollectionSql,
   type LibraryAccessItem,
   type LibraryViewer,
 } from './library-access';
@@ -93,21 +103,39 @@ export class LibraryService {
     private readonly em: EntityManager,
     @Inject(STORAGE) private readonly storage: StoragePort,
     private readonly outbox: OutboxService,
+    private readonly events: LibraryEventsService,
   ) {}
 
   // ------------------------------------------------------------------ viewer
 
   /** Resolve department + curator flag once per request (department is not on the JWT). */
-  async viewer(user: AuthenticatedUser): Promise<LibraryViewer> {
+  /** Active departments, by name — for access pickers (see LibraryController.departments). */
+  async departmentOptions(): Promise<{ id: number; name: string; isActive: boolean }[]> {
+    const rows = await this.em.find(DepartmentEntity, { isActive: true }, { orderBy: { name: 'asc' } });
+    return rows.map((d) => ({ id: d.id, name: d.name, isActive: d.isActive }));
+  }
+
+  async viewer(user: AuthenticatedUser, meta?: RequestMeta): Promise<LibraryViewer> {
     const row = await this.em.findOne(UserEntity, { id: user.userId }, { fields: ['id', 'department'] });
     return {
       userId: user.userId,
       departmentId: row?.department?.id ?? null,
       isCurator: hasPermission(user.role, 'library:curate', user.partnerDesignation),
+      ip: meta?.ip ?? null,
+      userAgent: meta?.userAgent ?? null,
     };
   }
 
   // ------------------------------------------------------------------ mapping
+
+  /** Downloads (and ZIP inclusion) wait for a Clean scan (S3, D25); viewing doesn't. */
+  private assertScannedClean(item: LibraryItemEntity): void {
+    if (item.scanStatus === LibraryScanStatus.Clean) return;
+    if (item.scanStatus === LibraryScanStatus.Error) {
+      throw new ConflictException("This file couldn't be checked for viruses yet. A curator has been alerted.");
+    }
+    throw new ConflictException('This file is still being checked for viruses — try again in a moment. You can read it now.');
+  }
 
   private access(item: LibraryItemEntity): LibraryAccessItem {
     return {
@@ -118,14 +146,23 @@ export class LibraryService {
     };
   }
 
-  toDto(item: LibraryItemEntity, viewer: LibraryViewer): LibraryItemResponseDto {
+  toDto(
+    item: LibraryItemEntity,
+    viewer: LibraryViewer,
+    collections: LibraryItemResponseDto['collections'] = [],
+    openReports = 0,
+  ): LibraryItemResponseDto {
+    const canEdit = canEditItem({ uploadedById: item.uploadedBy.id, status: item.status }, viewer);
     const departments = item.departments.isInitialized()
       ? item.departments
           .getItems()
           .map((d) => ({ id: d.id, name: d.name }))
           .sort((a, b) => a.name.localeCompare(b.name))
       : [];
-    const deletable = item.status === LibraryItemStatus.Archived || item.status === LibraryItemStatus.Draft;
+    const deletable =
+      item.status === LibraryItemStatus.Archived ||
+      item.status === LibraryItemStatus.Draft ||
+      item.status === LibraryItemStatus.Quarantined;
     return {
       id: item.id,
       title: item.title,
@@ -148,11 +185,51 @@ export class LibraryService {
       archivedAt: item.archivedAt ?? null,
       viewCount: item.viewCount,
       downloadCount: item.downloadCount,
+      licence: item.licence,
+      licenceNote: item.licenceNote ?? null,
+      downloadable: item.downloadable,
+      declaredAt: item.declaredAt ?? null,
+      canDownload:
+        Boolean(item.storageKey) &&
+        item.status !== LibraryItemStatus.Quarantined &&
+        item.scanStatus === LibraryScanStatus.Clean &&
+        (item.downloadable || canEdit),
+      scanStatus: item.scanStatus,
+      previewErrorCode: item.previewErrorCode ?? null,
+      contentHash: item.contentHash ?? null,
+      openReports: viewer.isCurator ? openReports : 0,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
-      canEdit: canEditItem({ uploadedById: item.uploadedBy.id }, viewer),
+      collections,
+      canEdit,
       canDelete: viewer.isCurator && deletable,
     };
+  }
+
+  /** Collections (visible to the viewer) each item belongs to, keyed by item id. */
+  async collectionsFor(
+    itemIds: string[],
+    viewer: LibraryViewer,
+  ): Promise<Map<string, LibraryItemResponseDto['collections']>> {
+    const out = new Map<string, LibraryItemResponseDto['collections']>();
+    if (itemIds.length === 0) return out;
+    const scope = visibleCollectionSql('c', viewer);
+    const rows = await this.em.getConnection().execute<
+      { item_id: string; id: string; title: string; type: string; section: string | null }[]
+    >(
+      `select ci.item_id, c.id, c.title, c.type, ci.section
+         from library_collection_items ci
+         join library_collections c on c.id = ci.collection_id
+        where ci.item_id in (${itemIds.map(() => '?').join(', ')}) and ${scope.sql}
+        order by c.starts_on desc nulls last, c.title asc`,
+      [...itemIds, ...scope.params],
+    );
+    for (const r of rows) {
+      const list = out.get(r.item_id) ?? [];
+      list.push({ id: r.id, title: r.title, type: r.type, section: r.section });
+      out.set(r.item_id, list);
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------ lookups
@@ -253,10 +330,21 @@ export class LibraryService {
     });
   }
 
-  private async bump(id: string, column: 'view_count' | 'download_count'): Promise<void> {
-    await this.em
-      .getConnection()
-      .execute(`update "library_items" set "${column}" = "${column}" + 1 where "id" = ?`, [id]);
+  /** Counter (fast total) + an append-only event — every view/download counts (D15). */
+  private async recordRead(
+    item: LibraryItemEntity,
+    viewer: LibraryViewer,
+    kind: 'view' | 'download',
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    const column = kind === 'view' ? 'view_count' : 'download_count';
+    await this.em.execute(`update "library_items" set "${column}" = "${column}" + 1 where "id" = ?`, [item.id]);
+    await this.events.insertNow({
+      action: kind === 'view' ? LibraryEventAction.Viewed : LibraryEventAction.Downloaded,
+      viewer,
+      itemId: item.id,
+      metadata,
+    });
   }
 
   // ------------------------------------------------------------------ list / get
@@ -276,6 +364,15 @@ export class LibraryService {
       where[raw((alias) => scope.sql.replaceAll('__alias__', alias), scope.params)] = true;
     }
     if (query.categoryId) where.category = query.categoryId;
+    if (query.collectionId) {
+      where[
+        raw(
+          (alias) =>
+            `exists (select 1 from library_collection_items fc where fc.item_id = ${alias}.id and fc.collection_id = ?)`,
+          [query.collectionId],
+        )
+      ] = true;
+    }
     if (query.year) where.publishedYear = query.year;
     if (query.fileType) where.mimeType = { $in: mimeTypesFor(query.fileType) };
     if (query.departmentId) {
@@ -338,8 +435,12 @@ export class LibraryService {
       limit,
       offset,
     });
+    const collections = await this.collectionsFor(
+      rows.map((r) => r.id),
+      viewer,
+    );
     return paginated(
-      rows.map((r) => this.toDto(r, viewer)),
+      rows.map((r) => this.toDto(r, viewer, collections.get(r.id))),
       total,
       page,
       pageSize,
@@ -347,7 +448,83 @@ export class LibraryService {
   }
 
   async get(id: string, viewer: LibraryViewer): Promise<LibraryItemResponseDto> {
-    return this.toDto(await this.findVisible(id, viewer), viewer);
+    const item = await this.findVisible(id, viewer);
+    return this.dtoFor(item, viewer);
+  }
+
+  /** Full single-item DTO: collections + (for curators) open report count. */
+  private async dtoFor(item: LibraryItemEntity, viewer: LibraryViewer): Promise<LibraryItemResponseDto> {
+    const collections = await this.collectionsFor([item.id], viewer);
+    let open = 0;
+    if (viewer.isCurator) {
+      const rows = await this.em.execute<{ n: number }[]>(
+        `select count(*)::int as n from library_reports where item_id = ? and status = 'Open'`,
+        [item.id],
+      );
+      open = Number(rows[0]?.n ?? 0);
+    }
+    return this.toDto(item, viewer, collections.get(item.id), open);
+  }
+
+  /** Map already-loaded items to DTOs with their collections (used by collection pages). */
+  async toDtos(items: LibraryItemEntity[], viewer: LibraryViewer): Promise<LibraryItemResponseDto[]> {
+    const collections = await this.collectionsFor(
+      items.map((i) => i.id),
+      viewer,
+    );
+    return items.map((i) => this.toDto(i, viewer, collections.get(i.id)));
+  }
+
+  /** Load a collection the viewer may add items to (owner or curator), or throw. */
+  async editableCollection(id: string, viewer: LibraryViewer): Promise<LibraryCollectionEntity> {
+    const c = await this.em.findOne(LibraryCollectionEntity, { id }, { populate: ['owner', 'departments'] });
+    const access = c && {
+      status: c.status,
+      visibility: c.visibility,
+      ownerId: c.owner.id,
+      departmentIds: c.departments.getItems().map((d) => d.id),
+    };
+    if (!c || !access || !canSeeCollection(access, viewer)) throw new NotFoundException('Collection not found');
+    if (!canEditCollection(access, viewer)) {
+      throw new ForbiddenException('Only the collection owner or a library curator can add items to it');
+    }
+    if (c.status !== 'Active') throw new ConflictException('Restore the collection before adding items');
+    return c;
+  }
+
+  /** Append items to a collection at the end, in the given order (skips existing members). */
+  async appendToCollection(
+    collection: LibraryCollectionEntity,
+    items: LibraryItemEntity[],
+    section: string | null | undefined,
+    viewer: LibraryViewer,
+  ): Promise<number> {
+    const existing = await this.em.find(LibraryCollectionItemEntity, { collection: collection.id }, { fields: ['item', 'position'] });
+    const present = new Set(existing.map((m) => m.item.id));
+    let next = existing.reduce((max, m) => Math.max(max, m.position), -1) + 1;
+    let added = 0;
+    for (const item of items) {
+      if (present.has(item.id)) continue;
+      this.em.persist(
+        this.em.create(LibraryCollectionItemEntity, {
+          collection,
+          item,
+          position: next++,
+          section: clean(section ?? undefined),
+          addedBy: this.em.getReference(UserEntity, viewer.userId),
+        }),
+      );
+      present.add(item.id);
+      added += 1;
+      this.events.stage({
+        action: LibraryEventAction.AddedToCollection,
+        viewer,
+        itemId: item.id,
+        collectionId: collection.id,
+        metadata: { collectionTitle: collection.title, section: clean(section ?? undefined) },
+      });
+    }
+    return added;
   }
 
   // ------------------------------------------------------------------ create / update
@@ -356,7 +533,12 @@ export class LibraryService {
   async create(dto: CreateLibraryItemDto, viewer: LibraryViewer): Promise<LibraryItemResponseDto> {
     const title = clean(dto.title);
     if (!title) throw new BadRequestException('Title is required');
+    // Validated by the DTO too; repeated here so no other caller can skip it (D18).
+    if ((dto as { declaration?: unknown }).declaration !== true) {
+      throw new BadRequestException('Confirm the upload declaration');
+    }
     const category = await this.activeCategory(dto.categoryId);
+    const collection = dto.collectionId ? await this.editableCollection(dto.collectionId, viewer) : null;
     const item = this.em.create(LibraryItemEntity, {
       title,
       description: clean(dto.description),
@@ -367,14 +549,28 @@ export class LibraryService {
       tags: this.tagsFrom(dto.tags),
       uploadedBy: this.em.getReference(UserEntity, viewer.userId),
       status: LibraryItemStatus.Draft,
+      licence: dto.licence ?? LibraryLicence.InternalUseOnly,
+      licenceNote: clean(dto.licenceNote),
+      downloadable: dto.downloadable ?? true,
+      declaredAt: new Date(),
+      declaredBy: this.em.getReference(UserEntity, viewer.userId),
     });
-    await this.applyVisibility(item, dto.visibility ?? LibraryVisibility.Firm, dto.departmentIds);
-    await this.em.persistAndFlush(item);
+    // Uploading into a restricted collection defaults the item to the same departments (D9).
+    const inherit = !dto.visibility && collection?.visibility === LibraryVisibility.Departments;
+    await this.applyVisibility(
+      item,
+      inherit ? LibraryVisibility.Departments : (dto.visibility ?? LibraryVisibility.Firm),
+      inherit ? collection!.departments.getItems().map((d) => d.id) : dto.departmentIds,
+    );
+    this.em.persist(item);
+    if (collection) await this.appendToCollection(collection, [item], dto.section, viewer);
+    await this.em.flush();
     return this.get(item.id, viewer);
   }
 
   async update(id: string, dto: UpdateLibraryItemDto, viewer: LibraryViewer): Promise<LibraryItemResponseDto> {
     const item = await this.findEditable(id, viewer);
+    const before = this.snapshot(item);
     if (dto.title !== undefined) {
       const title = clean(dto.title);
       if (!title) throw new BadRequestException('Title is required');
@@ -393,8 +589,94 @@ export class LibraryService {
       const current = item.departments.getItems().map((d) => d.id);
       await this.applyVisibility(item, visibility, dto.departmentIds ?? current);
     }
+    if (dto.licence !== undefined) item.licence = dto.licence;
+    if (dto.licenceNote !== undefined) item.licenceNote = clean(dto.licenceNote);
+    if (dto.downloadable !== undefined) item.downloadable = dto.downloadable;
+    this.stageEditEvents(item, before, viewer);
     await this.em.flush();
-    return this.toDto(item, viewer);
+    return this.dtoFor(item, viewer);
+  }
+
+  private snapshot(item: LibraryItemEntity): Record<string, unknown> {
+    return {
+      title: item.title,
+      categoryId: item.category.id,
+      description: item.description ?? null,
+      authors: item.authors ?? null,
+      publishedYear: item.publishedYear ?? null,
+      source: item.source ?? null,
+      tags: [...(item.tags ?? [])].join('|'),
+      licence: item.licence,
+      licenceNote: item.licenceNote ?? null,
+      downloadable: item.downloadable,
+      visibility: item.visibility,
+      departments: item.departments.isInitialized()
+        ? item.departments
+            .getItems()
+            .map((d) => d.id)
+            .sort((a, b) => a - b)
+            .join(',')
+        : '',
+    };
+  }
+
+  /** Edited (changed field names) and, separately, VisibilityChanged (from → to). */
+  private stageEditEvents(item: LibraryItemEntity, before: Record<string, unknown>, viewer: LibraryViewer): void {
+    const after = this.snapshot(item);
+    const changed = Object.keys(after).filter(
+      (k) => k !== 'visibility' && k !== 'departments' && after[k] !== before[k],
+    );
+    if (changed.length > 0) {
+      this.events.stage({ action: LibraryEventAction.Edited, viewer, itemId: item.id, metadata: { fields: changed } });
+    }
+    if (after.visibility !== before.visibility || after.departments !== before.departments) {
+      this.events.stage({
+        action: LibraryEventAction.VisibilityChanged,
+        viewer,
+        itemId: item.id,
+        metadata: {
+          from: before.visibility,
+          to: after.visibility,
+          departments: item.departments.getItems().map((d) => d.name).sort(),
+        },
+      });
+    }
+  }
+
+  /** Curator "Restrict" outcome on a report (S2, D20): departments-only, logged like an edit. */
+  async restrictTo(item: LibraryItemEntity, departmentIds: number[], viewer: LibraryViewer): Promise<void> {
+    const before = this.snapshot(item);
+    await this.applyVisibility(item, LibraryVisibility.Departments, departmentIds);
+    this.stageEditEvents(item, before, viewer);
+  }
+
+  /** Curator "Archive" outcome on a report. No-op if already archived. */
+  stageArchive(item: LibraryItemEntity, viewer: LibraryViewer, reason?: string): void {
+    if (item.status !== LibraryItemStatus.Published) return;
+    item.status = LibraryItemStatus.Archived;
+    item.archivedAt = new Date();
+    item.archivedBy = this.em.getReference(UserEntity, viewer.userId);
+    this.events.stage({
+      action: LibraryEventAction.Archived,
+      viewer,
+      itemId: item.id,
+      metadata: reason ? { reason } : null,
+    });
+  }
+
+  /** Activity timeline: the uploader and curators only (404 if hidden, 403 otherwise). */
+  async assertCanSeeActivity(id: string, viewer: LibraryViewer): Promise<void> {
+    await this.findEditable(id, viewer);
+  }
+
+  /** For other library services (reports): load any item with its relations. */
+  async loadItem(id: string): Promise<LibraryItemEntity> {
+    return this.findItem(id);
+  }
+
+  /** For other library services: visible-or-404. */
+  async loadVisible(id: string, viewer: LibraryViewer): Promise<LibraryItemEntity> {
+    return this.findVisible(id, viewer);
   }
 
   // ------------------------------------------------------------------ upload (presign / multipart / confirm)
@@ -446,7 +728,13 @@ export class LibraryService {
     await this.storage.completeMultipart(dto.storageKey, uploadId, dto.parts);
     return this.confirmUpload(
       id,
-      { storageKey: dto.storageKey, fileName: dto.fileName, mimeType: dto.mimeType, sizeBytes: dto.sizeBytes },
+      {
+        storageKey: dto.storageKey,
+        fileName: dto.fileName,
+        mimeType: dto.mimeType,
+        sizeBytes: dto.sizeBytes,
+        declaration: (dto as { declaration?: boolean }).declaration,
+      },
       viewer,
     );
   }
@@ -466,6 +754,12 @@ export class LibraryService {
     const item = await this.findEditable(id, viewer);
     this.assertNotArchived(item);
     this.assertKeyForItem(id, dto.storageKey);
+    const replacing = item.status === LibraryItemStatus.Published;
+    // D18: a replacement is a new upload — declare again. A draft declared on create (or legacy
+    // drafts that declare now) is fine.
+    if ((replacing || !item.declaredAt) && dto.declaration !== true) {
+      throw new BadRequestException('Confirm the upload declaration');
+    }
 
     const head = await this.storage.head(dto.storageKey);
     if (!head) throw new BadRequestException('Uploaded object not found');
@@ -476,6 +770,7 @@ export class LibraryService {
     this.validateFile(dto.fileName, mimeType, head.sizeBytes);
 
     const superseded = [item.storageKey, item.previewStorageKey].filter((k) => k && k !== dto.storageKey);
+    const previousFileName = item.fileName ?? null;
 
     item.storageKey = dto.storageKey;
     item.fileName = dto.fileName;
@@ -488,6 +783,29 @@ export class LibraryService {
       item.status = LibraryItemStatus.Published;
       item.publishedAt = new Date();
     }
+    // Every new file is scanned (S3, D24); downloads wait for Clean, viewing doesn't.
+    item.scanStatus = LibraryScanStatus.Pending;
+    item.scanAttempts = 0;
+    item.scanError = null;
+    item.scannedAt = null;
+    item.contentHash = null;
+    item.previewErrorCode = null;
+    this.outbox.enqueue(EVENT.LibraryScanRequested, { itemId: item.id, storageKey: dto.storageKey });
+    if (dto.declaration === true) {
+      item.declaredAt = new Date();
+      item.declaredBy = this.em.getReference(UserEntity, viewer.userId);
+    }
+    this.events.stage({
+      action: replacing ? LibraryEventAction.FileReplaced : LibraryEventAction.Uploaded,
+      viewer,
+      itemId: item.id,
+      metadata: {
+        fileName: dto.fileName,
+        sizeBytes: head.sizeBytes,
+        declared: true,
+        ...(replacing ? { previousFileName } : {}),
+      },
+    });
     if (item.previewStatus === FilePreviewStatus.Pending) {
       this.outbox.enqueue(EVENT.FilePreviewRequested, {
         entityType: 'library_item',
@@ -499,7 +817,7 @@ export class LibraryService {
     }
     await this.em.flush();
     await this.deleteObjects(superseded);
-    return this.toDto(item, viewer);
+    return this.dtoFor(item, viewer);
   }
 
   // ------------------------------------------------------------------ archive / restore / delete
@@ -509,11 +827,9 @@ export class LibraryService {
     if (item.status !== LibraryItemStatus.Published) {
       throw new ConflictException('Only published items can be archived');
     }
-    item.status = LibraryItemStatus.Archived;
-    item.archivedAt = new Date();
-    item.archivedBy = this.em.getReference(UserEntity, viewer.userId);
+    this.stageArchive(item, viewer);
     await this.em.flush();
-    return this.toDto(item, viewer);
+    return this.dtoFor(item, viewer);
   }
 
   async restore(id: string, viewer: LibraryViewer): Promise<LibraryItemResponseDto> {
@@ -524,8 +840,9 @@ export class LibraryService {
     item.status = LibraryItemStatus.Published;
     item.archivedAt = null;
     item.archivedBy = null;
+    this.events.stage({ action: LibraryEventAction.Restored, viewer, itemId: item.id });
     await this.em.flush();
-    return this.toDto(item, viewer);
+    return this.dtoFor(item, viewer);
   }
 
   /** Curators only (route-guarded); archived (or abandoned draft) items only. */
@@ -536,7 +853,18 @@ export class LibraryService {
       throw new ConflictException('Archive the item before deleting it');
     }
     const keys = [item.storageKey, item.previewStorageKey];
-    await this.em.removeAndFlush(item);
+    // One transaction: keep the title on the item's history, log the delete, remove the row
+    // (the FK then sets library_events.item_id to null).
+    await this.em.transactional(async (em) => {
+      await this.events.snapshotTitle(item.id, item.title);
+      await this.events.insertNow({
+        action: LibraryEventAction.Deleted,
+        viewer,
+        itemId: item.id,
+        metadata: { itemId: item.id, itemTitle: item.title, fileName: item.fileName ?? null },
+      });
+      await em.nativeDelete(LibraryItemEntity, { id: item.id });
+    });
     await this.deleteObjects(keys);
   }
 
@@ -547,18 +875,22 @@ export class LibraryService {
     if (!item.storageKey || !item.fileName) {
       return { url: null, mode: 'unavailable', previewStatus: FilePreviewStatus.None, reason: 'unsupported' };
     }
+    if (item.status === LibraryItemStatus.Quarantined) {
+      // Never hand out a URL to an infected file, not even to curators.
+      return { url: null, mode: 'unavailable', previewStatus: item.previewStatus, reason: 'quarantined' };
+    }
 
     if (item.previewStatus === FilePreviewStatus.Ready && item.previewStorageKey) {
       const url = await this.storage.presignDownload(item.previewStorageKey, `${item.fileName}.pdf`, {
         disposition: 'inline',
       });
-      await this.bump(item.id, 'view_count');
+      await this.recordRead(item, viewer, 'view', { mode: 'converted' });
       return { url, mode: 'converted', previewStatus: item.previewStatus };
     }
 
     if (isNativePreviewable(item.mimeType, item.fileName)) {
       const url = await this.storage.presignDownload(item.storageKey, item.fileName, { disposition: 'inline' });
-      await this.bump(item.id, 'view_count');
+      await this.recordRead(item, viewer, 'view', { mode: 'native' });
       return { url, mode: 'native', previewStatus: FilePreviewStatus.Ready };
     }
 
@@ -566,6 +898,7 @@ export class LibraryService {
       if (item.previewStatus === FilePreviewStatus.Failed && opts?.retry && canEditItem(this.access(item), viewer)) {
         item.previewStatus = FilePreviewStatus.Pending;
         item.previewError = null;
+        item.previewErrorCode = null;
         this.outbox.enqueue(EVENT.FilePreviewRequested, {
           entityType: 'library_item',
           fileId: item.id,
@@ -579,7 +912,7 @@ export class LibraryService {
         return { url: null, mode: 'unavailable', previewStatus: item.previewStatus, reason: 'pending' };
       }
       if (item.previewStatus === FilePreviewStatus.Failed) {
-        return { url: null, mode: 'unavailable', previewStatus: item.previewStatus, reason: 'failed' };
+        return { url: null, mode: 'unavailable', previewStatus: item.previewStatus, reason: 'failed', errorCode: item.previewErrorCode ?? null };
       }
     }
 
@@ -589,8 +922,15 @@ export class LibraryService {
   async download(id: string, viewer: LibraryViewer): Promise<LibraryDownloadDto> {
     const item = await this.findVisible(id, viewer);
     if (!item.storageKey || !item.fileName) throw new NotFoundException('This item has no file yet');
+    if (!item.downloadable && !canEditItem(this.access(item), viewer)) {
+      throw new ForbiddenException('This item is view-only. Open it in the library instead of downloading it.');
+    }
+    if (item.status === LibraryItemStatus.Quarantined) {
+      throw new ForbiddenException('This file is quarantined: the virus scan found a threat.');
+    }
+    this.assertScannedClean(item);
     const url = await this.storage.presignDownload(item.storageKey, item.fileName);
-    await this.bump(item.id, 'download_count');
+    await this.recordRead(item, viewer, 'download', { fileName: item.fileName });
     return { url };
   }
 

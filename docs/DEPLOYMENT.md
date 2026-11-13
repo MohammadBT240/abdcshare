@@ -138,8 +138,11 @@ The seed is idempotent (reference data + Platform Admin with `mustChangePassword
    values (Postgres password, JWT secrets ≥32 chars, R2 keys, Resend key, seed admin),
    `ansible-vault encrypt` each, commit.
 3. **R2**: create `abdcshare-uploads` + `abdcshare-uploads-staging` buckets; CORS must
-   allow PUT/GET/HEAD from the web origins with `ExposeHeaders: ETag`.
-   Required for Uppy direct uploads (submissions, documents, company profiles, planning docs).
+   allow PUT/GET/HEAD from the web origins with `AllowedHeaders: *` and
+   `ExposeHeaders: ETag, Content-Length, Content-Range, Accept-Ranges`.
+   Required for Uppy direct uploads (submissions, documents, company profiles, planning docs)
+   and, since S2, for the library's PDF.js viewer, which fetches PDFs from presigned GET URLs
+   with `Range` requests (without these headers previews fail with a CORS error).
 4. **GitHub**: set the secrets (§3), create the `production` environment with a
    required reviewer.
 5. Push the `staging` branch → watch the pipeline → run the seed profile (§6) →
@@ -160,12 +163,98 @@ ansible-playbook --ask-vault-pass --ask-become-pass -i inventory/production.ini 
 (or re-run the deploy workflow from the old commit). Schema is forward-only — keep
 migrations additive/backward-compatible so old code can run against new schema.
 
+## 8a. Security-relevant settings (S0, Nov 2026)
+
+- `NODE_ENV=production` refuses to boot with default or short (<32 chars) `JWT_ACCESS_SECRET` /
+  `JWT_REFRESH_SECRET`.
+- Swagger (`/api/docs`) is off in production unless `SWAGGER_ENABLED=true`, which then requires
+  `SWAGGER_USER` / `SWAGGER_PASSWORD` (HTTP basic auth). Staging may enable it.
+- The demo outbox endpoint is gone.
+- Local storage (dev only) URLs are HMAC-signed and expire; keys can't escape `LOCAL_STORAGE_DIR`.
+- Company Profiles Office previews are converted in-house by the worker (LibreOffice); no URLs are
+  sent to Office Online.
+
+## 8b. Library hardening (S2, Nov 2026)
+
+- Migration `Migration20261112170452`: `library_events` (append-only — a trigger rejects deletes
+  and rewrites), `library_reports`, and licence / view-only / declaration columns on `library_items`.
+- `apps/web` build copies the pdf.js worker + data files to `public/pdfjs/<version>/`
+  (`scripts/copy-pdf-worker.mjs`, run by `dev` and `build`); nothing to configure.
+- R2 CORS must expose range headers (§7 step 3) for the PDF viewer.
+- Curators (Super Admin / Platform Admin) get in-app + email notifications for reported items.
+
+## 8c. Library launch (S3, Nov 2026)
+
+- **ClamAV** — `clamav` service in `docker-compose.stack.yml` (`clamav/clamav:1.4`, config
+  `deploy/clamav/clamd.conf`, signatures in the `clamav_db` volume, internal only). The worker gets
+  `CLAMD_HOST=clamav` and **refuses to boot in production without it**.
+- **Memory gate (D26)** — clamd holds ~1–1.5 GB once signatures load (`mem_limit: 1800m`). Prod and
+  staging each run one on the shared VM. Before go-live run `free -m` and `docker stats` on the VM with
+  abdchub and QET up; if headroom is short, run only one clamd (point staging's `CLAMD_HOST` at prod's over
+  a shared network) or move the worker. Verify `ConcurrentDatabaseReload no` took effect
+  (`docker compose exec clamav grep Concurrent /etc/clamav/clamd.conf`).
+- **First start** — clamd's healthcheck allows 3 minutes for freshclam's first download; the worker waits
+  for it (`depends_on: service_healthy`).
+- **Migrations** — `Migration20261112173707` (scan columns, Quarantined status) queues a scan for every
+  existing library file; downloads of old items open as those scans finish. `Migration20261112190000` adds
+  the Help article "Using the Library" (skipped if the slug exists).
+- **Worker image** — adds Carlito, Caladea, Liberation 2 and DejaVu fonts for faithful Office → PDF previews.
+
+### Staging → production rollout checklist
+1. Staging bucket CORS exposes `ETag, Content-Length, Content-Range, Accept-Ranges` (§7 step 3).
+2. Push `staging`; watch the pipeline; confirm the clamav container is healthy and the worker started.
+3. `pnpm seed:e2e` refuses `NODE_ENV=production`, which staging runs, so the Playwright suite can't seed
+   personas there. Either create matching test accounts on staging by hand (emails/passwords in
+   `apps/api/src/database/e2e-personas.ts`) and run `E2E_BASE_URL=https://staging.abdcshare.com pnpm e2e`,
+   or do the click-through below by hand.
+4. Click through: upload (PDF, Word, a phone), report → review, view-only, the EICAR test file → quarantine.
+5. Measure memory (above). Then merge to `main` and approve the production gate.
+
+## 8d. Deploy SSH key (S4)
+
+CI prefers a dedicated key over the password (`ansible/scripts/write_ci_inventory.py`):
+1. `ssh-keygen -t ed25519 -C abdcshare-deploy -f abdcshare_deploy -N ''` (on your machine).
+2. `ansible-playbook --ask-vault-pass --ask-become-pass -i inventory/production.ini playbooks/deploy_key.yml -e deploy_ssh_public_key="$(cat abdcshare_deploy.pub)"`
+   — installs the key (no port/agent/X11 forwarding) and turns password logins off **for the deploy
+   user only** (`/etc/ssh/sshd_config.d/60-abdcshare-deploy.conf`, `sshd -t` checked before reload).
+   Keep a second session open while you run it. `-e disable_password_login=false` installs the key only.
+3. GitHub secrets: `DEPLOY_SSH_KEY` (private key), `DEPLOY_KNOWN_HOSTS` (`ssh-keyscan -p <port> <host>`
+   output → strict host-key checking), keep `DEPLOY_SUDO_PASSWORD` for sudo.
+4. Run a deploy. When it's green, delete `DEPLOY_SSH_PASSWORD` and rotate the deploy user's password.
+   (Without the key secret CI still falls back to the password and prints a warning.)
+
+## 8e. Backups (S4)
+
+- `deploy/backup/backup.sh` — `pg_dump -Fc` inside the postgres container → `age` (public key only on the
+  server) → R2 bucket `abdcshare-backups/<backup_name>/daily/…`; first backup of each month also goes to
+  `monthly/`; keeps 30 daily + 12 monthly; writes `latest.json` + a manifest with key-table row counts.
+- `deploy/backup/backup-check.sh` — hourly; fails and POSTs to `BACKUP_ALERT_URL` if the newest backup
+  is older than 26 h or its file is missing. `BACKUP_HEALTHCHECK_URL` (healthchecks.io style) is pinged
+  after each successful backup, so a missing ping alerts too.
+- `deploy/backup/restore-drill.sh` — downloads the newest (or a named) backup, verifies its SHA-256,
+  decrypts with the age **private** key (brought to the machine for the drill only), restores into an
+  empty scratch database (`SCRATCH_DATABASE_URL`, or `SCRATCH_DOCKER=1` for a throwaway postgres:17
+  container with matching client tools) and compares row counts with the manifest.
+- Install: fill `backup_age_recipient` (age1… public key) + `vault_backup_*` in group_vars, create the
+  `abdcshare-backups` bucket and an R2 token scoped to it, then
+  `ansible-playbook … playbooks/backups.yml` (systemd timers: prod 02:15 UTC, staging 03:15 UTC).
+- The same playbook works for abdchub and QET on the host: copy `deploy/backup/` and set their own
+  `PG_DUMP_CMD` / `backup_name`.
+- Run a restore drill after installing, and then quarterly.
+
+## 8f. Monitoring (S4)
+
+- `GET /api/health` — liveness. `GET /api/health/ops` — **503 when degraded**: outbox Pending > 10 min,
+  any Failed outbox row, rows stuck in Queued > 15 min (worker died mid-job), Redis down, clamd down, or
+  ClamAV signatures > 72 h old. Counts and ages only — safe to expose. Point an uptime monitor at
+  `/api/health/ops`, `web /login` and `web /library`.
+- `/admin/jobs` (Platform Admin, `system:jobs`): queue counts, failed queue jobs, failed/stuck outbox rows
+  with an audited **Re-drive**, clamd version + signature age.
+
 ## 9. Known gaps / follow-ups
 
-- **DB backups**: no project on this VM has automated Postgres backups yet — add a
-  nightly `pg_dump` to R2 (covers abdchub/QET too).
-- **SSH auth**: CI deploys use password auth (house pattern); move to a dedicated
-  deploy SSH key. CI inventory already sends SSH keepalives
-  (`ServerAliveInterval=30`, `ServerAliveCountMax=120`) and the stack pull/up
-  task allows up to 60 minutes so first-image pulls do not drop the session.
-- **Monitoring**: worker/queue metrics (Bull Board) and log shipping are not set up.
+- **Log shipping**: container logs stay on the VM (`docker logs`); no central log store yet.
+- **Point-in-time recovery**: backups are nightly logical dumps (S4-D1, 24 h recovery point); revisit WAL
+  archiving if the firm needs a tighter recovery point.
+- **Uptime monitor**: the endpoints exist (§8f); choosing and configuring the external monitor is an
+  account decision for the firm.

@@ -1,3 +1,4 @@
+import { LibraryScanService } from './library/library-scan.service';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
@@ -8,6 +9,7 @@ import { NotificationConsumer } from './consumers/notification.consumer';
 import { DocumentExportService } from './documents/document-export.service';
 import { FilePreviewService } from './documents/file-preview.service';
 import { SubmissionExportService } from './documents/submission-export.service';
+import { LibraryCollectionExportService } from './documents/library-collection-export.service';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { SubmissionExportService } from './documents/submission-export.service';
     DocumentExportService,
     FilePreviewService,
     SubmissionExportService,
+    LibraryCollectionExportService,
+    LibraryScanService,
     NotificationConsumer,
   ],
 })

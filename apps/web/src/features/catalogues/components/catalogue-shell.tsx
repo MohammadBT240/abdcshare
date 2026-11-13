@@ -9,6 +9,7 @@ import {
   isCatalogueSectionActive,
 } from '@/features/catalogues/catalogue-sections';
 import { cn } from '@/lib/utils';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 interface CatalogueShellProps {
   children: React.ReactNode;
@@ -46,6 +47,7 @@ export function CatalogueShell({ children }: CatalogueShellProps) {
           { label: 'Catalogues' },
         ]}
         description="Manage reference catalogues used across engagements and requests"
+        actions={<HelpTip slug="catalogues" />}
       />
 
       <Card className="overflow-hidden border-border shadow-aca">

@@ -1,0 +1,7 @@
+[Unit]
+Description=abdcshare backup freshness check ({{ compose_project_name }})
+
+[Service]
+Type=oneshot
+EnvironmentFile={{ backup_env_file }}
+ExecStart={{ backup_scripts_dir }}/backup-check.sh

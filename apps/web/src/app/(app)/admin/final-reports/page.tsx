@@ -29,6 +29,7 @@ import {
   type ReportReviewState,
   useFirmFinalReports,
 } from '@/features/report-reviews/hooks/use-report-reviews';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 type FirmFilter = 'needsAction' | 'awaitingClient' | 'all';
 
@@ -165,6 +166,7 @@ function FirmFinalReportsInner() {
           { label: 'Home', href: '/dashboard' },
           { label: 'Final report reviews' },
         ]}
+        actions={<HelpTip slug="final-reports-client-review" />}
       />
       <Tabs
         value={state}

@@ -49,6 +49,8 @@ interface CatalogueAdminPageProps {
   requestClasses?: CatalogueRow[];
   /** When true, show "Allowed classes" action (engagement types only). */
   allowRequestClassMapping?: boolean;
+  /** Extra content in the deactivate confirmation (e.g. what this will orphan). */
+  deactivateNotice?: (row: CatalogueRow) => React.ReactNode;
 }
 
 export function CatalogueAdminPage({
@@ -59,6 +61,7 @@ export function CatalogueAdminPage({
   fields = ['name'],
   requestClasses,
   allowRequestClassMapping = false,
+  deactivateNotice,
 }: CatalogueAdminPageProps) {
   return (
     <Suspense fallback={<DataTableSkeleton />}>
@@ -70,6 +73,7 @@ export function CatalogueAdminPage({
         fields={fields}
         requestClasses={requestClasses}
         allowRequestClassMapping={allowRequestClassMapping}
+        deactivateNotice={deactivateNotice}
       />
     </Suspense>
   );
@@ -83,6 +87,7 @@ function CatalogueAdminInner({
   fields = ['name'],
   requestClasses,
   allowRequestClassMapping = false,
+  deactivateNotice,
 }: CatalogueAdminPageProps) {
   const fieldList = fields ?? ['name'];
   const { can } = useAuthContext();
@@ -174,6 +179,7 @@ function CatalogueAdminInner({
                     <AlertDialogDescription>
                       This item will be marked inactive and hidden from default lists.
                     </AlertDialogDescription>
+                    {deactivateNotice?.(row.original)}
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -217,7 +223,7 @@ function CatalogueAdminInner({
       });
     }
     return cols;
-  }, [fieldList, canManage, allowRequestClassMapping, mutations.deactivate, mutations.update]);
+  }, [fieldList, canManage, allowRequestClassMapping, mutations.deactivate, mutations.update, deactivateNotice]);
 
   async function save() {
     try {

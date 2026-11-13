@@ -4,11 +4,13 @@ import { EntityManager, MikroORM } from '@mikro-orm/postgresql';
 import { Job, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { EVENT, OutboxStatus, QUEUE, type NotificationJob } from '@abdcshare/shared';
-import { OutboxEntity } from '../database/outbox.entity';
+import { NotificationDeliveryEntity, OutboxEntity } from '@abdcshare/persistence';
 import { EmailDispatchService } from '../email/email-dispatch.service';
 import { DocumentExportService } from '../documents/document-export.service';
 import { FilePreviewService } from '../documents/file-preview.service';
 import { SubmissionExportService } from '../documents/submission-export.service';
+import { LibraryCollectionExportService } from '../documents/library-collection-export.service';
+import { LibraryScanService } from '../library/library-scan.service';
 import {
   AccountCreatedEmail,
   GenericNotificationEmail,
@@ -32,6 +34,8 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly documentExports: DocumentExportService,
     private readonly filePreviews: FilePreviewService,
     private readonly submissionExports: SubmissionExportService,
+    private readonly libraryExports: LibraryCollectionExportService,
+    private readonly libraryScans: LibraryScanService,
   ) {}
 
   onModuleInit(): void {
@@ -139,11 +143,11 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
             GenericNotificationEmail({ title: e.subject, body, link: e.link, appUrl }),
           );
           if (e.notificationId) {
-            await em
-              .getConnection()
-              .execute('update "notifications" set email_sent = true, email_sent_at = now() where id = ?', [
-                e.notificationId,
-              ]);
+            await em.nativeUpdate(
+              NotificationDeliveryEntity,
+              { id: e.notificationId },
+              { emailSent: true, emailSentAt: new Date() },
+            );
           }
         }
         break;
@@ -156,6 +160,12 @@ export class NotificationConsumer implements OnModuleInit, OnModuleDestroy {
         break;
       case EVENT.FilePreviewRequested:
         await this.filePreviews.generate(payload, em);
+        break;
+      case EVENT.LibraryCollectionExportRequested:
+        await this.libraryExports.export(payload, em);
+        break;
+      case EVENT.LibraryScanRequested:
+        await this.libraryScans.scan(payload, em);
         break;
       default:
         // No email side effect for this event type — just sealed as Sent.

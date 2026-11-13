@@ -1,0 +1,54 @@
+---
+# Dedicated deploy SSH key (S4): install the public key for the deploy user, then turn off password
+# logins for that user only. Run once, by hand, from a machine that can still log in:
+#
+#   ssh-keygen -t ed25519 -C abdcshare-deploy -f abdcshare_deploy -N ''
+#   ansible-playbook --ask-vault-pass --ask-become-pass -i inventory/production.ini \
+#     playbooks/deploy_key.yml -e deploy_ssh_public_key="$(cat abdcshare_deploy.pub)"
+#   # add the private key as the DEPLOY_SSH_KEY GitHub secret, `ssh-keyscan` output as DEPLOY_KNOWN_HOSTS,
+#   # run a deploy, then delete DEPLOY_SSH_PASSWORD and rotate the deploy user's password.
+#
+# Set disable_password_login=false for a first dry run that only installs the key.
+- name: Deploy key for abdcshare CI
+  hosts: all
+  become: true
+  vars:
+    deploy_user: "{{ ansible_user }}"
+    disable_password_login: true
+
+  tasks:
+    - name: Require the public key
+      ansible.builtin.assert:
+        that:
+          - deploy_ssh_public_key is defined
+          - deploy_ssh_public_key is match('^(ssh-ed25519|ecdsa-sha2-|ssh-rsa) ')
+        fail_msg: "Pass -e deploy_ssh_public_key='ssh-ed25519 AAAA… abdcshare-deploy'"
+
+    - name: Authorise the key — no forwarding of ports, agents or X11
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ deploy_ssh_public_key }}"
+        key_options: "no-port-forwarding,no-agent-forwarding,no-X11-forwarding"
+        state: present
+
+    - name: Password logins off for the deploy user only (other users unchanged)
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/60-abdcshare-deploy.conf
+        content: |
+          # Managed by ansible/playbooks/deploy_key.yml
+          Match User {{ deploy_user }}
+              PasswordAuthentication no
+              KbdInteractiveAuthentication no
+        mode: "0644"
+      when: disable_password_login | bool
+      notify: Reload sshd
+
+    - name: Whole sshd config still valid (a failure here stops before the reload)
+      ansible.builtin.command: /usr/sbin/sshd -t
+      changed_when: false
+
+  handlers:
+    - name: Reload sshd
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded

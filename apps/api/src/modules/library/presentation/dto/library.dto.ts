@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  Equals,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -15,7 +16,15 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { FilePreviewStatus, LibraryItemStatus, LibraryVisibility } from '@abdcshare/shared';
+import {
+  FilePreviewStatus,
+  LibraryItemStatus,
+  LibraryLicence,
+  LibraryScanStatus,
+  LibraryVisibility,
+  PreviewErrorCode,
+} from '@abdcshare/shared';
+import { MultipartCompleteDto } from '../../../../common/storage/multipart.dto';
 import { PaginationQueryDto } from '../../../../common/dto/pagination-query.dto';
 import {
   LIBRARY_FILE_TYPES,
@@ -65,6 +74,9 @@ export class LibraryCategoryResponseDto {
 export class LibraryItemListQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() categoryId?: string;
 
+  @ApiPropertyOptional({ description: 'Items in this collection.' })
+  @IsOptional() @IsUUID() collectionId?: string;
+
   @ApiPropertyOptional({ description: 'Items restricted to this department.' })
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) departmentId?: number;
 
@@ -106,11 +118,32 @@ class LibraryItemFieldsDto {
   @ApiPropertyOptional({ type: [Number], description: 'Required (≥1) when visibility = Departments.' })
   @IsOptional() @IsArray() @ArrayMaxSize(50) @IsInt({ each: true }) @Min(1, { each: true })
   departmentIds?: number[];
+
+  @ApiPropertyOptional({ enum: LibraryLicence, description: 'Default InternalUseOnly.' })
+  @IsOptional() @IsEnum(LibraryLicence) licence?: LibraryLicence;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) licenceNote?: string | null;
+
+  @ApiPropertyOptional({ description: 'false = view-only (download refused to all but editors).' })
+  @IsOptional() @IsBoolean() downloadable?: boolean;
 }
+
+/** D18 wording — shown in the UI next to the checkbox and stored as a timestamp. */
+export const LIBRARY_DECLARATION_TEXT =
+  'This file contains no client-identifiable information, or I have restricted it to the right departments.';
 
 export class CreateLibraryItemDto extends LibraryItemFieldsDto {
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(300) title!: string;
   @ApiProperty() @IsUUID() categoryId!: string;
+
+  @ApiPropertyOptional({ description: 'Add the new item to this collection (needs edit rights on it).' })
+  @IsOptional() @IsUUID() collectionId?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) section?: string | null;
+
+  @ApiProperty({ description: LIBRARY_DECLARATION_TEXT, enum: [true] })
+  @Equals(true, { message: 'Confirm the upload declaration' })
+  declaration!: true;
 }
 
 export class UpdateLibraryItemDto extends LibraryItemFieldsDto {
@@ -129,6 +162,14 @@ export class LibraryConfirmDto {
   @ApiProperty() @IsString() @MaxLength(255) fileName!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(150) mimeType?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) sizeBytes?: number;
+
+  @ApiPropertyOptional({ description: `Required when replacing a published item's file: ${LIBRARY_DECLARATION_TEXT}` })
+  @IsOptional() @IsBoolean() declaration?: boolean;
+}
+
+export class LibraryMultipartCompleteDto extends MultipartCompleteDto {
+  @ApiPropertyOptional({ description: 'Required when replacing a published item\'s file.' })
+  @IsOptional() @IsBoolean() declaration?: boolean;
 }
 
 export class LibraryRefDto {
@@ -163,8 +204,23 @@ export class LibraryItemResponseDto {
   @ApiPropertyOptional({ nullable: true }) archivedAt!: Date | null;
   @ApiProperty() viewCount!: number;
   @ApiProperty() downloadCount!: number;
+  @ApiProperty({ enum: LibraryLicence }) licence!: LibraryLicence;
+  @ApiPropertyOptional({ nullable: true }) licenceNote!: string | null;
+  @ApiProperty() downloadable!: boolean;
+  @ApiPropertyOptional({ nullable: true }) declaredAt!: Date | null;
+  @ApiProperty({ description: 'Viewer may download the original (false for view-only unless an editor).' })
+  canDownload!: boolean;
+  @ApiProperty({ description: 'Open reports on this item (curators only; 0 for everyone else).' })
+  openReports!: number;
+  @ApiProperty({ enum: LibraryScanStatus, description: 'Downloads wait for Clean (S3).' })
+  scanStatus!: LibraryScanStatus;
+  @ApiPropertyOptional({ enum: PreviewErrorCode, nullable: true }) previewErrorCode!: PreviewErrorCode | null;
+  @ApiPropertyOptional({ nullable: true, description: 'SHA-256 of the file (after the scan).' })
+  contentHash!: string | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
+  @ApiProperty({ description: 'Collections (visible to the viewer) this item belongs to.' })
+  collections!: { id: string; title: string; type: string; section: string | null }[];
   @ApiProperty({ description: 'Viewer may edit metadata, replace the file, archive/restore.' })
   canEdit!: boolean;
   @ApiProperty({ description: 'Viewer may permanently delete (curators, archived items).' })
@@ -185,8 +241,10 @@ export class LibraryPreviewDto {
   @ApiProperty({ enum: ['native', 'converted', 'unavailable'] })
   mode!: 'native' | 'converted' | 'unavailable';
   @ApiProperty({ enum: FilePreviewStatus }) previewStatus!: FilePreviewStatus;
-  @ApiPropertyOptional({ enum: ['pending', 'failed', 'unsupported'] })
-  reason?: 'pending' | 'failed' | 'unsupported';
+  @ApiPropertyOptional({ enum: ['pending', 'failed', 'unsupported', 'quarantined'] })
+  reason?: 'pending' | 'failed' | 'unsupported' | 'quarantined';
+  @ApiPropertyOptional({ enum: PreviewErrorCode, nullable: true, description: 'Why a conversion failed.' })
+  errorCode?: PreviewErrorCode | null;
 }
 
 export class LibraryTagQueryDto extends PaginationQueryDto {}

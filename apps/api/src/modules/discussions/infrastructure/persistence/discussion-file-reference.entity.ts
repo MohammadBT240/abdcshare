@@ -1,6 +1,7 @@
 import {
   Entity,
   Enum,
+  Index,
   ManyToOne,
   OptionalProps,
   PrimaryKey,
@@ -24,6 +25,7 @@ export class DiscussionFileReferenceEntity {
   id: string = randomUUID();
 
   @ManyToOne(() => DiscussionMessageEntity, { deleteRule: 'cascade' })
+  @Index({ name: 'discussion_file_refs_message_id_index' })
   message!: DiscussionMessageEntity;
 
   /** Live file link (null if the file was later deleted). */

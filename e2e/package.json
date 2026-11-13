@@ -1,0 +1,17 @@
+{
+  "name": "@abdcshare/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Playwright end-to-end suite. Needs a running stack (pnpm dev) and `pnpm seed:e2e`.",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'e2e: no lint'"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.10.6",
+    "typescript": "^5.9.3"
+  }
+}

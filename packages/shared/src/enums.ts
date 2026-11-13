@@ -195,6 +195,24 @@ export enum LibraryItemStatus {
   Draft = 'Draft',
   Published = 'Published',
   Archived = 'Archived',
+  /** Virus scan found malware (S3, D24): hidden from everyone but curators; object under quarantine/. */
+  Quarantined = 'Quarantined',
+}
+
+/** ClamAV scan state of a library item's file (S3, D24/D25). Downloads need Clean. */
+export enum LibraryScanStatus {
+  Pending = 'Pending',
+  Clean = 'Clean',
+  Infected = 'Infected',
+  Error = 'Error',
+}
+
+/** Why an Office → PDF preview failed (S3, D28). */
+export enum PreviewErrorCode {
+  PasswordProtected = 'password_protected',
+  Corrupt = 'corrupt',
+  Timeout = 'timeout',
+  Unknown = 'unknown',
 }
 
 /** Who can see a library item (internal users only, always). */
@@ -203,4 +221,69 @@ export enum LibraryVisibility {
   Firm = 'Firm',
   /** Only users in the item's departments (+ uploader + curators). */
   Departments = 'Departments',
+}
+
+/** What a library collection groups items by (S1). Drives icons and copy. */
+export enum LibraryCollectionType {
+  Training = 'Training',
+  Workshop = 'Workshop',
+  Conference = 'Conference',
+  Project = 'Project',
+  Programme = 'Programme',
+  Other = 'Other',
+}
+
+export enum LibraryCollectionStatus {
+  Active = 'Active',
+  Archived = 'Archived',
+}
+
+/** Library activity log actions (S2, D15). Every event counts — no de-duplication. */
+export enum LibraryEventAction {
+  Viewed = 'Viewed',
+  Downloaded = 'Downloaded',
+  Uploaded = 'Uploaded',
+  FileReplaced = 'FileReplaced',
+  Edited = 'Edited',
+  VisibilityChanged = 'VisibilityChanged',
+  Archived = 'Archived',
+  Restored = 'Restored',
+  Deleted = 'Deleted',
+  Reported = 'Reported',
+  ReportResolved = 'ReportResolved',
+  OwnershipTransferred = 'OwnershipTransferred',
+  AddedToCollection = 'AddedToCollection',
+  RemovedFromCollection = 'RemovedFromCollection',
+  ZipExported = 'ZipExported',
+  Quarantined = 'Quarantined',
+}
+
+/** How a library item may be shared (S2, D21). */
+export enum LibraryLicence {
+  FreeToShare = 'FreeToShare',
+  InternalUseOnly = 'InternalUseOnly',
+  Licensed = 'Licensed',
+}
+
+/** Why someone reported a library item (S2, D19). */
+export enum LibraryReportReason {
+  ClientConfidential = 'ClientConfidential',
+  Copyright = 'Copyright',
+  OutdatedOrWrong = 'OutdatedOrWrong',
+  Inappropriate = 'Inappropriate',
+  Other = 'Other',
+}
+
+export enum LibraryReportStatus {
+  Open = 'Open',
+  Dismissed = 'Dismissed',
+  Actioned = 'Actioned',
+}
+
+/** What a curator did about a report (S2, D20). */
+export enum LibraryReportOutcome {
+  Dismiss = 'Dismiss',
+  Restrict = 'Restrict',
+  Archive = 'Archive',
+  Delete = 'Delete',
 }

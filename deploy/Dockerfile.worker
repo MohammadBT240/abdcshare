@@ -13,6 +13,7 @@ COPY apps/api/package.json ./apps/api/
 COPY apps/worker/package.json ./apps/worker/
 COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/persistence/package.json ./packages/persistence/
 COPY packages/config/package.json ./packages/config/
 COPY packages/api-client/package.json ./packages/api-client/
 RUN corepack install
@@ -22,6 +23,7 @@ FROM deps AS builder
 COPY tsconfig.base.json ./
 COPY packages/config ./packages/config
 COPY packages/shared ./packages/shared
+COPY packages/persistence ./packages/persistence
 COPY apps/worker ./apps/worker
 RUN pnpm --filter @abdcshare/worker... build
 
@@ -34,18 +36,26 @@ RUN apt-get update \
     libreoffice-impress \
     libreoffice-calc \
     fonts-dejavu-core \
+    fonts-dejavu \
+    fonts-liberation2 \
+    fonts-crosextra-carlito \
+    fonts-crosextra-caladea \
   && rm -rf /var/lib/apt/lists/*
+# Carlito/Caladea are metric-compatible with Calibri/Cambria, Liberation with Arial/Times/Courier —
+# Office files keep their line breaks and page count when converted to PDF (S3, D28).
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY apps/api/package.json ./apps/api/
 COPY apps/worker/package.json ./apps/worker/
 COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/persistence/package.json ./packages/persistence/
 COPY packages/config/package.json ./packages/config/
 COPY packages/api-client/package.json ./packages/api-client/
 RUN corepack install
 RUN pnpm install --frozen-lockfile --prod --filter @abdcshare/worker...
 COPY --from=builder /repo/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /repo/packages/persistence/dist ./packages/persistence/dist
 COPY --from=builder /repo/apps/worker/dist ./apps/worker/dist
 WORKDIR /repo/apps/worker
 CMD ["node", "dist/main.js"]

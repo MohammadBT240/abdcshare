@@ -46,6 +46,7 @@ import {
 } from "@/features/requests/lib/request-tabs";
 import { BffClientError } from "@/lib/bff/client";
 import { cn } from "@/lib/utils";
+import { HelpTip } from "@/features/help/components/help-tip";
 
 const TAB_ICONS: Record<RequestDetailTab, ReactNode> = {
   overview: <IconLayoutDashboard />,
@@ -179,7 +180,9 @@ function RequestDetailInner({ id }: { id: string }) {
           { label: r.referenceCode },
         ]}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <HelpTip slug={canRespond ? "responding-to-a-request" : "how-requests-work"} />
+            <div className="flex items-center gap-2">
             <Button type="button" variant="outline" size="sm" asChild>
               <Link href={engagementHref}>Engagement</Link>
             </Button>
@@ -194,6 +197,7 @@ function RequestDetailInner({ id }: { id: string }) {
                 Delete
               </Button>
             ) : null}
+          </div>
           </div>
         }
       />

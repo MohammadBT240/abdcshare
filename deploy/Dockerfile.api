@@ -13,6 +13,7 @@ COPY apps/api/package.json ./apps/api/
 COPY apps/worker/package.json ./apps/worker/
 COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/persistence/package.json ./packages/persistence/
 COPY packages/config/package.json ./packages/config/
 COPY packages/api-client/package.json ./packages/api-client/
 RUN corepack install
@@ -22,6 +23,7 @@ FROM deps AS builder
 COPY tsconfig.base.json ./
 COPY packages/config ./packages/config
 COPY packages/shared ./packages/shared
+COPY packages/persistence ./packages/persistence
 COPY apps/api ./apps/api
 # Topological build: @abdcshare/shared (tsc) first, then the api (nest build).
 RUN pnpm --filter @abdcshare/api... build
@@ -35,12 +37,16 @@ COPY apps/api/package.json ./apps/api/
 COPY apps/worker/package.json ./apps/worker/
 COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/persistence/package.json ./packages/persistence/
 COPY packages/config/package.json ./packages/config/
 COPY packages/api-client/package.json ./packages/api-client/
 RUN corepack install
 RUN pnpm install --frozen-lockfile --prod --filter @abdcshare/api...
 COPY --from=builder /repo/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /repo/packages/persistence/dist ./packages/persistence/dist
 COPY --from=builder /repo/apps/api/dist ./apps/api/dist
+# Built-in Help Center articles + screenshots — synced into the database on start (HELP_SYNC_ON_START).
+COPY docs/help ./docs/help
 WORKDIR /repo/apps/api
 EXPOSE 4000
 CMD ["node", "dist/main.js"]

@@ -62,8 +62,9 @@ describe('CompanyProfileService', () => {
         expiresIn: 900,
       })),
     };
-    const service = new CompanyProfileService(em as never, storage as never);
-    return { service, em, storage, rows };
+    const outbox = { enqueue: jest.fn() };
+    const service = new CompanyProfileService(em as never, storage as never, outbox as never);
+    return { service, em, storage, rows, outbox };
   }
 
   it('lists only active complete profiles and supports name search', async () => {
@@ -217,49 +218,68 @@ describe('CompanyProfileService', () => {
     });
   });
 
-  it('marks Word files as unsupported for local (non-public) storage URLs', async () => {
-    const { service, rows, storage } = build();
-    storage.presignDownload = jest.fn(
-      async () => 'http://localhost:3001/api/storage/local/k?inline=x.docx',
-    );
+  it('queues an in-house conversion for Word files and never builds a third-party viewer URL', async () => {
+    const { service, rows, storage, outbox } = build();
     rows.push({
       id: 'profile-1',
       name: 'X',
       fileName: 'x.docx',
-      mimeType:
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       storageKey: 'k',
+      previewStatus: 'None',
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as CompanyProfileEntity);
+    } as unknown as CompanyProfileEntity);
 
     const result = await service.preview('profile-1');
-    expect(result).toMatchObject({
-      url: null,
-      mode: 'unavailable',
-      reason: 'unsupported',
-    });
+    expect(result).toMatchObject({ url: null, mode: 'unavailable', reason: 'pending' });
+    expect(outbox.enqueue).toHaveBeenCalledWith(
+      'file.preview_requested',
+      expect.objectContaining({ entityType: 'company_profile', fileId: 'profile-1', storageKey: 'k' }),
+    );
+    expect(storage.presignDownload).not.toHaveBeenCalled();
   });
 
-  it('embeds Word files via Office Online when the object URL is public HTTPS', async () => {
+  it('serves the converted PDF once the worker has finished', async () => {
     const { service, rows, storage } = build();
-    storage.presignDownload = jest.fn(async () => 'https://cdn.example.com/file.docx');
+    storage.presignDownload = jest.fn(async () => 'https://r2.example.com/preview.pdf');
     rows.push({
       id: 'profile-1',
       name: 'X',
       fileName: 'x.docx',
-      mimeType:
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       storageKey: 'k',
+      previewStatus: 'Ready',
+      previewStorageKey: 'previews/x.pdf',
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as CompanyProfileEntity);
+    } as unknown as CompanyProfileEntity);
 
     const result = await service.preview('profile-1');
-    expect(result.mode).toBe('converted');
-    expect(result.url).toContain('view.officeapps.live.com');
-    expect(result.url).toContain(encodeURIComponent('https://cdn.example.com/file.docx'));
+    expect(storage.presignDownload).toHaveBeenCalledWith('previews/x.pdf', 'x.docx.pdf', { disposition: 'inline' });
+    expect(result).toMatchObject({ mode: 'converted', url: 'https://r2.example.com/preview.pdf' });
+    expect(result.url).not.toContain('officeapps');
+  });
+
+  it('only re-queues a failed conversion when asked to retry', async () => {
+    const { service, rows, outbox } = build();
+    rows.push({
+      id: 'profile-1',
+      name: 'X',
+      fileName: 'x.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      storageKey: 'k',
+      previewStatus: 'Failed',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as unknown as CompanyProfileEntity);
+
+    await expect(service.preview('profile-1')).resolves.toMatchObject({ reason: 'failed' });
+    expect(outbox.enqueue).not.toHaveBeenCalled();
+    await expect(service.preview('profile-1', { retryFailed: true })).resolves.toMatchObject({ reason: 'pending' });
+    expect(outbox.enqueue).toHaveBeenCalledTimes(1);
   });
 });

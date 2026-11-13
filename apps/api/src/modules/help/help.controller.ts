@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -18,6 +18,7 @@ import {
   UpdateHelpArticleDto,
 } from './presentation/dto/help-article.dto';
 import { HelpImageUploadDto, HelpImageUploadResponseDto } from './presentation/dto/help-image.dto';
+import { HelpFeedbackDto, HelpFeedbackStatsDto, HelpSearchResultDto } from './presentation/dto/help-reader.dto';
 
 @ApiTags('help')
 @ApiBearerAuth()
@@ -41,8 +42,19 @@ export class HelpController {
   }
 
   @Get('search')
-  search(@Query('q') q: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.help.searchArticles(q ?? '', user);
+  search(@Query('q') q: string, @CurrentUser() user: AuthenticatedUser): Promise<HelpSearchResultDto[]> {
+    return this.help.searchArticles(typeof q === 'string' ? q : '', user);
+  }
+
+  /** "Was this helpful?" — one answer per person per article; answering again replaces it. */
+  @Put('articles/:slug/feedback')
+  @HttpCode(204)
+  setFeedback(
+    @Param('slug') slug: string,
+    @Body() dto: HelpFeedbackDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    return this.help.setFeedback(slug, dto, user);
   }
 
   // --- authoring surface (help:manage) ---
@@ -120,6 +132,25 @@ export class HelpController {
   @RequirePermission('help:manage')
   unpublishArticle(@Param('id') id: string): Promise<HelpArticleResponseDto> {
     return this.help.unpublishArticle(id);
+  }
+
+  @Post('articles/:id/restore-default')
+  @RequirePermission('help:manage')
+  restoreDefault(@Param('id') id: string): Promise<HelpArticleResponseDto> {
+    return this.help.restoreDefault(id);
+  }
+
+  @Get('admin/feedback')
+  @RequirePermission('help:manage')
+  feedback(): Promise<HelpFeedbackStatsDto[]> {
+    return this.help.feedbackStats();
+  }
+
+  /** Re-read docs/help now (also runs on every API start). */
+  @Post('admin/sync')
+  @RequirePermission('help:manage')
+  runSync() {
+    return this.help.runSync();
   }
 
   @Delete('articles/:id')

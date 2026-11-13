@@ -19,12 +19,17 @@ import {
 } from '@/components/ui/table';
 import { EmptyState, ErrorState } from '@/components/data/empty-state';
 import { ConfirmDialog } from '@/components/forms/confirm-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { HelpFeedbackPanel } from './help-feedback-panel';
+import { HelpTip } from './help-tip';
 import {
   useCreateHelpCategory,
   useDeleteHelpArticle,
   useHelpArticlesAdmin,
   useHelpCategoriesAdmin,
   usePublishHelpArticle,
+  useRestoreHelpDefault,
+  useSyncHelpDefaults,
   useUnpublishHelpArticle,
 } from '../hooks/use-help-admin';
 
@@ -35,6 +40,9 @@ export function HelpAdminPage() {
   const deleteArticle = useDeleteHelpArticle();
   const publish = usePublishHelpArticle();
   const unpublish = useUnpublishHelpArticle();
+  const restore = useRestoreHelpDefault();
+  const syncDefaults = useSyncHelpDefaults();
+  const [restoreTarget, setRestoreTarget] = useState<HelpArticleSummary | null>(null);
 
   const [newCategoryName, setNewCategoryName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<HelpArticleSummary | null>(null);
@@ -46,13 +54,50 @@ export function HelpAdminPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-foreground">Help Center content</h1>
-        <Button type="button" asChild>
-          <Link href="/admin/help/articles/new">New article</Link>
-        </Button>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Help Center content</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            <strong>Built-in</strong> articles ship with the app and update with it. If you edit one, your version is kept
+            and marked <strong>Edited</strong> — use Restore default to go back to the shipped text.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <HelpTip slug="help-content" />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={syncDefaults.isPending}
+            onClick={() =>
+              syncDefaults.mutate(undefined, {
+                onSuccess: (r) =>
+                  r.skipped === 'locked'
+                    ? toast.message('An update is already running — try again in a moment')
+                    : toast.success(
+                        `Built-in articles checked: ${r.created.length} added, ${r.updated.length} updated` +
+                          (r.keptEdited.length ? `, ${r.keptEdited.length} kept (edited here)` : ''),
+                      ),
+                onError: notifyFailure('Failed to update built-in articles'),
+              })
+            }
+          >
+            Update built-in articles
+          </Button>
+          <Button type="button" asChild>
+            <Link href="/admin/help/articles/new">New article</Link>
+          </Button>
+        </div>
       </div>
 
+      <Tabs defaultValue="articles" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="articles">Articles</TabsTrigger>
+          <TabsTrigger value="feedback">Reader feedback</TabsTrigger>
+        </TabsList>
+        <TabsContent value="feedback" className="mt-0">
+          <HelpFeedbackPanel />
+        </TabsContent>
+        <TabsContent value="articles" className="mt-0 space-y-8">
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Categories</h2>
         <div className="flex gap-2">
@@ -133,7 +178,15 @@ export function HelpAdminPage() {
                 ) : (
                   articles.data!.data.map((a) => (
                     <TableRow key={a.id}>
-                      <TableCell className="font-medium text-foreground">{a.title}</TableCell>
+                      <TableCell className="font-medium text-foreground">
+                        <Link href={`/help/${a.slug}`} className="hover:text-primary hover:underline">
+                          {a.title}
+                        </Link>
+                        <span className="ml-2 inline-flex gap-1 align-middle">
+                          {a.source === 'default' ? <Badge variant="outline">Built-in</Badge> : null}
+                          {a.edited ? <Badge variant="secondary">Edited</Badge> : null}
+                        </span>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{categoryName(a.categoryId)}</TableCell>
                       <TableCell>
                         <Badge variant={a.status === 'published' ? 'default' : 'secondary'}>{a.status}</Badge>
@@ -172,6 +225,11 @@ export function HelpAdminPage() {
                               Publish
                             </Button>
                           )}
+                          {a.edited ? (
+                            <Button type="button" size="sm" variant="ghost" onClick={() => setRestoreTarget(a)}>
+                              Restore default
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             size="sm"
@@ -190,6 +248,29 @@ export function HelpAdminPage() {
           </div>
         )}
       </section>
+        </TabsContent>
+      </Tabs>
+
+      <ConfirmDialog
+        open={Boolean(restoreTarget)}
+        onOpenChange={(open) => {
+          if (!open) setRestoreTarget(null);
+        }}
+        title="Restore the built-in version?"
+        description={`Your changes to "${restoreTarget?.title ?? 'this article'}" will be replaced by the version that ships with the app.`}
+        confirmLabel="Restore default"
+        confirming={restore.isPending}
+        onConfirm={() => {
+          if (!restoreTarget) return;
+          restore.mutate(restoreTarget.id, {
+            onSuccess: () => {
+              setRestoreTarget(null);
+              toast.success('Built-in version restored');
+            },
+            onError: notifyFailure('Failed to restore the article'),
+          });
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

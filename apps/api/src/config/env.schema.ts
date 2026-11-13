@@ -24,7 +24,46 @@ export const envSchema = z.object({
   R2_BUCKET: z.string().optional(),
   R2_ENDPOINT: z.string().url().optional(),
   R2_OBJECT_PREFIX: z.string().default('abdcshare'),
+  /** HMAC secret for dev-only local storage URLs; defaults to JWT_ACCESS_SECRET. */
+  STORAGE_SIGNING_SECRET: z.string().optional(),
+  /** Browser origins allowed to PUT/GET local storage URLs (comma-separated, local driver only). */
+  STORAGE_CORS_ORIGINS: z.string().default('http://localhost:3000'),
+  /** Optional: lets /health/ops and /admin/jobs report clamd reachability + signature age (S4). */
+  CLAMD_HOST: z.string().optional(),
+  CLAMD_PORT: z.coerce.number().int().positive().default(3310),
+
+  /** Default Help Center content (Markdown). Defaults to <repo>/docs/help relative to apps/api. */
+  HELP_CONTENT_DIR: z.string().optional(),
+  /** Sync docs/help into the database when the API starts (edited articles are never overwritten). */
+  HELP_SYNC_ON_START: z.enum(['true', 'false']).default('true'),
+
+  /** Swagger UI at /api/docs: always on outside production; in production only when enabled + basic auth. */
+  SWAGGER_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  SWAGGER_USER: z.string().optional(),
+  SWAGGER_PASSWORD: z.string().optional(),
 }).superRefine((data, ctx) => {
+  if (data.NODE_ENV === 'production') {
+    for (const field of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'] as const) {
+      const value = data[field];
+      if (value.startsWith('change-me') || value.length < 32) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${field} must be set to a random value of at least 32 characters in production`,
+          path: [field],
+        });
+      }
+    }
+    if (data.SWAGGER_ENABLED && (!data.SWAGGER_USER || !data.SWAGGER_PASSWORD)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'SWAGGER_USER and SWAGGER_PASSWORD are required when SWAGGER_ENABLED=true in production',
+        path: ['SWAGGER_ENABLED'],
+      });
+    }
+  }
   if (data.STORAGE_DRIVER !== 'r2') return;
   const required = [
     ['R2_ENDPOINT', data.R2_ENDPOINT],

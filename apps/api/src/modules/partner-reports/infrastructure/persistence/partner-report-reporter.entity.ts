@@ -36,7 +36,8 @@ export class PartnerReportReporterEntity {
   @Property({ type: 'timestamptz', nullable: true })
   lastRemindedAt?: Date | null;
 
-  @Property({ type: 'timestamptz' })
+  // Matches the hand-written migration (timestamptz(6) default now()) so schema diffs stay clean.
+  @Property({ columnType: 'timestamptz(6)', defaultRaw: 'now()' })
   createdAt: Date = new Date();
 
   [PrimaryKeyProp]?: 'user';

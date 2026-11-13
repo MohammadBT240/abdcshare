@@ -1,0 +1,26 @@
+{
+  "name": "@abdcshare/persistence",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MikroORM entities shared by the API and the worker (tables both write).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@abdcshare/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "@mikro-orm/core": "^6.6.16"
+  },
+  "devDependencies": {
+    "@abdcshare/config": "workspace:*",
+    "@mikro-orm/core": "^6.6.16",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3"
+  }
+}

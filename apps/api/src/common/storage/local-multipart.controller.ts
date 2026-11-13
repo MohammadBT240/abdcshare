@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  ForbiddenException,
   Inject,
   NotFoundException,
   Param,
@@ -8,12 +9,14 @@ import {
   Put,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { Public } from '../decorators/public.decorator';
 import { STORAGE, type StoragePort } from './storage.port';
 import { LocalStorageAdapter } from './local-storage.adapter';
+import { localScope, verifyLocal } from './local-url-signer';
 
 /**
  * Dev-only endpoint that receives multipart part bodies for LocalStorageAdapter.
@@ -30,7 +33,10 @@ export class LocalMultipartController {
     @Param('uploadId') uploadId: string,
     @Param('partNumber', ParseIntPipe) partNumber: number,
     @Query('key') key: string | undefined,
+    @Query('exp') exp: string | undefined,
+    @Query('sig') sig: string | undefined,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<{ etag: string }> {
     if (!(this.storage instanceof LocalStorageAdapter)) {
       throw new NotFoundException();
@@ -39,8 +45,14 @@ export class LocalMultipartController {
     if (partNumber < 1 || partNumber > 10_000) {
       throw new BadRequestException('Invalid part number');
     }
+    if (!/^[0-9a-f-]{36}$/i.test(uploadId)) throw new BadRequestException('Invalid upload id');
+    if (!verifyLocal(this.storage.signingSecret(), localScope.part(uploadId, partNumber, key), exp, sig)) {
+      throw new ForbiddenException('Invalid or expired storage URL');
+    }
     const body = await streamToBuffer(req);
     const etag = await this.storage.writeLocalPart(uploadId, partNumber, body);
+    // Uppy's S3 multipart reads the part ETag from the response header, like R2.
+    res.setHeader('ETag', etag);
     return { etag };
   }
 }

@@ -23,3 +23,9 @@ r2_endpoint: "https://{{ vault_r2_account_id }}.r2.cloudflarestorage.com"
 r2_object_prefix: "abdcshare"
 
 email_from: "ABDC Share (staging) <no-reply@abdcshare.com>"
+
+# Backups (S4, playbooks/backups.yml). Dedicated bucket; age public key from the firm's key pair.
+backup_name: "abdcshare-staging"
+backup_r2_bucket: "abdcshare-backups"
+backup_age_recipient: ""   # age1… public key — the private key is kept off the server
+backup_time: "03:15"

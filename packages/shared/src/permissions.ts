@@ -55,6 +55,7 @@ export const PERMISSIONS = [
   'notification:receive',
   'audit:view',
   'help:manage',
+  'system:jobs', // background jobs page: queue counts, failed jobs/outbox rows, re-drive (Platform Admin)
   // staff knowledge library
   'library:view', // browse/search/view items within visibility scope
   'library:contribute', // upload; edit/replace/archive OWN items
@@ -69,7 +70,7 @@ export const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
     'user:manage', 'user:view', 'client:manage', 'client:view',
     'catalogue:manage', 'catalogue:view', 'reference-data:manage', 'reference-data:view',
     'department:manage', 'company-profile:manage', 'company-profile:view',
-    'bulk-import:run', 'audit:view', 'notification:receive', 'help:manage',
+    'bulk-import:run', 'audit:view', 'notification:receive', 'help:manage', 'system:jobs',
     'library:view', 'library:contribute', 'library:curate',
   ],
   'Super Admin': [

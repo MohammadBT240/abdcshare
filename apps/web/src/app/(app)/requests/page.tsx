@@ -33,6 +33,7 @@ import { useUsersList } from '@/features/users/hooks/use-users';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { toast } from 'sonner';
 import { BffClientError } from '@/lib/bff/client';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 function parseDateParam(value?: string): Date | undefined {
   if (!value) return undefined;
@@ -172,6 +173,7 @@ function RequestsListInner() {
           { label: 'Requests' },
         ]}
         description="Global inbox for all requests across engagements"
+        actions={<HelpTip slug="the-requests-page" />}
       />
 
       <FilterBar>

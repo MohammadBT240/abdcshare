@@ -38,6 +38,7 @@
 | O | Partner weekly reports 🆕 | `partner-report:*` |
 | P | Dashboards & analytics 🆕 | (role-scoped) |
 | Q | Search, reporting & exports | `document:export`, view perms |
+| S | Staff knowledge library 🆕 | `library:view` / `library:contribute` / `library:curate` |
 | R | Audit trail | `audit:view` |
 
 ---
@@ -183,7 +184,7 @@ Recipient rules (who gets which event): see **[NOTIFICATIONS.md](./NOTIFICATIONS
 
 ## Epic Q — Search, reporting & exports
 
-- **Q-1 (S, SA/ST)** Global search across engagements, clients, requests, documents (role-scoped). 🆕 ✅
+- **Q-1 (S, SA/ST)** Global search across engagements, clients, requests, documents and the library (role-scoped), from the header (⌘K). 🆕 ✅
 - **Q-2 (M, SA)** Reports of requests & documents **grouped by request class** (per engagement + roll-up); paginated. `document:export`.
 - **Q-3 (M, SA)** Export any report to CSV/Excel; bundle documents to zip (respecting filters).
 - **Q-4 (C, SA)** Firm-wide engagement status report across clients.
@@ -192,6 +193,38 @@ Recipient rules (who gets which event): see **[NOTIFICATIONS.md](./NOTIFICATIONS
 
 - **R-1 (M, PA/SA)** Immutable activity log of significant actions (logins, user/client/catalogue changes, engagement/request/document changes, status transitions, sign-offs, partner-report actions). `audit:view`. _(parity: activity_log)_ ✅ (via a global audit interceptor)
 - **R-2 (S, PA/PP)** View/filter the log per engagement/user/date; export. `audit:view` (Platform Admin, or Super Admin with Principal Partner designation). ✅
+
+## Epic S — Staff knowledge library 🆕 _(design: `docs/superpowers/specs/2026-11-12-staff-library-design.md`)_
+
+Separate from Company Profiles (Epic G). Staff = `library:view` + `library:contribute`; Super Admin /
+Platform Admin are curators (`library:curate`). Internal users only.
+
+- **S-1 (M, ST)** Upload a file with title, category, description, authors, year, source and tags; it is
+  published as soon as the upload finishes (no approval). Several files at once, with per-file retry. ✅
+- **S-2 (M, ST)** Choose who can see it: everyone in the firm or specific departments (plus uploader and
+  curators). Hidden items return 404, never 403. ✅
+- **S-3 (M, ST)** Browse and search by metadata (title, tags, authors, description, file name); filter by
+  category, year, type, department, tag; sort by relevance, newest, title, views, downloads. ✅
+- **S-4 (M, ST)** Read any item in the browser without downloading — PDF.js for PDFs and Office files
+  converted in-house, images and text inline — on desktop and phones. ✅
+- **S-5 (S, ST)** Collections: group the material of a training, workshop, conference, project or programme,
+  with sections, order and a ZIP of everything. ✅
+- **S-6 (M, ST)** Confirm on every upload and replacement that the file has no client-identifiable
+  information, or that it is restricted to the right departments (enforced by the API). ✅
+- **S-7 (M, ST/SA)** Report an item (client-confidential, copyright, out of date, inappropriate, other);
+  curators are notified, review it in a queue and dismiss, restrict, archive or delete; the reporter is told. ✅
+- **S-8 (S, ST)** Mark material as licensed / internal-only / free to share, and as view-only (no download
+  for anyone but the uploader and curators; ZIPs skip it). ✅
+- **S-9 (M, SA)** Every library action — including every view and download — is recorded; the uploader and
+  curators see an item's activity. ✅
+- **S-10 (M, ALL)** Every file is virus-scanned (ClamAV); downloads wait for a clean scan; infected files are
+  quarantined and curators + uploader are told. ✅
+- **S-11 (S, ST)** Warned before uploading a file that is already in the library (only items the uploader
+  can see); curators see all duplicates. ✅
+- **S-12 (S, SA)** Transfer an item, a collection or everything a leaver owns to another member of staff. ✅
+- **S-13 (S, SA)** "Needs attention": quarantined files, failed scans, leavers' content, items restricted to
+  deactivated departments, failed previews, open reports; a warning before deactivating a department. ✅
+- **S-14 (S, ALL)** Find library items and collections from the header search (same visibility rule). ✅
 
 ---
 

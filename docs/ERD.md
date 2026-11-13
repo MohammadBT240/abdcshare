@@ -288,6 +288,30 @@ _(Replaces the interim settings-singleton idea; restores legacy library semantic
 
 ---
 
+## 12a. Staff knowledge library 🆕 *(S0–S3, Nov 2026)*
+**library_categories** — id uuid PK, name, slug unique, description null, sort_order, is_active.
+**library_items** — id uuid PK, title, description null, category_id FK, authors null, published_year null,
+source null, tags text[] (GIN), visibility enum(Firm, Departments), status enum(Draft, Published, Archived,
+Quarantined), storage_key/file_name/mime_type/size_bytes null, preview_storage_key null, preview_status,
+preview_error null, preview_error_code enum null, **licence** enum(InternalUseOnly, Licensed, FreeToShare),
+licence_note null, **downloadable** bool, declared_at/declared_by_id null, **scan_status**
+enum(Pending, Clean, Infected, Error), scanned_at null, scan_attempts, scan_error null, **content_hash**
+char(64) null (indexed), uploaded_by_id FK, published_at, archived_by_id/archived_at null, view_count,
+download_count, search_vector tsvector (generated), created_at, updated_at.
+**library_item_departments** — PK (item_id, department_id).
+**library_collections** — id uuid PK, title, slug unique, type enum, description, starts_on/ends_on date,
+facilitator, venue, external_url, visibility, status enum(Active, Archived), owner_id FK, archived_at, timestamps.
+**library_collection_departments** — PK (collection_id, department_id).
+**library_collection_items** — PK (collection_id, item_id), position, section null, added_by_id, added_at.
+**library_events** — id bigserial PK, item_id FK null (set null on delete; title kept in metadata),
+collection_id FK null, actor_id FK null, action enum (Viewed … Quarantined), ip, user_agent, metadata jsonb,
+created_at. **Append-only** (trigger). Indexes (item_id, created_at desc), (actor_id, created_at desc),
+(action, created_at desc).
+**library_reports** — id uuid PK, item_id FK null, item_title, reporter_id FK, reason enum, note, status
+enum(Open, Dismissed, Actioned), outcome enum null, resolution null, resolved_by_id/resolved_at null, created_at.
+
+---
+
 ## 13. Audit trail  *(legacy `activity_log`)*
 **activity_log** — id uuid PK, actor_id FK null (system), action, entity_type, entity_id uuid null,
 ip_address inet null, metadata jsonb null (before/after), created_at. Append-only.

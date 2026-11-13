@@ -6,6 +6,7 @@ export class CreateHelpCategoryDto {
   @ApiProperty() @IsString() @MaxLength(150) slug!: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) order?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) icon?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) description?: string;
 }
 
 export class UpdateHelpCategoryDto {
@@ -13,6 +14,7 @@ export class UpdateHelpCategoryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(150) slug?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) order?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) icon?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) description?: string;
 }
 
 export class HelpCategoryResponseDto {
@@ -21,4 +23,6 @@ export class HelpCategoryResponseDto {
   @ApiProperty() slug!: string;
   @ApiProperty() order!: number;
   @ApiPropertyOptional() icon?: string | null;
+  @ApiPropertyOptional() description?: string | null;
+  @ApiProperty({ enum: ['default', 'custom'] }) source!: 'default' | 'custom';
 }

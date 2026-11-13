@@ -30,3 +30,18 @@ apps/web/public/misc/
 apps/web/public/svg/
 apps/web/public/users/
 .pnpm-store/
+
+# Claude test-sync scratch (never commit)
+.sync/
+
+# Local storage driver data (dev)
+apps/api/storage/
+apps/api/storage-*/
+apps/worker/storage/
+
+# pdf.js worker copied from node_modules by apps/web/scripts/copy-pdf-worker.mjs
+apps/web/public/pdfjs/
+
+# Help Center screenshot runs (docs/help/README.md) use a separate database
+apps/api/src/migrations/.snapshot-*_demo.json
+dump.rdb

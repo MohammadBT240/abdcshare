@@ -36,6 +36,15 @@ export class ReviewsService {
       notes: r.notes ?? null,
       submittedAt: r.submittedAt,
       decidedAt: r.decidedAt ?? null,
+      // What is being reviewed, so the queue can show a name and a link instead of an id.
+      itemTitle: r.request
+        ? r.request.requestType?.name ?? null
+        : r.document
+          ? r.document.title ?? null
+          : null,
+      engagementId: (r.request?.engagement ?? r.document?.engagement)?.id ?? null,
+      engagementTitle: (r.request?.engagement ?? r.document?.engagement)?.title ?? null,
+      engagementReference: (r.request?.engagement ?? r.document?.engagement)?.referenceCode ?? null,
     };
   }
 
@@ -134,7 +143,7 @@ export class ReviewsService {
 
     const { page, pageSize, limit, offset } = pageParams(query);
     const [rows, total] = await this.em.findAndCount(ReviewEntity, where as FilterQuery<ReviewEntity>, {
-      populate: ['preparer', 'reviewer', 'request', 'document'],
+      populate: ['preparer', 'reviewer', 'request.requestType', 'request.engagement', 'document.engagement'],
       orderBy: { submittedAt: 'desc', id: 'asc' },
       limit,
       offset,
@@ -156,7 +165,7 @@ export class ReviewsService {
   }
 
   async getOne(id: string, user: AuthenticatedUser): Promise<ReviewResponseDto> {
-    const review = await this.loadScoped(id, user, ['preparer', 'reviewer', 'request', 'document']);
+    const review = await this.loadScoped(id, user, ['preparer', 'reviewer', 'request.requestType', 'request.engagement', 'document.engagement']);
     return this.toDto(review);
   }
 }

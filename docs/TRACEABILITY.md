@@ -73,3 +73,17 @@
   are preserved.
 - **New scope** (Engagements, review workflow, dashboards, versioning, search, reminders) is additive
   and flagged 🆕 for approval in USER_STORIES.md.
+
+## New capability — staff knowledge library (Epic S, S0–S3)
+
+| Requirement (from the firm) | Quantum stories | Built in |
+|-----------------------------|-----------------|----------|
+| Staff upload reports, research papers and materials as a shared knowledge base | S-1, S-3 | L1/L2, S1 |
+| Files open in the browser without downloading | S-4 | L2, S2 (PDF.js) |
+| Internal only, optional department restriction | S-2 | L1 |
+| Material that belongs to a training / event / project | S-5 | S1 |
+| Confidentiality guard (client data) | S-6, S-7 | S2 |
+| Licensed material, view-only | S-8 | S2 |
+| Record all activity, views and downloads | S-9 | S2 |
+| Virus scanning, duplicates, conversion fidelity, ownership and orphans | S-10 – S-13 | S3 |
+| Find library material from global search | S-14, Q-1 | S3 |

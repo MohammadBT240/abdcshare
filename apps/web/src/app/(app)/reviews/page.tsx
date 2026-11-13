@@ -17,6 +17,7 @@ import {
   useReviewsList,
 } from '@/features/reviews/hooks/use-reviews';
 import { BffClientError } from '@/lib/bff/client';
+import { HelpTip } from '@/features/help/components/help-tip';
 
 export default function ReviewsPage() {
   const [page, setPage] = useState(1);
@@ -27,14 +28,34 @@ export default function ReviewsPage() {
     () => [
       {
         header: 'Item',
-        cell: ({ row }) => (
-          <div>
-            <p className="font-medium">{row.original.requestId ? 'Request review' : 'Document review'}</p>
-            <p className="text-xs text-muted-foreground">
-              {row.original.requestId ?? row.original.documentId}
-            </p>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const r = row.original;
+          const href = r.requestId
+            ? `/requests/${r.requestId}`
+            : r.engagementId
+              ? `/engagements/${r.engagementId}?tab=documents`
+              : null;
+          const title = r.itemTitle ?? (r.requestId ? 'Request review' : 'Document review');
+          return (
+            <div className="min-w-0">
+              {href ? (
+                <Link
+                  href={href}
+                  onClick={(e) => e.stopPropagation()}
+                  className="font-medium text-foreground hover:text-primary hover:underline"
+                >
+                  {title}
+                </Link>
+              ) : (
+                <p className="font-medium">{title}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {r.requestId ? 'Request' : 'Document'}
+                {r.engagementTitle ? ` · ${r.engagementReference ? `${r.engagementReference} ` : ''}${r.engagementTitle}` : ''}
+              </p>
+            </div>
+          );
+        },
       },
       { header: 'Submitted by', cell: ({ row }) => row.original.preparerName || '—' },
       {
@@ -68,6 +89,7 @@ export default function ReviewsPage() {
         title="Review queue"
         description="Items assigned to you and awaiting a decision"
         breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Reviews' }]}
+        actions={<HelpTip slug="internal-reviews" />}
       />
       <DataTable
         columns={columns}

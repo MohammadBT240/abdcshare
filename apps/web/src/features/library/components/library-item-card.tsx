@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { IconArchive, IconDownload, IconEye, IconLock } from '@tabler/icons-react';
+import { IconArchive, IconCertificate, IconDownload, IconEye, IconEyeOff, IconLock } from '@tabler/icons-react';
 import { FileTypeIcon } from '@/components/data/file-type-icon';
 import { cn } from '@/lib/utils';
 import { fileTypeLabel, formatDate } from '@/features/library/lib/library-files';
@@ -81,6 +81,18 @@ export function LibraryItemCard({
             <IconLock className="h-3.5 w-3.5" aria-hidden />
             <span className="sr-only">Restricted to </span>
             {item.departments.length === 1 ? item.departments[0]!.name : `${item.departments.length} depts`}
+          </span>
+        ) : null}
+        {item.licence === 'Licensed' ? (
+          <span className="inline-flex items-center gap-1" title="Licensed material — do not share outside the firm">
+            <IconCertificate className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">Licensed</span>
+          </span>
+        ) : null}
+        {!item.downloadable ? (
+          <span className="inline-flex items-center gap-1" title="View-only">
+            <IconEyeOff className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">View-only</span>
           </span>
         ) : null}
         {item.status === 'Archived' ? (
