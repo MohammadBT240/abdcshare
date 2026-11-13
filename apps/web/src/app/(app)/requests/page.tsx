@@ -24,12 +24,12 @@ import { RequestHistoryDialog } from '@/features/requests/components/request-his
 import { RequestsGroupedTable } from '@/features/requests/components/requests-grouped-table';
 import {
   useBulkUpdateRequests,
+  useAssignableUsers,
   useRequestsList,
 } from '@/features/requests/hooks/use-requests';
 import { useCatalogueList } from '@/features/catalogues/hooks/use-catalogue';
 import { useClientsList } from '@/features/clients/hooks/use-clients';
 import { useEngagementsList } from '@/features/engagements/hooks/use-engagements';
-import { useUsersList } from '@/features/users/hooks/use-users';
 import { useAuthContext } from '@/components/providers/auth-provider';
 import { toast } from 'sonner';
 import { BffClientError } from '@/lib/bff/client';
@@ -61,8 +61,8 @@ function setCsvExtra(key: string, values: string[]) {
 function RequestsListInner() {
   const router = useRouter();
   const { can } = useAuthContext();
-  const canManageLifecycle = can('request:update') && can('catalogue:view');
-  const canBulkAssign = can('request:assign') && can('catalogue:view');
+  const canManageLifecycle = can('request:update');
+  const canBulkAssign = can('request:assign');
   const { params, setParams, setSearchQueryDebounced, queryString } = useListParams({
     pageSize: 50,
   });
@@ -81,7 +81,8 @@ function RequestsListInner() {
   const requestClasses = useCatalogueList('request-classes', 'pageSize=100&isActive=true');
   const requestStages = useCatalogueList('request-stages', 'pageSize=100&isActive=true');
   const requestStatuses = useCatalogueList('request-statuses', 'pageSize=100&isActive=true');
-  const users = useUsersList('pageSize=100&isActive=true');
+  // People filter and bulk "Set assignee": the engagement-team members the caller can assign.
+  const users = useAssignableUsers(canBulkAssign);
 
   useEffect(() => {
     setSearchDraft(params.q);
@@ -118,10 +119,9 @@ function RequestsListInner() {
 
   const userOptions = useMemo(
     () =>
-      (users.data?.data ?? []).map((u) => ({
+      (users.data ?? []).map((u) => ({
         value: u.id,
         label: u.fullName,
-        avatarUrl: u.avatarUrl,
         initials: u.fullName,
       })),
     [users.data],
@@ -272,6 +272,7 @@ function RequestsListInner() {
           }
           searchPlaceholder="Statuses"
         />
+        {canBulkAssign ? (
         <ChecklistFilter
           label="Assignee"
           icon={<IconUser className="h-4 w-4" />}
@@ -287,6 +288,7 @@ function RequestsListInner() {
           }
           searchPlaceholder="People"
         />
+        ) : null}
         <DateFilterPill
           label="Due date"
           value={parseDateParam(params.extra.dueDate)}

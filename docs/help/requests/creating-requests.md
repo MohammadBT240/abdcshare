@@ -27,7 +27,7 @@ Super Admins and staff on the engagement team can raise requests.
 The request starts in status **Open** and stage **Not Started**. It's stamped with the engagement's current phase.
 
 > [!TIP]
-> When the request is ready for the client, a Super Admin sets its status to **Pending Client** so it shows on the client's dashboard. See [Managing requests](help:managing-requests).
+> When the request is ready for the client, set its status to **Pending Client** so it shows on the client's dashboard. See [Managing requests](help:managing-requests).
 
 ## Adding or replacing the brief later
 

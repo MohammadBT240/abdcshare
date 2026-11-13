@@ -67,9 +67,9 @@ import { Progress } from "@/components/ui/progress";
 interface RequestOverviewTabProps {
   request: RequestDetail;
   teamMembers: EngagementTeamMember[];
-  /** Edit / stage / status — Super Admin (request:update + catalogue:view). */
+  /** Edit / status — request:update (Staff and Super Admins, in engagements they can see). */
   canManageRequest: boolean;
-  /** Assignees — Super Admin (request:assign + catalogue:view). */
+  /** Assignees — request:assign; only engagement team members can be assigned. */
   canManageAssignees: boolean;
   canSubmitReview: boolean;
   canRespond: boolean;

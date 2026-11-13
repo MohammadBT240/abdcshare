@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { RequireAnyPermission, RequirePermission } from '../../common/decorators/require-permission.decorator';
 import {
   OrderedCreateDto,
   OrderedListQueryDto,
@@ -23,13 +23,15 @@ export class RequestStagesController {
   }
 
   @Get()
-  @RequirePermission('catalogue:view')
+  // Staff read these for request filters and the status picker.
+  @RequireAnyPermission('catalogue:view', 'request:create')
   list(@Query() query: OrderedListQueryDto): Promise<OrderedListResponseDto> {
     return this.stages.list(query);
   }
 
   @Get(':id')
-  @RequirePermission('catalogue:view')
+  // Staff read these for request filters and the status picker.
+  @RequireAnyPermission('catalogue:view', 'request:create')
   getOne(@Param('id', ParseIntPipe) id: number): Promise<OrderedResponseDto> {
     return this.stages.getOne(id);
   }

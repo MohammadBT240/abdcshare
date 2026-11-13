@@ -72,12 +72,13 @@ function RequestDetailInner({ id }: { id: string }) {
   const [discussFile, setDiscussFile] = useState<DiscussFileSeed | null>(null);
   const workspace = useEngagementWorkspace(request.data?.engagementId ?? "");
 
-  /** Edit / stage / status / delete — Super Admin. */
-  const canManageRequest = can("request:update") && can("catalogue:view");
+  /** Edit / status — Staff and Super Admins; delete — Super Admins only. */
+  const canManageRequest = can("request:update");
+  const canDeleteRequest = can("request:delete");
   /** Expectation brief upload/replace/remove — staff with request:update. */
   const canManageBrief = can("request:update");
-  /** Assignees — Super Admin. */
-  const canManageAssignees = can("request:assign") && can("catalogue:view");
+  /** Assignees — Staff and Super Admins; only engagement team members can be assigned. */
+  const canManageAssignees = can("request:assign");
   /** Linked working papers — firm users only (Clients lack working-paper:upload). */
   const canViewLinkedWorkingPapers = can("working-paper:upload");
   const canSubmitReview = can("review:submit");
@@ -186,7 +187,7 @@ function RequestDetailInner({ id }: { id: string }) {
             <Button type="button" variant="outline" size="sm" asChild>
               <Link href={engagementHref}>Engagement</Link>
             </Button>
-            {canManageRequest ? (
+            {canDeleteRequest ? (
               <Button
                 type="button"
                 size="sm"

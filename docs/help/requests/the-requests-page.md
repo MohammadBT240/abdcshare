@@ -1,6 +1,6 @@
 ---
 title: The Requests page
-summary: Every request you can see, across all engagements — search, filter, and (for Super Admins) update many at once.
+summary: Every request you can see, across all engagements — search, filter, and (for staff and Super Admins) update many at once.
 roles: [Platform Admin, Super Admin, Staff, Client]
 order: 7
 related: [managing-requests, how-requests-work]
@@ -18,6 +18,6 @@ related: [managing-requests, how-requests-work]
 
 Clients see only their own organisation's requests; staff see requests on the engagements they're on.
 
-## Bulk changes (Super Admins)
+## Bulk changes (staff and Super Admins)
 
 Tick requests to select them, then choose **Set status** and/or **Set assignee** and click **Apply**. See [Managing requests](help:managing-requests).

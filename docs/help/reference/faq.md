@@ -31,7 +31,7 @@ Staff see the engagements they're on the team of, and client contacts see the en
 
 ### Who can change a request's status?
 
-Super Admins. The stage (*Not Started*, *Submitted*, *In Progress*, *Reviewed*) changes by itself as files arrive and are reviewed. See [How requests work](help:how-requests-work#stage-and-status).
+Staff on the engagement's team, and Super Admins. The stage (*Not Started*, *Submitted*, *In Progress*, *Reviewed*) changes by itself as files arrive and are reviewed. See [How requests work](help:how-requests-work#stage-and-status).
 
 ### Can I delete a request?
 

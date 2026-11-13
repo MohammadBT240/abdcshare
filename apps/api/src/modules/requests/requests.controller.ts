@@ -62,6 +62,16 @@ export class RequestsController {
     return this.requests.bulkUpdate(dto, user);
   }
 
+  /** People who can be assigned: active team members of the engagements the caller can see. */
+  @Get('assignable-users')
+  @RequirePermission('request:assign')
+  assignableUsers(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('engagementId') engagementId?: string,
+  ): Promise<{ id: string; fullName: string; email: string }[]> {
+    return this.requests.assignableUsers(user, engagementId || undefined);
+  }
+
   @Get(':id/history')
   @RequirePermission('request:view')
   getHistory(
@@ -130,9 +140,9 @@ export class RequestsController {
     return this.requests.removeBrief(id, user);
   }
 
-  /** Edit / delete / stage / status — Super Admin (request:update + catalogue:view). */
+  /** Edit / stage / status — anyone with request:update, within the engagements they can see. */
   @Patch(':id')
-  @RequirePermission('request:update', 'catalogue:view')
+  @RequirePermission('request:update')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRequestDto,
@@ -141,8 +151,9 @@ export class RequestsController {
     return this.requests.update(id, dto, user);
   }
 
+  /** Delete — Super Admin only (request:delete). */
   @Delete(':id')
-  @RequirePermission('request:update', 'catalogue:view')
+  @RequirePermission('request:delete')
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -152,7 +163,7 @@ export class RequestsController {
 
   /** Stage is inferred from activity — manual changes are rejected. */
   @Post(':id/stage')
-  @RequirePermission('request:update', 'catalogue:view')
+  @RequirePermission('request:update')
   setStage(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetStageDto,
@@ -162,7 +173,7 @@ export class RequestsController {
   }
 
   @Post(':id/status')
-  @RequirePermission('request:update', 'catalogue:view')
+  @RequirePermission('request:update')
   setStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetStatusDto,
@@ -171,9 +182,9 @@ export class RequestsController {
     return this.requests.setStatus(id, dto, user);
   }
 
-  /** Assignees — Super Admin (request:assign + catalogue:view). */
+  /** Assignees — request:assign; the assignee must be on the engagement team. */
   @Post(':id/assignees')
-  @RequirePermission('request:assign', 'catalogue:view')
+  @RequirePermission('request:assign')
   assign(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AssignRequestDto,
@@ -183,7 +194,7 @@ export class RequestsController {
   }
 
   @Delete(':id/assignees/:userId')
-  @RequirePermission('request:assign', 'catalogue:view')
+  @RequirePermission('request:assign')
   unassign(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) memberUserId: string,

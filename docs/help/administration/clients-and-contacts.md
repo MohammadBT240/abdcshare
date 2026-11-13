@@ -55,7 +55,8 @@ Deactivated contacts move to an **Inactive** list at the bottom of the panel.
 
 ## Edit or deactivate a client
 
-On the client's page, change the details and click **Save changes**. To retire a client, click **Deactivate** and confirm — the client is marked inactive and drops out of the default lists. To bring it back, set **Status** to *Active* and save.
+On the client's page, change the details and click **Save changes**. To retire a client, click **Deactivate** and confirm — the client is marked inactive and drops out of the default lists.
 
-> [!WARNING]
-> Deactivating a client doesn't switch off its contacts' logins. If the people at the client should no longer sign in, deactivate their contacts too.
+Deactivating a client also switches off the portal for **all of its contacts**: they can't sign in or reset their password, and anyone signed in is signed out within about 15 minutes. If they try to sign in, they're told their organisation's portal access is switched off.
+
+To bring the client back, set **Status** to *Active* and save. Its contacts can sign in again straight away with their existing passwords — contacts you had deactivated individually stay deactivated.

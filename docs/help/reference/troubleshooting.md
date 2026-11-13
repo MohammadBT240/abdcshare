@@ -15,6 +15,10 @@ The email or password doesn't match an active account.
 - Passwords are case-sensitive. Check Caps Lock.
 - Still stuck? Click **Forgot password?** on the sign-in page. If you used to be able to sign in and now can't, your account may have been deactivated — ask an administrator.
 
+### "Your organisation's portal access is switched off"
+
+You're a client contact and the firm has deactivated your organisation in the portal. Your password is fine — contact the firm and ask them to reactivate it.
+
 ### I'm asked to change my password before I can continue
 
 That's expected the first time you sign in, and after an administrator resets your password: the temporary password has to be replaced with your own. See [Signing in](help:signing-in).

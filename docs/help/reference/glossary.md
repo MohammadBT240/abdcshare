@@ -27,7 +27,7 @@ related: [faq, who-can-do-what, welcome]
 | **Request type** | The specific thing being asked for, within a class. |
 | **Expected documents** | How many files a request expects. A request's progress is accepted files out of this number. |
 | **Stage (of a request)** | Worked out automatically: **Not Started**, **Submitted**, **In Progress** or **Reviewed**. |
-| **Status** | Set by a Super Admin to say whose court the ball is in: **Open**, **Pending Client**, **Accepted**, **Returned** or **Closed**. |
+| **Status** | Set by the team to say whose court the ball is in: **Open**, **Pending Client**, **Accepted**, **Returned** or **Closed**. |
 | **Response** | The files and message a client sends to answer a request. |
 | **Accept / Return** | What the team does with each file a client sends. A returned file goes back to the client with a reason, and they upload a replacement. |
 | **Brief** | An example or template attached to a request to show the client what's wanted. |

@@ -183,6 +183,22 @@ export function useRequest(id: string) {
   });
 }
 
+export interface AssignableUser {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+/** Active team members of the engagements the caller can see — who can be assigned (request:assign). */
+export function useAssignableUsers(enabled = true) {
+  return useQuery({
+    queryKey: ['requests', 'assignable-users'],
+    queryFn: () => bffApi<AssignableUser[]>('/api/requests/assignable-users'),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
 export function useRequestHistory(id: string, enabled = true) {
   return useQuery({
     queryKey: ['requests', id, 'history'],
